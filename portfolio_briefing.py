@@ -19,7 +19,8 @@ TICKERS = ["QLD", "SSO", "USD"]
 def now_kst():
     return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
 
-def call_claude_api(prompt, system_prompt=None):
+def call_claude_with_search(prompt):
+    """웹 검색 도구 포함한 Claude API 호출"""
     if not CLAUDE_API_KEY:
         raise ValueError("❌ CLAUDE_API_KEY 환경변수 미설정!")
 
@@ -31,8 +32,14 @@ def call_claude_api(prompt, system_prompt=None):
     }
     payload = {
         "model": "claude-opus-4-8",
-        "max_tokens": 2000,
-        "system": system_prompt or "You are a financial assistant. Respond ONLY in valid JSON with no markdown, no preamble, no backticks.",
+        "max_tokens": 4000,
+        "tools": [
+            {
+                "type": "web_search_20250305",
+                "name": "web_search"
+            }
+        ],
+        "system": "You are a financial assistant. Search the web for real-time ETF prices and news. After searching, respond ONLY with valid JSON, no markdown fences, no preamble.",
         "messages": [{"role": "user", "content": prompt}]
     }
 
@@ -44,19 +51,23 @@ def call_claude_api(prompt, system_prompt=None):
 
     response.raise_for_status()
     data = response.json()
+
+    # text 블록만 추출 (tool_use, tool_result 블록 제외)
     texts = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
     return "".join(texts)
 
 def fetch_prices_and_news():
     today = datetime.now(KST).strftime("%Y-%m-%d")
-    prompt = f"""Today is {today} KST. Search and provide current market data for:
-- QLD (ProShares Ultra QQQ, 2x Nasdaq)
-- SSO (ProShares Ultra S&P500, 2x S&P500)
-- USD (ProShares Ultra Semiconductors, 2x Semiconductors)
+    prompt = f"""Today is {today} KST.
 
-Get current price, previous close, % change, and 3 recent Korean-translated news headlines each.
+Search the web RIGHT NOW for the current prices of these ETFs:
+1. QLD (ProShares Ultra QQQ) - search "QLD stock price today"
+2. SSO (ProShares Ultra S&P500) - search "SSO stock price today"  
+3. USD (ProShares Ultra Semiconductors) - search "USD ETF price today"
 
-Respond ONLY as valid JSON:
+Also search for 3 recent news headlines for each ETF and translate them to Korean.
+
+After searching, respond ONLY with this JSON (no markdown, no extra text):
 {{
   "prices": {{
     "QLD": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}},
@@ -64,18 +75,41 @@ Respond ONLY as valid JSON:
     "USD": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}}
   }},
   "news": {{
-    "QLD": [{{"title_ko": "...", "source": "...", "time": "..."}}],
-    "SSO": [{{"title_ko": "...", "source": "...", "time": "..."}}],
-    "USD": [{{"title_ko": "...", "source": "...", "time": "..."}}]
+    "QLD": [
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}}
+    ],
+    "SSO": [
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}}
+    ],
+    "USD": [
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
+      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}}
+    ]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
   "actions": ["액션1", "액션2"],
-  "summary": "텔레그램용 200자 이내 요약"
+  "summary": "200자 이내 텔레그램 요약"
 }}"""
 
-    response = call_claude_api(prompt)
+    print("🔍 웹 검색으로 실시간 데이터 수집 중...")
+    response = call_claude_with_search(prompt)
+
+    # JSON 파싱
     clean = response.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean)
+    # JSON 블록만 추출
+    start = clean.find("{")
+    end = clean.rfind("}") + 1
+    if start >= 0 and end > start:
+        clean = clean[start:end]
+
+    data = json.loads(clean)
+    print("✅ 데이터 수집 완료")
+    return data
 
 def build_markdown(data):
     today = datetime.now(KST).strftime("%Y-%m-%d")
@@ -107,7 +141,6 @@ def save_markdown(content):
     return filename
 
 def send_telegram(message):
-    """텔레그램으로 메시지 전송"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("⚠️  텔레그램 설정 없음 — 전송 생략")
         return False
@@ -120,13 +153,11 @@ def send_telegram(message):
     }
 
     response = requests.post(url, json=payload)
-
     if response.status_code == 200:
         print("✅ 텔레그램 전송 완료!")
         return True
     else:
-        print(f"❌ 텔레그램 전송 실패: {response.status_code}")
-        print(response.text[:200])
+        print(f"❌ 전송 실패: {response.status_code} — {response.text[:200]}")
         return False
 
 def build_telegram_message(data):
@@ -134,7 +165,6 @@ def build_telegram_message(data):
     prices = data.get("prices", {})
 
     lines = [f"📈 *포트폴리오 브리핑 {today}*\n"]
-
     for t in TICKERS:
         p = prices.get(t, {})
         chg = p.get("chg_pct", 0)
@@ -156,9 +186,8 @@ def main():
     print(f"{'='*50}")
 
     try:
-        print("\n[1/4] 가격 및 뉴스 수집...")
+        print("\n[1/4] 실시간 가격 및 뉴스 수집...")
         data = fetch_prices_and_news()
-        print("✅ 데이터 수집 완료")
 
         print("\n[2/4] 마크다운 생성...")
         md_content = build_markdown(data)
@@ -168,7 +197,7 @@ def main():
 
         print("\n[4/4] 텔레그램 전송...")
         telegram_msg = build_telegram_message(data)
-        print(f"📝 메시지:\n{telegram_msg}")
+        print(f"📝 메시지 미리보기:\n{telegram_msg}\n")
         send_telegram(telegram_msg)
 
         print(f"\n{'='*50}")
