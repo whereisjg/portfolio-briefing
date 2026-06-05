@@ -14,7 +14,7 @@ KST = pytz.timezone("Asia/Seoul")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "").strip()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-TICKERS = ["QLD", "SSO", "USD"]
+TICKERS = ["QLD", "SSO", "USD", "426030"]
 
 def now_kst():
     return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
