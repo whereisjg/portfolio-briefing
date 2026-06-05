@@ -76,7 +76,7 @@ After searching, respond ONLY with this JSON (no markdown, no extra text):
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
   "actions": ["액션1", "액션2"],
-  "summary": "오늘 시장 핵심 요약 (종목별 주요 내용 포함)"
+  "summary": "오늘 하루 각 종목에 일어난 주요 뉴스/이벤트를 종목별로 한 줄씩 요약. 과거 수익률이나 분석보다는 오늘 실제로 있었던 일 위주로"
 }}"""
 
     print("🔍 웹 검색으로 실시간 데이터 수집 중...")
