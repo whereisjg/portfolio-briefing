@@ -3,7 +3,7 @@ name: Daily Portfolio Briefing
 # 매일 아침 7시 KST (22시 UTC, 전날) 실행
 on:
   schedule:
-    - cron: '0 22 * * *'  # UTC 22:00 = KST 07:00 (다음날)
+    - cron: '24 1 * * *'  # UTC 22:00 = KST 07:00 (다음날)
   workflow_dispatch:  # 수동 실행용
 
 jobs:
