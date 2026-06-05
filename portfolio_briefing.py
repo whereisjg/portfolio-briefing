@@ -75,7 +75,7 @@ After searching, respond ONLY with this JSON (no markdown, no extra text):
     "426030": [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
-  "actions": ["액션1", "액션2"],
+  "actions": ["오늘 가격 흐름과 뉴스를 바탕으로 각 종목별 구체적인 대응 전략 1줄씩. 예: 추가매수 / 관망 / 부분익절 / 비중축소 등 행동 중심으로"],
   "summary": "오늘 하루 각 종목에 일어난 주요 뉴스/이벤트를 종목별로 한 줄씩 요약. 과거 수익률이나 분석보다는 오늘 실제로 있었던 일 위주로"
 }}"""
 
