@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 포트폴리오 일일 브리핑 — GitHub Actions 자동화용
-QLD, SSO, USD 실시간 가격 + 뉴스 → 마크다운 + 텔레그램 전송
+QLD, SSO, USD, 426030 실시간 가격 + 뉴스 → 마크다운 + 텔레그램 전송
 """
 
 import json
@@ -20,7 +20,6 @@ def now_kst():
     return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
 
 def call_claude_with_search(prompt):
-    """웹 검색 도구 포함한 Claude API 호출"""
     if not CLAUDE_API_KEY:
         raise ValueError("❌ CLAUDE_API_KEY 환경변수 미설정!")
 
@@ -33,12 +32,7 @@ def call_claude_with_search(prompt):
     payload = {
         "model": "claude-opus-4-8",
         "max_tokens": 4000,
-        "tools": [
-            {
-                "type": "web_search_20250305",
-                "name": "web_search"
-            }
-        ],
+        "tools": [{"type": "web_search_20250305", "name": "web_search"}],
         "system": "You are a financial assistant. Search the web for real-time ETF prices and news. After searching, respond ONLY with valid JSON, no markdown fences, no preamble.",
         "messages": [{"role": "user", "content": prompt}]
     }
@@ -51,8 +45,6 @@ def call_claude_with_search(prompt):
 
     response.raise_for_status()
     data = response.json()
-
-    # text 블록만 추출 (tool_use, tool_result 블록 제외)
     texts = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
     return "".join(texts)
 
@@ -62,46 +54,35 @@ def fetch_prices_and_news():
 
 Search the web RIGHT NOW for the current prices of these ETFs:
 1. QLD (ProShares Ultra QQQ) - search "QLD stock price today"
-2. SSO (ProShares Ultra S&P500) - search "SSO stock price today"  
+2. SSO (ProShares Ultra S&P500) - search "SSO stock price today"
 3. USD (ProShares Ultra Semiconductors) - search "USD ETF price today"
+4. 426030 (TIMEFOLIO 미국나스닥100액티브, KRX Korea ETF) - search "426030 주가 오늘" (price in KRW ₩)
 
-Also search for 3 recent news headlines for each ETF and translate them to Korean.
+Also search for 3 recent news headlines for each and translate to Korean.
 
 After searching, respond ONLY with this JSON (no markdown, no extra text):
 {{
   "prices": {{
-    "QLD": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}},
-    "SSO": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}},
-    "USD": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}}
+    "QLD":    {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "USD"}},
+    "SSO":    {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "USD"}},
+    "USD":    {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "USD"}},
+    "426030": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "KRW"}}
   }},
   "news": {{
-    "QLD": [
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}}
-    ],
-    "SSO": [
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}}
-    ],
-    "USD": [
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}},
-      {{"title_ko": "한글 뉴스 제목", "source": "출처", "time": "시간"}}
-    ]
+    "QLD":    [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}],
+    "SSO":    [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}],
+    "USD":    [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}],
+    "426030": [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
   "actions": ["액션1", "액션2"],
-  "summary": "오늘 시장 핵심 요약 (분량 제한 없음, 종목별 주요 내용 포함)"
+  "summary": "오늘 시장 핵심 요약 (종목별 주요 내용 포함)"
 }}"""
 
     print("🔍 웹 검색으로 실시간 데이터 수집 중...")
     response = call_claude_with_search(prompt)
 
-    # JSON 파싱
     clean = response.replace("```json", "").replace("```", "").strip()
-    # JSON 블록만 추출
     start = clean.find("{")
     end = clean.rfind("}") + 1
     if start >= 0 and end > start:
@@ -119,10 +100,16 @@ def build_markdown(data):
         p = data.get("prices", {}).get(t)
         if p:
             chg = p.get("chg_pct", 0)
-            md += f"| {t} | ${p.get('price', 0):.2f} | {chg:+.2f}% |\n"
+            currency = p.get("currency", "USD")
+            symbol = "₩" if currency == "KRW" else "$"
+            price = p.get("price", 0)
+            price_str = f"{symbol}{price:,.0f}" if currency == "KRW" else f"{symbol}{price:.2f}"
+            name = "TIMEFOLIO 나스닥100액티브" if t == "426030" else t
+            md += f"| {name} | {price_str} | {chg:+.2f}% |\n"
     md += "\n## 📰 종목별 뉴스\n\n"
     for t in TICKERS:
-        md += f"### {t}\n"
+        name = "TIMEFOLIO 나스닥100액티브 (426030)" if t == "426030" else t
+        md += f"### {name}\n"
         for i, n in enumerate(data.get("news", {}).get(t, [])[:3], 1):
             md += f"{i}. {n.get('title_ko','—')} *({n.get('source','')})*\n"
         md += "\n"
@@ -169,8 +156,12 @@ def build_telegram_message(data):
         p = prices.get(t, {})
         chg = p.get("chg_pct", 0)
         price = p.get("price", 0)
+        currency = p.get("currency", "USD")
+        symbol = "₩" if currency == "KRW" else "$"
+        price_str = f"{symbol}{price:,.0f}" if currency == "KRW" else f"{symbol}{price:.2f}"
         emoji = "🟢" if chg > 0 else "🔴" if chg < 0 else "⚪"
-        lines.append(f"{emoji} *{t}* ${price:.2f} ({chg:+.2f}%)")
+        name = "TIMEFOLIO나스닥100" if t == "426030" else t
+        lines.append(f"{emoji} *{name}* {price_str} ({chg:+.2f}%)")
 
     lines.append(f"\n💡 {data.get('insight', '—')}")
 
@@ -207,6 +198,9 @@ def main():
 
     except Exception as e:
         print(f"\n❌ 오류: {e}")
+        # 오류 발생 시 텔레그램으로 알림
+        error_msg = f"⚠️ *포트폴리오 브리핑 오류*\n\n`{str(e)[:200]}`\n\nGitHub Actions 로그를 확인하세요."
+        send_telegram(error_msg)
         import traceback
         traceback.print_exc()
         return 1
