@@ -1,1 +1,41 @@
+name: Daily Portfolio Briefing
 
+# 매일 아침 7시 KST (22시 UTC, 전날) 실행
+on:
+  schedule:
+    - cron: '0 22 * * *'  # UTC 22:00 = KST 07:00 (다음날)
+  workflow_dispatch:  # 수동 실행용
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install requests pytz
+      
+      - name: Run portfolio briefing
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          KAKAO_TOKEN: ${{ secrets.KAKAO_TOKEN }}
+        run: |
+          python portfolio_briefing.py
+      
+      - name: Commit and push briefing
+        run: |
+          git config user.name "Portfolio Bot"
+          git config user.email "bot@portfolio.local"
+          git add briefing_*.md 2>/dev/null || true
+          git commit -m "📈 Daily briefing - $(date +%Y-%m-%d)" || true
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
