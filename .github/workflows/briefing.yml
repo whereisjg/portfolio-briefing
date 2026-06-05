@@ -26,7 +26,8 @@ jobs:
       - name: Run portfolio briefing
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          KAKAO_TOKEN: ${{ secrets.KAKAO_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python portfolio_briefing.py
       
