@@ -152,8 +152,7 @@ def build_telegram_message(data):
     prices = data.get("prices", {})
 
     lines = [f"📈 *포트폴리오 브리핑 {today}*\n"]
-    
-    # 가격 섹션
+
     for t in TICKERS:
         p = prices.get(t, {})
         chg = p.get("chg_pct", 0)
@@ -165,19 +164,18 @@ def build_telegram_message(data):
         name = "TIMEFOLIO나스닥100" if t == "426030" else t
         lines.append(f"{emoji} *{name}* {price_str} ({chg:+.2f}%)")
 
-    # 구분선
     lines.append("\n━━━━━━━━━━━━━━━")
-
-    # 핵심 한 줄
     lines.append(f"💡 *{data.get('insight', '—')}*")
-
-    # 구분선
     lines.append("━━━━━━━━━━━━━━━\n")
 
-    # 종목별 요약 (summary를 종목별로 나눠서 표시)
+    lines.append("🎯 *오늘의 대응*")
+    for a in data.get("actions", []):
+        lines.append(f"  ▸ {a}")
+    lines.append("")
+
     summary = data.get("summary", "")
     if summary:
-        # 문장 단위로 나눠서 종목별 단락 구성
+        lines.append("📰 *오늘의 뉴스*")
         sentences = summary.replace("。", ".").split(". ")
         for s in sentences:
             s = s.strip()
