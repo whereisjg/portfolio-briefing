@@ -18,9 +18,10 @@ def call_claude_api(prompt):
     
     url = "https://api.anthropic.com/v1/messages"
     headers = {
-        "Content-Type": "application/json",
-        "x-api-key": CLAUDE_API_KEY
-    }
+    "Content-Type": "application/json",
+    "x-api-key": CLAUDE_API_KEY,
+    "anthropic-version": "2023-06-01"
+}
     payload = {
         "model": "claude-sonnet-4-20250514",
         "max_tokens": 2000,
