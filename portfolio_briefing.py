@@ -93,7 +93,7 @@ After searching, respond ONLY with this JSON (no markdown, no extra text):
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
   "actions": ["액션1", "액션2"],
-  "summary": "200자 이내 텔레그램 요약"
+  "summary": "오늘 시장 핵심 요약 (분량 제한 없음, 종목별 주요 내용 포함)"
 }}"""
 
     print("🔍 웹 검색으로 실시간 데이터 수집 중...")
