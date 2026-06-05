@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 포트폴리오 일일 브리핑 — GitHub Actions 자동화용
-QLD, SSO, USD 실시간 가격 + 뉴스 → 마크다운 + 카카오톡(PlayMCP)
+QLD, SSO, USD 실시간 가격 + 뉴스 → 마크다운 + 텔레그램 전송
 """
 
 import json
@@ -12,13 +12,14 @@ import requests
 
 KST = pytz.timezone("Asia/Seoul")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "").strip()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 TICKERS = ["QLD", "SSO", "USD"]
 
 def now_kst():
     return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
 
-def call_claude_api(prompt, system_prompt=None, mcp_servers=None, tools=None):
-    """Claude API 호출"""
+def call_claude_api(prompt, system_prompt=None):
     if not CLAUDE_API_KEY:
         raise ValueError("❌ CLAUDE_API_KEY 환경변수 미설정!")
 
@@ -34,10 +35,6 @@ def call_claude_api(prompt, system_prompt=None, mcp_servers=None, tools=None):
         "system": system_prompt or "You are a financial assistant. Respond ONLY in valid JSON with no markdown, no preamble, no backticks.",
         "messages": [{"role": "user", "content": prompt}]
     }
-    if mcp_servers:
-        payload["mcp_servers"] = mcp_servers
-    if tools:
-        payload["tools"] = tools
 
     response = requests.post(url, json=payload, headers=headers)
 
@@ -51,24 +48,29 @@ def call_claude_api(prompt, system_prompt=None, mcp_servers=None, tools=None):
     return "".join(texts)
 
 def fetch_prices_and_news():
-    """가격 + 뉴스 조회"""
     today = datetime.now(KST).strftime("%Y-%m-%d")
-    prompt = f"""Today is {today} KST. Get current prices and 3 recent news for QLD (ProShares Ultra QQQ), SSO (ProShares Ultra S&P500), USD (ProShares Ultra Semiconductors) ETFs.
-Respond ONLY as valid JSON (no markdown):
+    prompt = f"""Today is {today} KST. Search and provide current market data for:
+- QLD (ProShares Ultra QQQ, 2x Nasdaq)
+- SSO (ProShares Ultra S&P500, 2x S&P500)
+- USD (ProShares Ultra Semiconductors, 2x Semiconductors)
+
+Get current price, previous close, % change, and 3 recent Korean-translated news headlines each.
+
+Respond ONLY as valid JSON:
 {{
   "prices": {{
-    "QLD": {{"price": 150.0, "prev_close": 148.0, "chg_pct": 1.35}},
-    "SSO": {{"price": 85.0, "prev_close": 84.0, "chg_pct": 1.19}},
-    "USD": {{"price": 50.0, "prev_close": 49.5, "chg_pct": 1.01}}
+    "QLD": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}},
+    "SSO": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}},
+    "USD": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0}}
   }},
   "news": {{
-    "QLD": [{{"title_ko": "나스닥 상승", "source": "Reuters", "time": "10:00"}}, {{"title_ko": "기술주 강세", "source": "CNBC", "time": "09:30"}}, {{"title_ko": "AI 관련주 급등", "source": "Bloomberg", "time": "09:00"}}],
-    "SSO": [{{"title_ko": "S&P500 신고점", "source": "MarketWatch", "time": "11:00"}}, {{"title_ko": "경기 회복 신호", "source": "WSJ", "time": "10:30"}}, {{"title_ko": "인플레이션 둔화", "source": "CNBC", "time": "09:30"}}],
-    "USD": [{{"title_ko": "반도체주 급등", "source": "TechCrunch", "time": "11:30"}}, {{"title_ko": "NVIDIA 실적 호조", "source": "Reuters", "time": "10:00"}}, {{"title_ko": "칩 수급 개선", "source": "Bloomberg", "time": "09:00"}}]
+    "QLD": [{{"title_ko": "...", "source": "...", "time": "..."}}],
+    "SSO": [{{"title_ko": "...", "source": "...", "time": "..."}}],
+    "USD": [{{"title_ko": "...", "source": "...", "time": "..."}}]
   }},
-  "insight": "시장 핵심 한 줄 요약",
+  "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
   "actions": ["액션1", "액션2"],
-  "kakao_summary": "200자 이내 브리핑 요약"
+  "summary": "텔레그램용 200자 이내 요약"
 }}"""
 
     response = call_claude_api(prompt)
@@ -76,7 +78,6 @@ Respond ONLY as valid JSON (no markdown):
     return json.loads(clean)
 
 def build_markdown(data):
-    """마크다운 브리핑 생성"""
     today = datetime.now(KST).strftime("%Y-%m-%d")
     md = f"# 📈 포트폴리오 일일 브리핑\n\n> {today} KST\n\n"
     md += "## 💰 가격 요약\n\n| 종목 | 현재가 | 전일비 |\n|------|--------|--------|\n"
@@ -91,8 +92,8 @@ def build_markdown(data):
         for i, n in enumerate(data.get("news", {}).get(t, [])[:3], 1):
             md += f"{i}. {n.get('title_ko','—')} *({n.get('source','')})*\n"
         md += "\n"
-    md += f"## 💡 핵심\n{data.get('insight','—')}\n\n"
-    md += "## 🎯 액션\n"
+    md += f"## 💡 오늘의 핵심\n{data.get('insight','—')}\n\n"
+    md += "## 🎯 오늘의 액션\n"
     for a in data.get("actions", []):
         md += f"- {a}\n"
     return md
@@ -105,39 +106,49 @@ def save_markdown(content):
     print(f"✅ 저장: {filename}")
     return filename
 
-def send_kakao_via_playmcp(message):
-    """PlayMCP를 통해 카카오톡 메모챗으로 전송"""
-    print("\n📱 카카오톡 전송 중 (PlayMCP)...")
+def send_telegram(message):
+    """텔레그램으로 메시지 전송"""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("⚠️  텔레그램 설정 없음 — 전송 생략")
+        return False
 
-    response_text = call_claude_api(
-        prompt=f"카카오톡 나에게 메시지 보내기:\n\n{message}",
-        system_prompt="You are a helpful assistant. Send the message via KakaoTalk memo chat.",
-        mcp_servers=[{
-            "type": "url",
-            "url": "https://playmcp.kakao.com/mcp",
-            "name": "playmcp"
-        }]
-    )
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
 
-    print(f"📨 전송 결과: {response_text[:100]}")
-    return response_text
+    response = requests.post(url, json=payload)
 
-def build_kakao_message(data):
-    """카카오톡용 메시지 생성 (200자 이내)"""
+    if response.status_code == 200:
+        print("✅ 텔레그램 전송 완료!")
+        return True
+    else:
+        print(f"❌ 텔레그램 전송 실패: {response.status_code}")
+        print(response.text[:200])
+        return False
+
+def build_telegram_message(data):
     today = datetime.now(KST).strftime("%m/%d")
     prices = data.get("prices", {})
 
-    qld_chg = prices.get("QLD", {}).get("chg_pct", 0)
-    sso_chg = prices.get("SSO", {}).get("chg_pct", 0)
-    usd_chg = prices.get("USD", {}).get("chg_pct", 0)
+    lines = [f"📈 *포트폴리오 브리핑 {today}*\n"]
 
-    summary = data.get("kakao_summary", data.get("insight", ""))
+    for t in TICKERS:
+        p = prices.get(t, {})
+        chg = p.get("chg_pct", 0)
+        price = p.get("price", 0)
+        emoji = "🟢" if chg > 0 else "🔴" if chg < 0 else "⚪"
+        lines.append(f"{emoji} *{t}* ${price:.2f} ({chg:+.2f}%)")
 
-    msg = f"[포트폴리오 브리핑 {today}]\n"
-    msg += f"QLD {qld_chg:+.2f}% | SSO {sso_chg:+.2f}% | USD {usd_chg:+.2f}%\n\n"
-    msg += summary[:150]
+    lines.append(f"\n💡 {data.get('insight', '—')}")
 
-    return msg
+    summary = data.get("summary", "")
+    if summary:
+        lines.append(f"\n{summary}")
+
+    return "\n".join(lines)
 
 def main():
     print(f"\n{'='*50}")
@@ -153,12 +164,12 @@ def main():
         md_content = build_markdown(data)
 
         print("\n[3/4] 파일 저장...")
-        filename = save_markdown(md_content)
+        save_markdown(md_content)
 
-        print("\n[4/4] 카카오톡 전송...")
-        kakao_msg = build_kakao_message(data)
-        print(f"📝 메시지 내용:\n{kakao_msg}")
-        send_kakao_via_playmcp(kakao_msg)
+        print("\n[4/4] 텔레그램 전송...")
+        telegram_msg = build_telegram_message(data)
+        print(f"📝 메시지:\n{telegram_msg}")
+        send_telegram(telegram_msg)
 
         print(f"\n{'='*50}")
         print("✨ 모든 작업 완료!")
