@@ -45,8 +45,16 @@ def call_claude_with_search(prompt):
 
     response.raise_for_status()
     data = response.json()
+    
+    print(f"📊 API 응답 content 블록 수: {len(data.get('content', []))}")
+    for i, block in enumerate(data.get('content', [])):
+        print(f"  블록 {i}: type={block.get('type')}")
+    
     texts = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
-    return "".join(texts)
+    result = "".join(texts)
+    print(f"🔍 추출된 텍스트 길이: {len(result)}")
+    print(f"🔍 텍스트 미리보기: {result[:500]}")
+    return result
 
 def fetch_prices_and_news():
     today = datetime.now(KST).strftime("%Y-%m-%d")
@@ -75,18 +83,23 @@ After searching, respond ONLY with this JSON (no markdown, no extra text):
     "426030": [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
-  "actions": ["오늘 가격 흐름과 뉴스를 바탕으로 각 종목별 구체적인 대응 전략 1줄씩. 예: 추가매수 / 관망 / 부분익절 / 비중축소 등 행동 중심으로"],
-  "summary": "오늘 하루 각 종목에 일어난 주요 뉴스/이벤트를 종목별로 한 줄씩 요약. 과거 수익률이나 분석보다는 오늘 실제로 있었던 일 위주로"
+  "actions": ["오늘 가격 흐름과 뉴스를 바탕으로 각 종목별 구체적인 대응 전략 1줄씩"],
+  "summary": "오늘 하루 각 종목에 일어난 주요 뉴스/이벤트를 종목별로 한 줄씩 요약"
 }}"""
 
     print("🔍 웹 검색으로 실시간 데이터 수집 중...")
     response = call_claude_with_search(prompt)
 
+    print(f"📋 원본 응답 길이: {len(response)}")
     clean = response.replace("```json", "").replace("```", "").strip()
+    print(f"📋 정제된 응답: {clean[:500]}")
+    
     start = clean.find("{")
     end = clean.rfind("}") + 1
     if start >= 0 and end > start:
         clean = clean[start:end]
+    
+    print(f"📋 JSON 블록: {clean[:500]}")
 
     data = json.loads(clean)
     print("✅ 데이터 수집 완료")
@@ -213,8 +226,7 @@ def main():
 
     except Exception as e:
         print(f"\n❌ 오류: {e}")
-        # 오류 발생 시 텔레그램으로 알림
-        error_msg = f"⚠️ *포트폴리오 브리핑 오류*\n\n`{str(e)[:200]}`\n\nGitHub Actions 로그를 확인하세요."
+        error_msg = f"⚠️ *포트폴리오 브리핑 오류*\n\n`{str(e)[:200]}`"
         send_telegram(error_msg)
         import traceback
         traceback.print_exc()
