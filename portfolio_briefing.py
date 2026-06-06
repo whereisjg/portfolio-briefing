@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 포트폴리오 일일 브리핑 — GitHub Actions 자동화용
-QLD, SSO, USD, 426030 실시간 가격 + 뉴스 → 마크다운 + 텔레그램 전송
+Alpha Vantage로 정확한 주가 + Claude 웹검색으로 뉴스/대응전략
 """
 
 import json
@@ -14,12 +14,33 @@ KST = pytz.timezone("Asia/Seoul")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "").strip()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "").strip()
 TICKERS = ["QLD", "SSO", "USD", "426030"]
 
 def now_kst():
     return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
 
+def fetch_price_alpha_vantage(ticker):
+    """Alpha Vantage로 미국 ETF 실시간 주가 조회"""
+    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_KEY}"
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        quote = data.get("Global Quote", {})
+        if not quote:
+            print(f"⚠️ {ticker} 데이터 없음")
+            return None
+        price = float(quote.get("05. price", 0))
+        prev_close = float(quote.get("08. previous close", 0))
+        chg_pct = float(quote.get("10. change percent", "0%").replace("%", ""))
+        print(f"✅ {ticker}: ${price:.2f} ({chg_pct:+.2f}%)")
+        return {"price": price, "prev_close": prev_close, "chg_pct": chg_pct, "currency": "USD"}
+    except Exception as e:
+        print(f"❌ {ticker} 조회 실패: {e}")
+        return None
+
 def call_claude_with_search(prompt):
+    """Claude API 웹검색으로 뉴스 + 한국 ETF 주가 조회"""
     if not CLAUDE_API_KEY:
         raise ValueError("❌ CLAUDE_API_KEY 환경변수 미설정!")
 
@@ -31,50 +52,47 @@ def call_claude_with_search(prompt):
     }
     payload = {
         "model": "claude-sonnet-4-6",
-        "max_tokens": 4000,
-        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+        "max_tokens": 3000,
+        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
         "system": """You are a financial data assistant. Your ONLY job is to return a JSON object.
 CRITICAL RULES:
 1. You MUST always respond with ONLY a valid JSON object. No other text.
 2. NEVER apologize or explain. NEVER write prose or markdown.
-3. If you cannot find exact data, use the most recent data available and estimate.
+3. If you cannot find exact data, use the most recent data available.
 4. The response must start with { and end with }. Nothing else.""",
         "messages": [{"role": "user", "content": prompt}]
     }
 
     response = requests.post(url, json=payload, headers=headers)
-
-    if response.status_code != 200:
-        print(f"❌ API 에러: {response.status_code}")
-        print(f"응답: {response.text[:300]}")
-
     response.raise_for_status()
     data = response.json()
     texts = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
-    result = "".join(texts)
-    print(f"🔍 응답 미리보기: {result[:300]}")
-    return result
+    return "".join(texts)
 
-def fetch_prices_and_news():
+def fetch_news_and_krw(us_prices):
+    """Claude로 뉴스 + 426030 한국 ETF 주가 조회"""
     today = datetime.now(KST).strftime("%Y-%m-%d")
-    prompt = f"""Today is {today} KST. Search for the latest available prices for these ETFs and return JSON only.
+    
+    # 미국 ETF 가격 정보를 프롬프트에 포함
+    price_info = ""
+    for t in ["QLD", "SSO", "USD"]:
+        p = us_prices.get(t)
+        if p:
+            price_info += f"- {t}: ${p['price']:.2f} ({p['chg_pct']:+.2f}%)\n"
 
-Search for:
-1. QLD stock price
-2. SSO stock price
-3. USD ETF price (ProShares Ultra Semiconductors)
-4. 426030 주가 (TIMEFOLIO 나스닥100액티브 KRX)
+    prompt = f"""Today is {today} KST.
 
-Also find 2 recent news per ETF. Use the most recent data available even if not today.
+US ETF prices already retrieved:
+{price_info}
 
-Return ONLY this JSON, no other text:
+Please search for:
+1. 426030 주가 오늘 (TIMEFOLIO 나스닥100액티브 KRX, price in KRW)
+2. 2 recent news headlines for QLD, SSO, USD, 426030 (translate to Korean)
+3. Market insight and action strategy for each ticker
+
+Return ONLY this JSON:
 {{
-  "prices": {{
-    "QLD":    {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "USD"}},
-    "SSO":    {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "USD"}},
-    "USD":    {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "USD"}},
-    "426030": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "KRW"}}
-  }},
+  "426030": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "KRW"}},
   "news": {{
     "QLD":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
     "SSO":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
@@ -82,22 +100,38 @@ Return ONLY this JSON, no other text:
     "426030": [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
-  "actions": ["QLD: 대응전략", "SSO: 대응전략", "USD: 대응전략", "426030: 대응전략"],
-  "summary": "각 종목 오늘 주요 이슈 한 줄씩"
+  "actions": ["QLD: 대응전략", "SSO: 대응전략", "USD: 대응전략", "426030: 대응전략"]
 }}"""
 
-    print("🔍 웹 검색으로 실시간 데이터 수집 중...")
     response = call_claude_with_search(prompt)
-
     clean = response.replace("```json", "").replace("```", "").strip()
     start = clean.find("{")
     end = clean.rfind("}") + 1
     if start >= 0 and end > start:
         clean = clean[start:end]
+    return json.loads(clean)
 
-    data = json.loads(clean)
-    print("✅ 데이터 수집 완료")
-    return data
+def fetch_all_data():
+    """미국 ETF는 Alpha Vantage, 한국 ETF+뉴스는 Claude"""
+    print("📊 Alpha Vantage로 미국 ETF 주가 조회 중...")
+    us_prices = {}
+    for ticker in ["QLD", "SSO", "USD"]:
+        price_data = fetch_price_alpha_vantage(ticker)
+        if price_data:
+            us_prices[ticker] = price_data
+
+    print("🔍 Claude로 뉴스 + 한국 ETF 조회 중...")
+    claude_data = fetch_news_and_krw(us_prices)
+
+    # 데이터 합치기
+    prices = {**us_prices, "426030": claude_data.get("426030", {"price": 0, "prev_close": 0, "chg_pct": 0, "currency": "KRW"})}
+    
+    return {
+        "prices": prices,
+        "news": claude_data.get("news", {}),
+        "insight": claude_data.get("insight", "—"),
+        "actions": claude_data.get("actions", [])
+    }
 
 def build_content(data):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
@@ -198,8 +232,8 @@ def main():
     print(f"{'='*50}")
 
     try:
-        print("\n[1/4] 실시간 가격 및 뉴스 수집...")
-        data = fetch_prices_and_news()
+        print("\n[1/4] 주가 및 뉴스 수집...")
+        data = fetch_all_data()
 
         print("\n[2/4] 콘텐츠 생성...")
         telegram_msg, md_content = build_content(data)
