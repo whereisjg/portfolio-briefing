@@ -30,7 +30,7 @@ def call_claude_with_search(prompt):
         "anthropic-version": "2023-06-01"
     }
     payload = {
-        "model": "claude-opus-4-8",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 4000,
         "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 8}],
         "system": """You are a financial data assistant. Your ONLY job is to return a JSON object.
