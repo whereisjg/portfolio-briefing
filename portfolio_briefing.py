@@ -32,7 +32,7 @@ def call_claude_with_search(prompt):
     payload = {
         "model": "claude-sonnet-4-6",
         "max_tokens": 4000,
-        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 8}],
+        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
         "system": """You are a financial data assistant. Your ONLY job is to return a JSON object.
 CRITICAL RULES:
 1. You MUST always respond with ONLY a valid JSON object. No other text.
@@ -65,7 +65,7 @@ Search for:
 3. USD ETF price (ProShares Ultra Semiconductors)
 4. 426030 주가 (TIMEFOLIO 나스닥100액티브 KRX)
 
-Also find 3 recent news per ETF. Use the most recent data available even if not today.
+Also find 2 recent news per ETF. Use the most recent data available even if not today.
 
 Return ONLY this JSON, no other text:
 {{
@@ -76,10 +76,10 @@ Return ONLY this JSON, no other text:
     "426030": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "KRW"}}
   }},
   "news": {{
-    "QLD":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
-    "SSO":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
-    "USD":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
-    "426030": [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}]
+    "QLD":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
+    "SSO":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
+    "USD":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
+    "426030": [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
   "actions": ["QLD: 대응전략", "SSO: 대응전략", "USD: 대응전략", "426030: 대응전략"],
@@ -100,12 +100,10 @@ Return ONLY this JSON, no other text:
     return data
 
 def build_content(data):
-    """md 파일과 텔레그램 메시지를 동일한 내용으로 생성"""
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     prices = data.get("prices", {})
 
-    # 가격 섹션
     price_lines = []
     for t in TICKERS:
         p = prices.get(t, {})
@@ -118,15 +116,13 @@ def build_content(data):
         name = "TIMEFOLIO나스닥100" if t == "426030" else t
         price_lines.append(f"{emoji} *{name}* {price_str} ({chg:+.2f}%)")
 
-    # 뉴스 섹션
     news_lines = []
     for t in TICKERS:
         name = "TIMEFOLIO나스닥100 (426030)" if t == "426030" else t
         news_lines.append(f"\n*{name}*")
-        for n in data.get("news", {}).get(t, [])[:3]:
+        for n in data.get("news", {}).get(t, [])[:2]:
             news_lines.append(f"• {n.get('title_ko','—')} _({n.get('source','')})_")
 
-    # 액션 섹션
     action_lines = []
     for a in data.get("actions", []):
         action_lines.append(f"  ▸ {a}")
@@ -142,7 +138,7 @@ def build_content(data):
     telegram += "\n\n📰 *오늘의 뉴스*"
     telegram += "\n".join(news_lines)
 
-    # 마크다운 파일 (표 형식)
+    # 마크다운 파일
     md = f"# 📈 포트폴리오 일일 브리핑\n\n> {today_full} KST\n\n"
     md += "## 💰 가격 요약\n\n| 종목 | 현재가 | 전일비 |\n|------|--------|--------|\n"
     for t in TICKERS:
@@ -158,7 +154,7 @@ def build_content(data):
     for t in TICKERS:
         name = "TIMEFOLIO 나스닥100액티브 (426030)" if t == "426030" else t
         md += f"### {name}\n"
-        for i, n in enumerate(data.get("news", {}).get(t, [])[:3], 1):
+        for i, n in enumerate(data.get("news", {}).get(t, [])[:2], 1):
             md += f"{i}. {n.get('title_ko','—')} *({n.get('source','')})*\n"
         md += "\n"
     md += f"## 💡 오늘의 핵심\n{data.get('insight','—')}\n\n"
