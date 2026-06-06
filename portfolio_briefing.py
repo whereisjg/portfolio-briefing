@@ -30,10 +30,15 @@ def call_claude_with_search(prompt):
         "anthropic-version": "2023-06-01"
     }
     payload = {
-        "model": "claude-sonnet-4-6",
+        "model": "claude-opus-4-8",
         "max_tokens": 4000,
         "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 8}],
-        "system": "You are a financial assistant. Search the web for real-time ETF prices and news. After searching, respond ONLY with valid JSON, no markdown fences, no preamble.",
+        "system": """You are a financial data assistant. Your ONLY job is to return a JSON object.
+CRITICAL RULES:
+1. You MUST always respond with ONLY a valid JSON object. No other text.
+2. NEVER apologize or explain. NEVER write prose or markdown.
+3. If you cannot find exact data, use the most recent data available and estimate.
+4. The response must start with { and end with }. Nothing else.""",
         "messages": [{"role": "user", "content": prompt}]
     }
 
@@ -45,30 +50,24 @@ def call_claude_with_search(prompt):
 
     response.raise_for_status()
     data = response.json()
-    
-    print(f"📊 API 응답 content 블록 수: {len(data.get('content', []))}")
-    for i, block in enumerate(data.get('content', [])):
-        print(f"  블록 {i}: type={block.get('type')}")
-    
     texts = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
     result = "".join(texts)
-    print(f"🔍 추출된 텍스트 길이: {len(result)}")
-    print(f"🔍 텍스트 미리보기: {result[:500]}")
+    print(f"🔍 응답 미리보기: {result[:300]}")
     return result
 
 def fetch_prices_and_news():
     today = datetime.now(KST).strftime("%Y-%m-%d")
-    prompt = f"""Today is {today} KST.
+    prompt = f"""Today is {today} KST. Search for the latest available prices for these ETFs and return JSON only.
 
-Search the web RIGHT NOW for the current prices of these ETFs:
-1. QLD (ProShares Ultra QQQ) - search "QLD stock price today"
-2. SSO (ProShares Ultra S&P500) - search "SSO stock price today"
-3. USD (ProShares Ultra Semiconductors) - search "USD ETF price today"
-4. 426030 (TIMEFOLIO 미국나스닥100액티브, KRX Korea ETF) - search "426030 주가 오늘" (price in KRW ₩)
+Search for:
+1. QLD stock price
+2. SSO stock price
+3. USD ETF price (ProShares Ultra Semiconductors)
+4. 426030 주가 (TIMEFOLIO 나스닥100액티브 KRX)
 
-Also search for 3 recent news headlines for each and translate to Korean.
+Also find 3 recent news per ETF. Use the most recent data available even if not today.
 
-After searching, respond ONLY with this JSON (no markdown, no extra text):
+Return ONLY this JSON, no other text:
 {{
   "prices": {{
     "QLD":    {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "USD"}},
@@ -77,48 +76,84 @@ After searching, respond ONLY with this JSON (no markdown, no extra text):
     "426030": {{"price": 0.0, "prev_close": 0.0, "chg_pct": 0.0, "currency": "KRW"}}
   }},
   "news": {{
-    "QLD":    [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}],
-    "SSO":    [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}],
-    "USD":    [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}],
-    "426030": [{{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}, {{"title_ko": "뉴스제목", "source": "출처", "time": "시간"}}]
+    "QLD":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
+    "SSO":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
+    "USD":    [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}],
+    "426030": [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
-  "actions": ["오늘 가격 흐름과 뉴스를 바탕으로 각 종목별 구체적인 대응 전략 1줄씩"],
-  "summary": "오늘 하루 각 종목에 일어난 주요 뉴스/이벤트를 종목별로 한 줄씩 요약"
+  "actions": ["QLD: 대응전략", "SSO: 대응전략", "USD: 대응전략", "426030: 대응전략"],
+  "summary": "각 종목 오늘 주요 이슈 한 줄씩"
 }}"""
 
     print("🔍 웹 검색으로 실시간 데이터 수집 중...")
     response = call_claude_with_search(prompt)
 
-    print(f"📋 원본 응답 길이: {len(response)}")
     clean = response.replace("```json", "").replace("```", "").strip()
-    print(f"📋 정제된 응답: {clean[:500]}")
-    
     start = clean.find("{")
     end = clean.rfind("}") + 1
     if start >= 0 and end > start:
         clean = clean[start:end]
-    
-    print(f"📋 JSON 블록: {clean[:500]}")
 
     data = json.loads(clean)
     print("✅ 데이터 수집 완료")
     return data
 
-def build_markdown(data):
-    today = datetime.now(KST).strftime("%Y-%m-%d")
-    md = f"# 📈 포트폴리오 일일 브리핑\n\n> {today} KST\n\n"
+def build_content(data):
+    """md 파일과 텔레그램 메시지를 동일한 내용으로 생성"""
+    today_full = datetime.now(KST).strftime("%Y-%m-%d")
+    today_short = datetime.now(KST).strftime("%m/%d")
+    prices = data.get("prices", {})
+
+    # 가격 섹션
+    price_lines = []
+    for t in TICKERS:
+        p = prices.get(t, {})
+        chg = p.get("chg_pct", 0)
+        price = p.get("price", 0)
+        currency = p.get("currency", "USD")
+        symbol = "₩" if currency == "KRW" else "$"
+        price_str = f"{symbol}{price:,.0f}" if currency == "KRW" else f"{symbol}{price:.2f}"
+        emoji = "🟢" if chg > 0 else "🔴" if chg < 0 else "⚪"
+        name = "TIMEFOLIO나스닥100" if t == "426030" else t
+        price_lines.append(f"{emoji} *{name}* {price_str} ({chg:+.2f}%)")
+
+    # 뉴스 섹션
+    news_lines = []
+    for t in TICKERS:
+        name = "TIMEFOLIO나스닥100 (426030)" if t == "426030" else t
+        news_lines.append(f"\n*{name}*")
+        for n in data.get("news", {}).get(t, [])[:3]:
+            news_lines.append(f"• {n.get('title_ko','—')} _({n.get('source','')})_")
+
+    # 액션 섹션
+    action_lines = []
+    for a in data.get("actions", []):
+        action_lines.append(f"  ▸ {a}")
+
+    # 텔레그램 메시지
+    telegram = f"📈 *포트폴리오 브리핑 {today_short}*\n\n"
+    telegram += "\n".join(price_lines)
+    telegram += f"\n\n━━━━━━━━━━━━━━━\n"
+    telegram += f"💡 *{data.get('insight', '—')}*\n"
+    telegram += f"━━━━━━━━━━━━━━━\n\n"
+    telegram += "🎯 *오늘의 대응*\n"
+    telegram += "\n".join(action_lines)
+    telegram += "\n\n📰 *오늘의 뉴스*"
+    telegram += "\n".join(news_lines)
+
+    # 마크다운 파일 (표 형식)
+    md = f"# 📈 포트폴리오 일일 브리핑\n\n> {today_full} KST\n\n"
     md += "## 💰 가격 요약\n\n| 종목 | 현재가 | 전일비 |\n|------|--------|--------|\n"
     for t in TICKERS:
-        p = data.get("prices", {}).get(t)
-        if p:
-            chg = p.get("chg_pct", 0)
-            currency = p.get("currency", "USD")
-            symbol = "₩" if currency == "KRW" else "$"
-            price = p.get("price", 0)
-            price_str = f"{symbol}{price:,.0f}" if currency == "KRW" else f"{symbol}{price:.2f}"
-            name = "TIMEFOLIO 나스닥100액티브" if t == "426030" else t
-            md += f"| {name} | {price_str} | {chg:+.2f}% |\n"
+        p = prices.get(t, {})
+        chg = p.get("chg_pct", 0)
+        price = p.get("price", 0)
+        currency = p.get("currency", "USD")
+        symbol = "₩" if currency == "KRW" else "$"
+        price_str = f"{symbol}{price:,.0f}" if currency == "KRW" else f"{symbol}{price:.2f}"
+        name = "TIMEFOLIO 나스닥100액티브" if t == "426030" else t
+        md += f"| {name} | {price_str} | {chg:+.2f}% |\n"
     md += "\n## 📰 종목별 뉴스\n\n"
     for t in TICKERS:
         name = "TIMEFOLIO 나스닥100액티브 (426030)" if t == "426030" else t
@@ -130,7 +165,8 @@ def build_markdown(data):
     md += "## 🎯 오늘의 액션\n"
     for a in data.get("actions", []):
         md += f"- {a}\n"
-    return md
+
+    return telegram, md
 
 def save_markdown(content):
     today = datetime.now(KST).strftime("%Y%m%d")
@@ -160,45 +196,6 @@ def send_telegram(message):
         print(f"❌ 전송 실패: {response.status_code} — {response.text[:200]}")
         return False
 
-def build_telegram_message(data):
-    today = datetime.now(KST).strftime("%m/%d")
-    prices = data.get("prices", {})
-
-    lines = [f"📈 *포트폴리오 브리핑 {today}*\n"]
-
-    for t in TICKERS:
-        p = prices.get(t, {})
-        chg = p.get("chg_pct", 0)
-        price = p.get("price", 0)
-        currency = p.get("currency", "USD")
-        symbol = "₩" if currency == "KRW" else "$"
-        price_str = f"{symbol}{price:,.0f}" if currency == "KRW" else f"{symbol}{price:.2f}"
-        emoji = "🟢" if chg > 0 else "🔴" if chg < 0 else "⚪"
-        name = "TIMEFOLIO나스닥100" if t == "426030" else t
-        lines.append(f"{emoji} *{name}* {price_str} ({chg:+.2f}%)")
-
-    lines.append("\n━━━━━━━━━━━━━━━")
-    lines.append(f"💡 *{data.get('insight', '—')}*")
-    lines.append("━━━━━━━━━━━━━━━\n")
-
-    lines.append("🎯 *오늘의 대응*")
-    for a in data.get("actions", []):
-        lines.append(f"  ▸ {a}")
-    lines.append("")
-
-    summary = data.get("summary", "")
-    if summary:
-        lines.append("📰 *오늘의 뉴스*")
-        sentences = summary.replace("。", ".").split(". ")
-        for s in sentences:
-            s = s.strip()
-            if s:
-                if not s.endswith("."):
-                    s += "."
-                lines.append(f"• {s}\n")
-
-    return "\n".join(lines)
-
 def main():
     print(f"\n{'='*50}")
     print(f"🚀 포트폴리오 브리핑 — {now_kst()}")
@@ -208,14 +205,13 @@ def main():
         print("\n[1/4] 실시간 가격 및 뉴스 수집...")
         data = fetch_prices_and_news()
 
-        print("\n[2/4] 마크다운 생성...")
-        md_content = build_markdown(data)
+        print("\n[2/4] 콘텐츠 생성...")
+        telegram_msg, md_content = build_content(data)
 
         print("\n[3/4] 파일 저장...")
         save_markdown(md_content)
 
         print("\n[4/4] 텔레그램 전송...")
-        telegram_msg = build_telegram_message(data)
         print(f"📝 메시지 미리보기:\n{telegram_msg}\n")
         send_telegram(telegram_msg)
 
