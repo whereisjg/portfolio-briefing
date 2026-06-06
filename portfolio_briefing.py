@@ -30,7 +30,7 @@ def call_claude_with_search(prompt):
         "anthropic-version": "2023-06-01"
     }
     payload = {
-        "model": "claude-haiku-4-5",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 4000,
         "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 8}],
         "system": "You are a financial assistant. Search the web for real-time ETF prices and news. After searching, respond ONLY with valid JSON, no markdown fences, no preamble.",
