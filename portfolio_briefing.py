@@ -31,8 +31,8 @@ def call_claude_with_search(prompt):
     }
     payload = {
         "model": "claude-sonnet-4-6",
-        "max_tokens": 4000,
-        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+        "max_tokens": 1500,
+        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
         "system": """You are a financial data assistant. Your ONLY job is to return a JSON object.
 CRITICAL RULES:
 1. You MUST always respond with ONLY a valid JSON object. No other text.
