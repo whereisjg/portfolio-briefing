@@ -1,8 +1,6 @@
 name: Daily Portfolio Briefing
 
 on:
-  schedule:
-    - cron: '0 23 * * 2-6'
   workflow_dispatch:
 
 jobs:
