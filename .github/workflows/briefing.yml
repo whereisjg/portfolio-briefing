@@ -3,6 +3,9 @@ name: Daily Portfolio Briefing
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   briefing:
     runs-on: ubuntu-latest
