@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 포트폴리오 일일 브리핑 — GitHub Actions 자동화용
-QLD, SSO, USD, 426030 실시간 가격 + 뉴스 → 마크다운 + 텔레그램 전송
+Yahoo Finance 직접 fetch로 정확한 주가 + 뉴스 → 마크다운 + 텔레그램 전송
 """
 
 import json
@@ -57,15 +57,20 @@ CRITICAL RULES:
 
 def fetch_prices_and_news():
     today = datetime.now(KST).strftime("%Y-%m-%d")
-    prompt = f"""Today is {today} KST. Search for the latest available prices for these ETFs and return JSON only.
+    prompt = f"""Today is {today} KST.
 
-Search for:
-1. QLD stock price
-2. SSO stock price
-3. USD ETF price (ProShares Ultra Semiconductors)
-4. 426030 주가 (TIMEFOLIO 나스닥100액티브 KRX)
+Fetch the EXACT current price for each ETF by visiting these URLs directly:
+1. QLD: https://finance.yahoo.com/quote/QLD/
+2. SSO: https://finance.yahoo.com/quote/SSO/
+3. USD: https://finance.yahoo.com/quote/USD/
+4. 426030: https://finance.yahoo.com/quote/426030.KS/
 
-Also find 2 recent news per ETF. Use the most recent data available even if not today.
+From each page extract:
+- Current price (regularMarketPrice)
+- Previous close (regularMarketPreviousClose)
+- Change percentage (regularMarketChangePercent)
+
+Then search for 2 recent news headlines for QLD, SSO, USD, 426030 and translate to Korean.
 
 Return ONLY this JSON, no other text:
 {{
@@ -82,11 +87,10 @@ Return ONLY this JSON, no other text:
     "426030": [{{"title_ko": "뉴스제목", "source": "출처"}}, {{"title_ko": "뉴스제목", "source": "출처"}}]
   }},
   "insight": "오늘 시장 핵심 한 줄 (20자 이내)",
-  "actions": ["QLD: 대응전략", "SSO: 대응전략", "USD: 대응전략", "426030: 대응전략"],
-  "summary": "각 종목 오늘 주요 이슈 한 줄씩"
+  "actions": ["QLD: 대응전략", "SSO: 대응전략", "USD: 대응전략", "426030: 대응전략"]
 }}"""
 
-    print("🔍 웹 검색으로 실시간 데이터 수집 중...")
+    print("🔍 Yahoo Finance에서 실시간 데이터 수집 중...")
     response = call_claude_with_search(prompt)
 
     clean = response.replace("```json", "").replace("```", "").strip()
