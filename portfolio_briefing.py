@@ -170,9 +170,13 @@ def build_content(data):
 
 def save_markdown(content):
     today = datetime.now(KST).strftime("%Y%m%d")
-    filename = f"briefing_{today}.md"
+    output_dir = "briefings"
+    os.makedirs(output_dir, exist_ok=True)
+
+    filename = os.path.join(output_dir, f"briefing_{today}.md")
     with open(filename, "w", encoding="utf-8") as f:
         f.write(content)
+
     print(f"✅ 저장: {filename}")
     return filename
 
