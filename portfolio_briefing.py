@@ -41,18 +41,21 @@ def now_kst():
 
 def fetch_quote(asset):
     url = f"https://query2.finance.yahoo.com/v8/finance/chart/{asset['symbol']}"
-    params = {"range": "5d", "interval": "1d"}
+    params = {"range": "1d", "interval": "1m"}
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
 
     result = response.json()["chart"]["result"][0]
     meta = result["meta"]
-    closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
-    closes = [close for close in closes if close is not None]
 
-    price = closes[-1] if closes else meta.get("regularMarketPrice")
-    previous_close = closes[-2] if len(closes) > 1 else None
+    price = meta.get("regularMarketPrice")
+    previous_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+
+    if price is None:
+        closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+        closes = [close for close in closes if close is not None]
+        price = closes[-1] if closes else None
 
     if price is None or previous_close in (None, 0):
         raise ValueError(f"가격 데이터를 찾지 못했습니다: {asset['ticker']}")
