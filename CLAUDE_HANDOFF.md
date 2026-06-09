@@ -135,6 +135,17 @@ Current AIPO fallback queries:
 - `AI power infrastructure data centers energy stocks`
 - `data center power infrastructure AI stocks`
 
+`USD` is the ProShares Ultra Semiconductors ETF, not the US dollar. It uses explicit semiconductor ETF queries to avoid currency-news contamination.
+
+Current USD fallback queries:
+
+- `ProShares Ultra Semiconductors ETF`
+- `USD ETF ProShares Ultra Semiconductors`
+- `semiconductor ETF stocks`
+- `SOXL SMH semiconductor stocks`
+
+If headline translation fails, the script prefixes the headline with `[원문]` so the user can tell that the English title is untranslated fallback text.
+
 ## Price Logic
 
 Prices use Yahoo Finance chart API:
@@ -166,7 +177,7 @@ Reason:
 ## Current Known Limitations
 
 - Google News RSS may return no results for narrow tickers.
-- Google Translate free endpoint is unofficial and may fail.
+- Google Translate free endpoint is unofficial and may fail. Failed translations are marked with `[원문]`.
 - Yahoo Finance unofficial endpoints may change behavior.
 - The local Windows terminal can display Korean as mojibake, but repository files should remain UTF-8.
 - The GitHub connector previously allowed reading but not direct workflow dispatch.

@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
@@ -28,4 +30,15 @@ jobs:
           git config user.email "bot@portfolio.local"
           git add briefings/*.md 2>/dev/null || true
           git commit -m "Daily briefing - $(date +%Y-%m-%d)" || true
+          git pull --rebase origin main
           git push
+      - name: Notify failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":\"⚠️ 포트폴리오 브리핑 GitHub Actions 실패\n${GITHUB_RUN_URL}\"}"

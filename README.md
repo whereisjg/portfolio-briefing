@@ -9,6 +9,7 @@ Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Fin
 | `QLD` | ProShares Ultra QQQ | US |
 | `SSO` | ProShares Ultra S&P500 | US |
 | `USD` | ProShares Ultra Semiconductors | US |
+| `AIPO` | Defiance AI & Power Infrastructure ETF | US |
 | `426030` | TIMEFOLIO Nasdaq 100 Active ETF | Korea |
 
 ## What It Does

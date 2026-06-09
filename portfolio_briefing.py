@@ -175,10 +175,10 @@ def translate_title_if_needed(title):
         translated = translate_to_korean(headline)
     except Exception as exc:
         print(f"TRANSLATE SKIP: {exc}")
-        return title
+        return f"[원문] {title}"
 
     if not translated:
-        return title
+        return f"[원문] {title}"
     if source:
         return f"{translated} - {source}"
     return translated
@@ -387,7 +387,11 @@ def send_telegram(message):
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    response = requests.post(url, json=payload, timeout=20)
+    try:
+        response = requests.post(url, json=payload, timeout=20)
+    except Exception as exc:
+        print(f"Telegram failed: {exc}")
+        return False
 
     if response.status_code == 200:
         print("Telegram sent.")
@@ -420,13 +424,13 @@ def main():
 
         print("[5/5] Sending Telegram...")
         print(telegram_msg)
-        send_telegram(telegram_msg)
+        if not send_telegram(telegram_msg):
+            raise RuntimeError("Telegram message was not sent.")
 
         print("Done.")
         return 0
     except Exception as exc:
         print(f"Error: {exc}")
-        send_telegram(f"⚠️ 포트폴리오 브리핑 오류\n\n`{str(exc)[:200]}`")
         return 1
 
 

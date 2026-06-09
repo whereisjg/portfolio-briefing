@@ -38,7 +38,13 @@
       "name": "USD",
       "display": "USD",
       "currency": "USD",
-      "news_query": "semiconductor stocks"
+      "news_query": "ProShares Ultra Semiconductors ETF",
+      "news_queries": [
+        "ProShares Ultra Semiconductors ETF",
+        "USD ETF ProShares Ultra Semiconductors",
+        "semiconductor ETF stocks",
+        "SOXL SMH semiconductor stocks"
+      ]
     },
     {
       "ticker": "AIPO",
