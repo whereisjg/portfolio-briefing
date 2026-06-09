@@ -8,6 +8,8 @@ Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
 
 import os
 from datetime import datetime
+from urllib.parse import quote_plus
+import xml.etree.ElementTree as ET
 
 import pytz
 import requests
@@ -23,15 +25,37 @@ INDEXES = [
 ]
 
 ASSETS = [
-    {"ticker": "QLD", "symbol": "QLD", "name": "QLD", "display": "QLD", "currency": "USD"},
-    {"ticker": "SSO", "symbol": "SSO", "name": "SSO", "display": "SSO", "currency": "USD"},
-    {"ticker": "USD", "symbol": "USD", "name": "USD", "display": "USD", "currency": "USD"},
+    {
+        "ticker": "QLD",
+        "symbol": "QLD",
+        "name": "QLD",
+        "display": "QLD",
+        "currency": "USD",
+        "news_query": "QLD ETF OR ProShares Ultra QQQ",
+    },
+    {
+        "ticker": "SSO",
+        "symbol": "SSO",
+        "name": "SSO",
+        "display": "SSO",
+        "currency": "USD",
+        "news_query": "SSO ETF OR ProShares Ultra S&P500",
+    },
+    {
+        "ticker": "USD",
+        "symbol": "USD",
+        "name": "USD",
+        "display": "USD",
+        "currency": "USD",
+        "news_query": "USD ETF OR ProShares Ultra Semiconductors",
+    },
     {
         "ticker": "426030",
         "symbol": "426030.KS",
         "name": "TIMEFOLIO 나스닥100액티브",
         "display": "TIMEFOLIO나스닥100",
         "currency": "KRW",
+        "news_query": "426030 TIMEFOLIO 나스닥100 액티브 ETF",
     },
 ]
 
@@ -86,6 +110,42 @@ def fetch_prices(assets, require_any=True):
     return quotes, errors
 
 
+def fetch_news_for_asset(asset, limit=2):
+    query = quote_plus(asset["news_query"])
+    url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers, timeout=20)
+    response.raise_for_status()
+
+    root = ET.fromstring(response.content)
+    titles = []
+    for item in root.findall(".//item"):
+        title = item.findtext("title", "").strip()
+        if not title:
+            continue
+        titles.append(title)
+        if len(titles) >= limit:
+            break
+    return titles
+
+
+def fetch_news(assets):
+    news = {}
+    errors = []
+
+    for asset in assets:
+        try:
+            titles = fetch_news_for_asset(asset)
+            news[asset["ticker"]] = titles
+            print(f"NEWS {asset['ticker']}: {len(titles)} titles")
+        except Exception as exc:
+            news[asset["ticker"]] = []
+            errors.append(f"{asset['ticker']} 뉴스: {exc}")
+            print(f"ERROR NEWS {asset['ticker']}: {exc}")
+
+    return news, errors
+
+
 def format_price(item):
     if item["currency"] == "POINT":
         return f"{item['price']:,.2f}"
@@ -138,7 +198,7 @@ def market_summary(quotes):
     return "방향성 확인 구간", "중립", surges, drops
 
 
-def build_content(indexes, quotes, errors):
+def build_content(indexes, quotes, news, errors):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     today_file = datetime.now(KST).strftime("%Y%m%d")
@@ -155,6 +215,13 @@ def build_content(indexes, quotes, errors):
     action_lines = [f"  ▸ {action_for(item)}" for item in quotes]
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
+    news_lines = []
+    for item in quotes:
+        titles = news.get(item["ticker"], [])
+        if not titles:
+            continue
+        news_lines.append(item["display"])
+        news_lines.extend(f"  ▸ {title}" for title in titles)
 
     telegram_lines = [
         f"📈 포트폴리오 브리핑 {today_short}",
@@ -175,6 +242,9 @@ def build_content(indexes, quotes, errors):
         f"  ▸ 급락 종목: {drop_text}",
         f"  ▸ 전체 분위기: {mood}",
     ]
+
+    if news_lines:
+        telegram_lines.extend(["", "📰 참고 뉴스", *news_lines])
 
     if errors:
         telegram_lines.extend(["", "⚠️ 데이터 확인 필요", *[f"  ▸ {error}" for error in errors]])
@@ -227,6 +297,16 @@ def build_content(indexes, quotes, errors):
         ]
     )
 
+    if news_lines:
+        md_lines.extend(["", "## 📰 참고 뉴스", ""])
+        for item in quotes:
+            titles = news.get(item["ticker"], [])
+            if not titles:
+                continue
+            md_lines.extend([f"### {item['display']}", ""])
+            md_lines.extend(f"- {title}" for title in titles)
+            md_lines.append("")
+
     if errors:
         md_lines.extend(["", "## ⚠️ 데이터 확인 필요", "", *[f"- {error}" for error in errors]])
 
@@ -272,15 +352,18 @@ def main():
         print("[1/4] Fetching prices...")
         indexes, index_errors = fetch_prices(INDEXES, require_any=False)
         quotes, quote_errors = fetch_prices(ASSETS)
-        errors = index_errors + quote_errors
 
-        print("[2/4] Building rule-based briefing...")
-        telegram_msg, md_content = build_content(indexes, quotes, errors)
+        print("[2/4] Fetching news titles...")
+        news, news_errors = fetch_news(ASSETS)
+        errors = index_errors + quote_errors + news_errors
 
-        print("[3/4] Saving markdown...")
+        print("[3/4] Building rule-based briefing...")
+        telegram_msg, md_content = build_content(indexes, quotes, news, errors)
+
+        print("[4/5] Saving markdown...")
         save_markdown(md_content)
 
-        print("[4/4] Sending Telegram...")
+        print("[5/5] Sending Telegram...")
         print(telegram_msg)
         send_telegram(telegram_msg)
 

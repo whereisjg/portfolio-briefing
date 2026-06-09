@@ -14,6 +14,7 @@ Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Fin
 ## What It Does
 
 - Fetches market prices directly
+- Adds recent news titles from free RSS search
 - Generates a concise Korean briefing with rule-based guidance
 - Sends the result to Telegram
 - Saves each briefing under `briefings/`

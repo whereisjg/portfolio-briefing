@@ -11,7 +11,7 @@ The workflow generates a daily portfolio briefing for:
 - `USD`
 - `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 
-It fetches prices directly, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
+It fetches prices directly, adds recent news titles from free RSS search, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
 
 ## Source Of Truth
 
@@ -177,5 +177,6 @@ Check whether Yahoo Finance is returning data for the ticker symbols. The Korean
 
 - GitHub Actions cron uses UTC. The current setup uses cron-job.org with `Asia/Seoul`, which is easier to reason about for a 07:00 KST schedule.
 - The current version does not call Claude or any other paid AI API.
+- News items are titles only. They are not AI summaries.
 - Generated briefing files are committed to the repository for historical tracking.
 - Keep operational secrets only in GitHub Secrets or the external service that owns them.
