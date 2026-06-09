@@ -7,7 +7,8 @@ Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import quote_plus
 import xml.etree.ElementTree as ET
 
@@ -31,7 +32,7 @@ ASSETS = [
         "name": "QLD",
         "display": "QLD",
         "currency": "USD",
-        "news_query": "QLD ETF OR ProShares Ultra QQQ",
+        "news_query": "Nasdaq 100",
     },
     {
         "ticker": "SSO",
@@ -39,7 +40,7 @@ ASSETS = [
         "name": "SSO",
         "display": "SSO",
         "currency": "USD",
-        "news_query": "SSO ETF OR ProShares Ultra S&P500",
+        "news_query": "S&P 500",
     },
     {
         "ticker": "USD",
@@ -47,7 +48,7 @@ ASSETS = [
         "name": "USD",
         "display": "USD",
         "currency": "USD",
-        "news_query": "USD ETF OR ProShares Ultra Semiconductors",
+        "news_query": "semiconductor stocks",
     },
     {
         "ticker": "426030",
@@ -55,7 +56,7 @@ ASSETS = [
         "name": "TIMEFOLIO 나스닥100액티브",
         "display": "TIMEFOLIO나스닥100",
         "currency": "KRW",
-        "news_query": "426030 TIMEFOLIO 나스닥100 액티브 ETF",
+        "news_query": "나스닥100 ETF",
     },
 ]
 
@@ -111,18 +112,26 @@ def fetch_prices(assets, require_any=True):
 
 
 def fetch_news_for_asset(asset, limit=2):
-    query = quote_plus(asset["news_query"])
+    query = quote_plus(f"{asset['news_query']} when:1d")
     url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers, timeout=20)
     response.raise_for_status()
 
     root = ET.fromstring(response.content)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     titles = []
     for item in root.findall(".//item"):
         title = item.findtext("title", "").strip()
+        pub_date = item.findtext("pubDate", "").strip()
         if not title:
             continue
+        if pub_date:
+            published_at = parsedate_to_datetime(pub_date)
+            if published_at.tzinfo is None:
+                published_at = published_at.replace(tzinfo=timezone.utc)
+            if published_at.astimezone(timezone.utc) < cutoff:
+                continue
         titles.append(title)
         if len(titles) >= limit:
             break
