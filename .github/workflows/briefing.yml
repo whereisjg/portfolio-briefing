@@ -27,6 +27,6 @@ jobs:
         run: |
           git config user.name "Portfolio Bot"
           git config user.email "bot@portfolio.local"
-          git add briefing_*.md 2>/dev/null || true
+          git add briefings/*.md 2>/dev/null || true
           git commit -m "📈 Daily briefing - $(date +%Y-%m-%d)" || true
           git push
