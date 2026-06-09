@@ -17,6 +17,11 @@ KST = pytz.timezone("Asia/Seoul")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
+INDEXES = [
+    {"ticker": "NASDAQ", "symbol": "^IXIC", "name": "나스닥", "display": "나스닥", "currency": "POINT"},
+    {"ticker": "SP500", "symbol": "^GSPC", "name": "S&P 500", "display": "S&P 500", "currency": "POINT"},
+]
+
 ASSETS = [
     {"ticker": "QLD", "symbol": "QLD", "name": "QLD", "display": "QLD", "currency": "USD"},
     {"ticker": "SSO", "symbol": "SSO", "name": "SSO", "display": "SSO", "currency": "USD"},
@@ -62,11 +67,11 @@ def fetch_quote(asset):
     }
 
 
-def fetch_prices():
+def fetch_prices(assets, require_any=True):
     quotes = []
     errors = []
 
-    for asset in ASSETS:
+    for asset in assets:
         try:
             quote = fetch_quote(asset)
             quotes.append(quote)
@@ -75,13 +80,15 @@ def fetch_prices():
             errors.append(f"{asset['ticker']}: {exc}")
             print(f"ERROR {asset['ticker']}: {exc}")
 
-    if not quotes:
+    if require_any and not quotes:
         raise ValueError("모든 가격 조회에 실패했습니다.")
 
     return quotes, errors
 
 
 def format_price(item):
+    if item["currency"] == "POINT":
+        return f"{item['price']:,.2f}"
     if item["currency"] == "KRW":
         return f"₩{item['price']:,.0f}"
     return f"${item['price']:.2f}"
@@ -131,12 +138,16 @@ def market_summary(quotes):
     return "방향성 확인 구간", "중립", surges, drops
 
 
-def build_content(quotes, errors):
+def build_content(indexes, quotes, errors):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     today_file = datetime.now(KST).strftime("%Y%m%d")
     headline, mood, surges, drops = market_summary(quotes)
 
+    index_lines = [
+        f"{movement_emoji(item['chg_pct'])} {item['display']} {format_price(item)} ({item['chg_pct']:+.2f}%)"
+        for item in indexes
+    ]
     price_lines = [
         f"{movement_emoji(item['chg_pct'])} {item['display']} {format_price(item)} ({item['chg_pct']:+.2f}%)"
         for item in quotes
@@ -147,6 +158,8 @@ def build_content(quotes, errors):
 
     telegram_lines = [
         f"📈 포트폴리오 브리핑 {today_short}",
+        "",
+        *index_lines,
         "",
         *price_lines,
         "",
@@ -161,9 +174,6 @@ def build_content(quotes, errors):
         f"  ▸ 급등 종목: {surge_text}",
         f"  ▸ 급락 종목: {drop_text}",
         f"  ▸ 전체 분위기: {mood}",
-        "",
-        "📁 저장",
-        f"  ▸ briefings/briefing_{today_file}.md",
     ]
 
     if errors:
@@ -176,9 +186,24 @@ def build_content(quotes, errors):
         "",
         "## 💰 가격 요약",
         "",
-        "| 종목 | 현재가 | 전일비 |",
+        "### 주요 지수",
+        "",
+        "| 지수 | 현재가 | 전일비 |",
         "| --- | ---: | ---: |",
     ]
+
+    for item in indexes:
+        md_lines.append(f"| {item['name']} | {format_price(item)} | {item['chg_pct']:+.2f}% |")
+
+    md_lines.extend(
+        [
+            "",
+            "### 포트폴리오",
+            "",
+            "| 종목 | 현재가 | 전일비 |",
+            "| --- | ---: | ---: |",
+        ]
+    )
 
     for item in quotes:
         md_lines.append(f"| {item['name']} | {format_price(item)} | {item['chg_pct']:+.2f}% |")
@@ -245,10 +270,12 @@ def main():
 
     try:
         print("[1/4] Fetching prices...")
-        quotes, errors = fetch_prices()
+        indexes, index_errors = fetch_prices(INDEXES, require_any=False)
+        quotes, quote_errors = fetch_prices(ASSETS)
+        errors = index_errors + quote_errors
 
         print("[2/4] Building rule-based briefing...")
-        telegram_msg, md_content = build_content(quotes, errors)
+        telegram_msg, md_content = build_content(indexes, quotes, errors)
 
         print("[3/4] Saving markdown...")
         save_markdown(md_content)
