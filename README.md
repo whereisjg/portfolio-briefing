@@ -60,11 +60,20 @@ Each asset needs:
   "name": "QLD",
   "display": "QLD",
   "currency": "USD",
+  "shares": null,
+  "weight_pct": null,
   "news_query": "Nasdaq 100"
 }
 ```
 
 Use Yahoo Finance symbols. For Korean stocks and ETFs, use the `.KS` suffix, for example `426030.KS`.
+
+Optional fields:
+
+- `shares`: holding quantity. If set, the briefing shows estimated daily P/L.
+- `weight_pct`: portfolio weight. If set, the briefing shows asset weight.
+- `news_queries`: fallback news searches for tickers with weak direct coverage.
+- `news_exclude`: terms to exclude from news results.
 
 ## Configuration
 

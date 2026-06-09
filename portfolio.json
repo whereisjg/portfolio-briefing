@@ -22,6 +22,8 @@
       "name": "QLD",
       "display": "QLD",
       "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
       "news_query": "Nasdaq 100"
     },
     {
@@ -30,6 +32,8 @@
       "name": "SSO",
       "display": "SSO",
       "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
       "news_query": "S&P 500"
     },
     {
@@ -38,12 +42,25 @@
       "name": "USD",
       "display": "USD",
       "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
       "news_query": "ProShares Ultra Semiconductors ETF",
       "news_queries": [
         "ProShares Ultra Semiconductors ETF",
         "USD ETF ProShares Ultra Semiconductors",
         "semiconductor ETF stocks",
         "SOXL SMH semiconductor stocks"
+      ],
+      "news_exclude": [
+        "US dollar",
+        "U.S. dollar",
+        "dollar index",
+        "exchange rate",
+        "currency",
+        "forex",
+        "환율",
+        "달러",
+        "외환"
       ]
     },
     {
@@ -52,6 +69,8 @@
       "name": "AIPO",
       "display": "AIPO",
       "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
       "news_query": "AIPO ETF",
       "news_queries": [
         "AIPO ETF",
@@ -66,6 +85,8 @@
       "name": "TIMEFOLIO 나스닥100액티브",
       "display": "TIMEFOLIO나스닥100",
       "currency": "KRW",
+      "shares": null,
+      "weight_pct": null,
       "news_query": "나스닥100 ETF"
     }
   ]

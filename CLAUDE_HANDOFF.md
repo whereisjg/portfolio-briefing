@@ -105,6 +105,15 @@ Recommended checks:
 4. Validate `portfolio.json`.
 5. Validate Python syntax.
 
+Optional asset fields:
+
+- `shares`: holding quantity. When present, the briefing shows estimated daily P/L.
+- `weight_pct`: portfolio weight. When present, the briefing shows asset weight.
+- `news_queries`: fallback news searches.
+- `news_exclude`: terms to filter out polluted news results.
+
+The Telegram briefing now includes a top `먼저 볼 것` section for quick alerts such as surge/drop, missing news, and data issues.
+
 ## News Logic
 
 News uses free Google News RSS search.

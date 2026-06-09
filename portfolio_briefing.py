@@ -60,11 +60,13 @@ def fetch_quote(asset):
     if price is None or previous_close in (None, 0):
         raise ValueError(f"가격 데이터를 찾지 못했습니다: {asset['ticker']}")
 
-    chg_pct = ((price - previous_close) / previous_close) * 100
+    chg_amount = price - previous_close
+    chg_pct = (chg_amount / previous_close) * 100
     return {
         **asset,
         "price": float(price),
         "prev_close": float(previous_close),
+        "chg_amount": float(chg_amount),
         "chg_pct": float(chg_pct),
     }
 
@@ -122,12 +124,20 @@ def fetch_news_for_query(query_text, limit):
     return titles
 
 
+def is_excluded_news(asset, title):
+    excluded_terms = asset.get("news_exclude", [])
+    normalized_title = title.casefold()
+    return any(term.casefold() in normalized_title for term in excluded_terms)
+
+
 def fetch_news_for_asset(asset, limit=2):
     seen = set()
     titles = []
 
     for query_text in news_queries_for_asset(asset):
         for title in fetch_news_for_query(query_text, limit):
+            if is_excluded_news(asset, title):
+                continue
             if title in seen:
                 continue
             seen.add(title)
@@ -209,6 +219,33 @@ def format_price(item):
     return f"${item['price']:.2f}"
 
 
+def format_change_amount(item):
+    amount = item.get("chg_amount", 0)
+    if item["currency"] == "POINT":
+        return f"{amount:+,.2f}"
+    if item["currency"] == "KRW":
+        return f"{amount:+,.0f}원"
+    return f"{amount:+.2f}달러"
+
+
+def format_position_effect(item):
+    shares = item.get("shares")
+    if shares in (None, ""):
+        return ""
+
+    effect = item.get("chg_amount", 0) * float(shares)
+    if item["currency"] == "KRW":
+        return f", 평가손익 {effect:+,.0f}원"
+    return f", 평가손익 ${effect:+,.2f}"
+
+
+def format_weight(item):
+    weight = item.get("weight_pct")
+    if weight in (None, ""):
+        return ""
+    return f", 비중 {float(weight):.1f}%"
+
+
 def movement_emoji(chg_pct):
     if chg_pct > 0:
         return "🟢"
@@ -253,6 +290,23 @@ def market_summary(quotes):
     return "방향성 확인 구간", "중립", surges, drops
 
 
+def build_alert_lines(quotes, errors, news):
+    alerts = []
+    for item in quotes:
+        if item["chg_pct"] >= 3:
+            alerts.append(f"급등: {item['ticker']} {item['chg_pct']:+.2f}%")
+        elif item["chg_pct"] <= -3:
+            alerts.append(f"급락: {item['ticker']} {item['chg_pct']:+.2f}%")
+
+        if not news.get(item["ticker"]):
+            alerts.append(f"뉴스 없음: {item['ticker']}")
+
+    if errors:
+        alerts.extend(f"데이터 확인: {error}" for error in errors)
+
+    return alerts[:6] if alerts else ["특이사항 없음"]
+
+
 def build_content(indexes, quotes, news, errors):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
@@ -264,9 +318,14 @@ def build_content(indexes, quotes, news, errors):
         for item in indexes
     ]
     price_lines = [
-        f"{movement_emoji(item['chg_pct'])} {item['display']} {format_price(item)} ({item['chg_pct']:+.2f}%)"
+        (
+            f"{movement_emoji(item['chg_pct'])} {item['display']} "
+            f"{format_price(item)} ({format_change_amount(item)}, {item['chg_pct']:+.2f}%"
+            f"{format_weight(item)}{format_position_effect(item)})"
+        )
         for item in quotes
     ]
+    alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors, news)]
     action_lines = [f"  ▸ {action_for(item)}" for item in quotes]
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
@@ -283,6 +342,9 @@ def build_content(indexes, quotes, news, errors):
         *index_lines,
         "",
         *price_lines,
+        "",
+        "⚠️ 먼저 볼 것",
+        *alert_lines,
         "",
         "━━━━━━━━━━━━━━━",
         f"💡 오늘의 핵심: {headline}",
@@ -327,13 +389,23 @@ def build_content(indexes, quotes, news, errors):
             "",
             "### 포트폴리오",
             "",
-            "| 종목 | 현재가 | 전일비 |",
-            "| --- | ---: | ---: |",
+            "| 종목 | 현재가 | 등락폭 | 등락률 | 비중 | 평가손익 |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
 
     for item in quotes:
-        md_lines.append(f"| {item['name']} | {format_price(item)} | {item['chg_pct']:+.2f}% |")
+        weight = f"{float(item['weight_pct']):.1f}%" if item.get("weight_pct") not in (None, "") else "-"
+        shares = item.get("shares")
+        if shares in (None, ""):
+            effect = "-"
+        else:
+            effect_value = item.get("chg_amount", 0) * float(shares)
+            effect = f"{effect_value:+,.0f}원" if item["currency"] == "KRW" else f"${effect_value:+,.2f}"
+        md_lines.append(
+            f"| {item['name']} | {format_price(item)} | {format_change_amount(item)} | "
+            f"{item['chg_pct']:+.2f}% | {weight} | {effect} |"
+        )
 
     md_lines.extend(
         [
@@ -341,6 +413,10 @@ def build_content(indexes, quotes, news, errors):
             "## 💡 오늘의 핵심",
             "",
             headline,
+            "",
+            "## ⚠️ 먼저 볼 것",
+            "",
+            *[f"- {line}" for line in build_alert_lines(quotes, errors, news)],
             "",
             "## 🎯 오늘의 대응",
             "",
