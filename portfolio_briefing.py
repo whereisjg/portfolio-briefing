@@ -7,6 +7,7 @@ Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
 """
 
 import os
+import json
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote_plus, unquote
@@ -20,45 +21,18 @@ KST = pytz.timezone("Asia/Seoul")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-INDEXES = [
-    {"ticker": "NASDAQ", "symbol": "^IXIC", "name": "나스닥", "display": "나스닥", "currency": "POINT"},
-    {"ticker": "SP500", "symbol": "^GSPC", "name": "S&P 500", "display": "S&P 500", "currency": "POINT"},
-]
+PORTFOLIO_FILE = "portfolio.json"
 
-ASSETS = [
-    {
-        "ticker": "QLD",
-        "symbol": "QLD",
-        "name": "QLD",
-        "display": "QLD",
-        "currency": "USD",
-        "news_query": "Nasdaq 100",
-    },
-    {
-        "ticker": "SSO",
-        "symbol": "SSO",
-        "name": "SSO",
-        "display": "SSO",
-        "currency": "USD",
-        "news_query": "S&P 500",
-    },
-    {
-        "ticker": "USD",
-        "symbol": "USD",
-        "name": "USD",
-        "display": "USD",
-        "currency": "USD",
-        "news_query": "semiconductor stocks",
-    },
-    {
-        "ticker": "426030",
-        "symbol": "426030.KS",
-        "name": "TIMEFOLIO 나스닥100액티브",
-        "display": "TIMEFOLIO나스닥100",
-        "currency": "KRW",
-        "news_query": "나스닥100 ETF",
-    },
-]
+
+def load_portfolio():
+    with open(PORTFOLIO_FILE, "r", encoding="utf-8") as file:
+        config = json.load(file)
+
+    indexes = config.get("indexes", [])
+    assets = config.get("assets", [])
+    if not assets:
+        raise ValueError("portfolio.json에 assets가 없습니다.")
+    return indexes, assets
 
 
 def now_kst():
@@ -405,11 +379,12 @@ def main():
 
     try:
         print("[1/4] Fetching prices...")
-        indexes, index_errors = fetch_prices(INDEXES, require_any=False)
-        quotes, quote_errors = fetch_prices(ASSETS)
+        indexes_config, assets_config = load_portfolio()
+        indexes, index_errors = fetch_prices(indexes_config, require_any=False)
+        quotes, quote_errors = fetch_prices(assets_config)
 
         print("[2/4] Fetching news titles...")
-        news, news_errors = fetch_news(ASSETS)
+        news, news_errors = fetch_news(assets_config)
         errors = index_errors + quote_errors + news_errors
 
         print("[3/4] Building rule-based briefing...")

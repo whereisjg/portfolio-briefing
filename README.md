@@ -40,10 +40,30 @@ portfolio-briefing-kakao/
 │     └─ briefing.yml
 ├─ briefings/
 │  └─ briefing_YYYYMMDD.md
+├─ portfolio.json
 ├─ portfolio_briefing.py
 ├─ README.md
 └─ SETUP_GUIDE.md
 ```
+
+## Editing The Portfolio
+
+Add or remove tracked symbols in [portfolio.json](portfolio.json).
+
+Each asset needs:
+
+```json
+{
+  "ticker": "QLD",
+  "symbol": "QLD",
+  "name": "QLD",
+  "display": "QLD",
+  "currency": "USD",
+  "news_query": "Nasdaq 100"
+}
+```
+
+Use Yahoo Finance symbols. For Korean stocks and ETFs, use the `.KS` suffix, for example `426030.KS`.
 
 ## Configuration
 

@@ -19,6 +19,7 @@ It fetches prices directly, adds news titles from the last 24 hours using free R
 - `SETUP_GUIDE.md`: operational setup and maintenance guide
 - `.github/workflows/briefing.yml`: GitHub Actions workflow
 - `portfolio_briefing.py`: main rule-based briefing script
+- `portfolio.json`: editable portfolio and index configuration
 - `briefings/`: generated daily briefing files
 
 ## Security Rules
@@ -118,11 +119,24 @@ Do not store this GitHub token in the repository.
 
 ## Python Settings
 
-Current important script settings:
+Portfolio symbols are configured in `portfolio.json`, not inside the Python script.
 
-```python
-ASSETS = ["QLD", "SSO", "USD", "426030.KS"]
+Example asset:
+
+```json
+{
+  "ticker": "QLD",
+  "symbol": "QLD",
+  "name": "QLD",
+  "display": "QLD",
+  "currency": "USD",
+  "news_query": "Nasdaq 100"
+}
 ```
+
+To add a symbol, add an object to the `assets` list.
+To remove a symbol, delete that object from the `assets` list.
+Use Yahoo Finance symbols. Korean listings usually use `.KS`, such as `426030.KS`.
 
 The script saves generated files here:
 

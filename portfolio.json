@@ -1,0 +1,52 @@
+{
+  "indexes": [
+    {
+      "ticker": "NASDAQ",
+      "symbol": "^IXIC",
+      "name": "나스닥",
+      "display": "나스닥",
+      "currency": "POINT"
+    },
+    {
+      "ticker": "SP500",
+      "symbol": "^GSPC",
+      "name": "S&P 500",
+      "display": "S&P 500",
+      "currency": "POINT"
+    }
+  ],
+  "assets": [
+    {
+      "ticker": "QLD",
+      "symbol": "QLD",
+      "name": "QLD",
+      "display": "QLD",
+      "currency": "USD",
+      "news_query": "Nasdaq 100"
+    },
+    {
+      "ticker": "SSO",
+      "symbol": "SSO",
+      "name": "SSO",
+      "display": "SSO",
+      "currency": "USD",
+      "news_query": "S&P 500"
+    },
+    {
+      "ticker": "USD",
+      "symbol": "USD",
+      "name": "USD",
+      "display": "USD",
+      "currency": "USD",
+      "news_query": "semiconductor stocks"
+    },
+    {
+      "ticker": "426030",
+      "symbol": "426030.KS",
+      "name": "TIMEFOLIO 나스닥100액티브",
+      "display": "TIMEFOLIO나스닥100",
+      "currency": "KRW",
+      "news_query": "나스닥100 ETF"
+    }
+  ]
+}
