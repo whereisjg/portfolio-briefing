@@ -85,8 +85,15 @@ def fetch_prices(assets, require_any=True):
     return quotes, errors
 
 
-def fetch_news_for_asset(asset, limit=2):
-    query = quote_plus(f"{asset['news_query']} when:1d")
+def news_queries_for_asset(asset):
+    queries = asset.get("news_queries")
+    if queries:
+        return queries
+    return [asset["news_query"]]
+
+
+def fetch_news_for_query(query_text, limit):
+    query = quote_plus(f"{query_text} when:1d")
     url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers, timeout=20)
@@ -109,6 +116,22 @@ def fetch_news_for_asset(asset, limit=2):
         titles.append(translate_title_if_needed(title))
         if len(titles) >= limit:
             break
+    return titles
+
+
+def fetch_news_for_asset(asset, limit=2):
+    seen = set()
+    titles = []
+
+    for query_text in news_queries_for_asset(asset):
+        for title in fetch_news_for_query(query_text, limit):
+            if title in seen:
+                continue
+            seen.add(title)
+            titles.append(title)
+            if len(titles) >= limit:
+                return titles
+
     return titles
 
 
@@ -244,13 +267,12 @@ def build_content(indexes, quotes, news, errors):
     action_lines = [f"  ▸ {action_for(item)}" for item in quotes]
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
-    news_lines = []
+    news_sections = []
     for item in quotes:
         titles = news.get(item["ticker"], [])
         if not titles:
             continue
-        news_lines.append(item["display"])
-        news_lines.extend(f"  ▸ {title}" for title in titles)
+        news_sections.append((item["display"], titles))
 
     telegram_lines = [
         f"📈 포트폴리오 브리핑 {today_short}",
@@ -272,8 +294,11 @@ def build_content(indexes, quotes, news, errors):
         f"  ▸ 전체 분위기: {mood}",
     ]
 
-    if news_lines:
-        telegram_lines.extend(["", "📰 참고 뉴스", *news_lines])
+    if news_sections:
+        telegram_lines.extend(["", "📰 참고 뉴스"])
+        for display, titles in news_sections:
+            telegram_lines.extend(["", f"[{display}]"])
+            telegram_lines.extend(f"  ▸ {title}" for title in titles)
 
     if errors:
         telegram_lines.extend(["", "⚠️ 데이터 확인 필요", *[f"  ▸ {error}" for error in errors]])
@@ -326,13 +351,10 @@ def build_content(indexes, quotes, news, errors):
         ]
     )
 
-    if news_lines:
+    if news_sections:
         md_lines.extend(["", "## 📰 참고 뉴스", ""])
-        for item in quotes:
-            titles = news.get(item["ticker"], [])
-            if not titles:
-                continue
-            md_lines.extend([f"### {item['display']}", ""])
+        for display, titles in news_sections:
+            md_lines.extend([f"### {display}", ""])
             md_lines.extend(f"- {title}" for title in titles)
             md_lines.append("")
 

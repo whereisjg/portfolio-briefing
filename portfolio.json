@@ -46,7 +46,13 @@
       "name": "AIPO",
       "display": "AIPO",
       "currency": "USD",
-      "news_query": "AIPO ETF"
+      "news_query": "AIPO ETF",
+      "news_queries": [
+        "AIPO ETF",
+        "Defiance AI Power Infrastructure ETF",
+        "AI power infrastructure data centers energy stocks",
+        "data center power infrastructure AI stocks"
+      ]
     },
     {
       "ticker": "426030",
