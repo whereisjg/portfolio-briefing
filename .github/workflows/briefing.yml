@@ -17,7 +17,6 @@ jobs:
       - run: pip install requests pytz
       - name: Run briefing
         env:
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python portfolio_briefing.py
@@ -28,5 +27,5 @@ jobs:
           git config user.name "Portfolio Bot"
           git config user.email "bot@portfolio.local"
           git add briefings/*.md 2>/dev/null || true
-          git commit -m "📈 Daily briefing - $(date +%Y-%m-%d)" || true
+          git commit -m "Daily briefing - $(date +%Y-%m-%d)" || true
           git push

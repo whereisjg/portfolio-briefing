@@ -11,14 +11,14 @@ The workflow generates a daily portfolio briefing for:
 - `USD`
 - `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 
-It uses Claude to collect market data and news, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
+It fetches prices directly, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
 
 ## Source Of Truth
 
 - `README.md`: public overview of the project
 - `SETUP_GUIDE.md`: operational setup and maintenance guide
 - `.github/workflows/briefing.yml`: GitHub Actions workflow
-- `portfolio_briefing.py`: main briefing script
+- `portfolio_briefing.py`: main rule-based briefing script
 - `briefings/`: generated daily briefing files
 
 ## Security Rules
@@ -28,7 +28,6 @@ Never commit real API keys, Telegram bot tokens, chat IDs, or GitHub tokens.
 Use placeholders in documentation:
 
 ```text
-{CLAUDE_API_KEY}
 {TELEGRAM_BOT_TOKEN}
 {TELEGRAM_CHAT_ID}
 {GITHUB_PERSONAL_ACCESS_TOKEN}
@@ -48,7 +47,6 @@ Create or update these repository secrets:
 
 | Name | Value |
 | --- | --- |
-| `CLAUDE_API_KEY` | Anthropic Claude API key |
 | `TELEGRAM_BOT_TOKEN` | Telegram BotFather token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
 
@@ -78,7 +76,6 @@ jobs:
       - run: pip install requests pytz
       - name: Run briefing
         env:
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python portfolio_briefing.py
@@ -124,8 +121,7 @@ Do not store this GitHub token in the repository.
 Current important script settings:
 
 ```python
-MODEL = "claude-sonnet-4-6"
-TICKERS = ["QLD", "SSO", "USD", "426030"]
+ASSETS = ["QLD", "SSO", "USD", "426030.KS"]
 ```
 
 The script saves generated files here:
@@ -138,7 +134,7 @@ briefings/briefing_YYYYMMDD.md
 
 After changing secrets or workflow settings:
 
-1. Confirm `CLAUDE_API_KEY`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` exist in GitHub Actions secrets.
+1. Confirm `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` exist in GitHub Actions secrets.
 2. Run the workflow manually from GitHub Actions.
 3. Confirm a Telegram message arrives.
 4. Confirm a new file appears under `briefings/`.
@@ -173,12 +169,13 @@ The current script should save to `briefings/`. If root-level `briefing_*.md` fi
 output_dir = "briefings"
 ```
 
-### Claude API Errors
+### Price Data Errors
 
-Check the Anthropic API key, billing status, and usage limits in the Anthropic Console.
+Check whether Yahoo Finance is returning data for the ticker symbols. The Korean ETF uses `426030.KS`.
 
 ## Notes
 
 - GitHub Actions cron uses UTC. The current setup uses cron-job.org with `Asia/Seoul`, which is easier to reason about for a 07:00 KST schedule.
+- The current version does not call Claude or any other paid AI API.
 - Generated briefing files are committed to the repository for historical tracking.
 - Keep operational secrets only in GitHub Secrets or the external service that owns them.

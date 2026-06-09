@@ -1,6 +1,6 @@
 # Portfolio Briefing Kakao
 
-Automated daily portfolio briefing using Claude, GitHub Actions, cron-job.org, and Telegram.
+Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Finance data, rule-based guidance, and Telegram.
 
 ## Portfolio
 
@@ -13,8 +13,8 @@ Automated daily portfolio briefing using Claude, GitHub Actions, cron-job.org, a
 
 ## What It Does
 
-- Fetches market prices and recent news
-- Generates a Korean daily briefing with Claude
+- Fetches market prices directly
+- Generates a concise Korean briefing with rule-based guidance
 - Sends the result to Telegram
 - Saves each briefing under `briefings/`
 - Commits generated briefing files back to GitHub
@@ -49,7 +49,6 @@ Required GitHub Actions secrets:
 
 | Name | Purpose |
 | --- | --- |
-| `CLAUDE_API_KEY` | Anthropic Claude API key |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
 
