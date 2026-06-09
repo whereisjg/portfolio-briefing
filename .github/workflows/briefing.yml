@@ -6,6 +6,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: daily-portfolio-briefing
+  cancel-in-progress: false
+
 jobs:
   briefing:
     runs-on: ubuntu-latest
@@ -17,6 +21,10 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests pytz
+      - name: Validate config and script
+        run: |
+          python -m py_compile portfolio_briefing.py
+          python -c "import json; json.load(open('portfolio.json', encoding='utf-8'))"
       - name: Run briefing
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -40,5 +48,5 @@ jobs:
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":\"⚠️ 포트폴리오 브리핑 GitHub Actions 실패\n${GITHUB_RUN_URL}\"}"
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=⚠️ 포트폴리오 브리핑 GitHub Actions 실패: ${GITHUB_RUN_URL}"

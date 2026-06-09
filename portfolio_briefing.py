@@ -310,7 +310,6 @@ def build_alert_lines(quotes, errors, news):
 def build_content(indexes, quotes, news, errors):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
-    today_file = datetime.now(KST).strftime("%Y%m%d")
     headline, mood, surges, drops = market_summary(quotes)
 
     index_lines = [
