@@ -41,6 +41,14 @@
       "news_query": "semiconductor stocks"
     },
     {
+      "ticker": "AIPO",
+      "symbol": "AIPO",
+      "name": "AIPO",
+      "display": "AIPO",
+      "currency": "USD",
+      "news_query": "AIPO ETF"
+    },
+    {
       "ticker": "426030",
       "symbol": "426030.KS",
       "name": "TIMEFOLIO 나스닥100액티브",
