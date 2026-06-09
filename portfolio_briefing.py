@@ -9,7 +9,7 @@ Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
 import os
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, unquote
 import xml.etree.ElementTree as ET
 
 import pytz
@@ -132,10 +132,56 @@ def fetch_news_for_asset(asset, limit=2):
                 published_at = published_at.replace(tzinfo=timezone.utc)
             if published_at.astimezone(timezone.utc) < cutoff:
                 continue
-        titles.append(title)
+        titles.append(translate_title_if_needed(title))
         if len(titles) >= limit:
             break
     return titles
+
+
+def has_korean(text):
+    return any("가" <= char <= "힣" for char in text)
+
+
+def split_news_source(title):
+    if " - " not in title:
+        return title, ""
+    headline, source = title.rsplit(" - ", 1)
+    return headline.strip(), source.strip()
+
+
+def translate_to_korean(text):
+    url = "https://translate.googleapis.com/translate_a/single"
+    params = {
+        "client": "gtx",
+        "sl": "auto",
+        "tl": "ko",
+        "dt": "t",
+        "q": text,
+    }
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, params=params, headers=headers, timeout=20)
+    response.raise_for_status()
+    data = response.json()
+    translated = "".join(part[0] for part in data[0] if part and part[0])
+    return unquote(translated).strip()
+
+
+def translate_title_if_needed(title):
+    headline, source = split_news_source(title)
+    if has_korean(headline):
+        return title
+
+    try:
+        translated = translate_to_korean(headline)
+    except Exception as exc:
+        print(f"TRANSLATE SKIP: {exc}")
+        return title
+
+    if not translated:
+        return title
+    if source:
+        return f"{translated} - {source}"
+    return translated
 
 
 def fetch_news(assets):
