@@ -248,9 +248,9 @@ def format_weight(item):
 
 def movement_emoji(chg_pct):
     if chg_pct > 0:
-        return "🟢"
-    if chg_pct < 0:
         return "🔴"
+    if chg_pct < 0:
+        return "🔵"
     return "⚪"
 
 
