@@ -21,6 +21,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests pytz
+      - name: Show runner public IP
+        run: |
+          echo "Runner public IPv4:"
+          curl -sS https://api.ipify.org
+          echo
       - name: Validate config and script
         run: |
           python -m py_compile portfolio_briefing.py

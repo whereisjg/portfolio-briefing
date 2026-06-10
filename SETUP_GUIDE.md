@@ -315,7 +315,9 @@ access_denied / IP address not allowed
 ```
 
 the API key is valid but the request source IP is not allowed by Toss Open API.
-GitHub-hosted Actions runners do not provide one stable outbound IP, so the stable fixes are:
+The workflow prints the current runner IP in the `Show runner public IP` step. Add that IP in Toss Open API allowlist and run the workflow again.
+
+GitHub-hosted Actions runners may not provide one stable outbound IP, so if the IP changes between runs, the stable fixes are:
 
 - Run the workflow on a self-hosted runner from an IP registered in Toss Open API.
 - Run the briefing from another fixed-IP server and trigger the repository update from there.
