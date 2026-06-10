@@ -37,6 +37,7 @@ TOSS_QUOTE_URL_TEMPLATE = env_value("TOSS_QUOTE_URL_TEMPLATE")
 TOSS_CANDLE_URL_TEMPLATE = env_value("TOSS_CANDLE_URL_TEMPLATE")
 TOSS_ACCESS_TOKEN = env_value("TOSS_ACCESS_TOKEN") or env_value("TOSS_TOKEN") or env_value("TOSS_BEARER_TOKEN")
 TOSS_ACCOUNT_SEQ = env_value("TOSS_ACCOUNT_SEQ")
+TOSS_ENABLED = env_value("TOSS_ENABLED", "false").lower()
 TOSS_ENABLE_LIVE_ORDERS = env_value("TOSS_ENABLE_LIVE_ORDERS", "false").lower()
 TOSS_LIVE_ORDER_CONFIRM = env_value("TOSS_LIVE_ORDER_CONFIRM")
 TOSS_LIVE_ORDER_CONFIRM_PHRASE = "LIVE_ORDER_APPROVED"
@@ -224,6 +225,8 @@ def toss_market_calendar_url(market_country):
 
 def toss_is_configured():
     return bool(
+        TOSS_ENABLED in {"1", "true", "yes", "on"}
+        and
         toss_quote_url()
         and toss_candle_url()
         and (TOSS_ACCESS_TOKEN or (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and toss_token_url()))
@@ -232,6 +235,8 @@ def toss_is_configured():
 
 def toss_account_config_missing():
     missing = []
+    if TOSS_ENABLED not in {"1", "true", "yes", "on"}:
+        missing.append("TOSS_ENABLED=true")
     if not toss_holdings_url():
         missing.append("TOSS_BASE_URL")
     if not (TOSS_ACCESS_TOKEN or (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and toss_token_url())):
@@ -1142,7 +1147,7 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
     ]
     alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors, news)]
     action_lines = [f"  ▸ {action_for(item)}" for item in quotes]
-    account_lines = account_summary_lines(quotes, account_snapshot)
+    account_lines = account_summary_lines(quotes, account_snapshot) if account_snapshot else []
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
     news_sections = []
@@ -1168,9 +1173,6 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
         "",
         *price_lines,
         "",
-        "📌 계좌 현황",
-        *[f"  ▸ {line}" for line in account_lines],
-        "",
         "🎯 오늘의 대응",
         *action_lines,
         "",
@@ -1179,6 +1181,14 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
         f"  ▸ 급락 종목: {drop_text}",
         f"  ▸ 전체 분위기: {mood}",
     ]
+
+    if account_lines:
+        volatility_index = telegram_lines.index("🎯 오늘의 대응")
+        telegram_lines[volatility_index:volatility_index] = [
+            "📌 계좌 현황",
+            *[f"  ▸ {line}" for line in account_lines],
+            "",
+        ]
 
     if news_sections:
         telegram_lines.extend(["", "📰 참고 뉴스"])
@@ -1244,10 +1254,6 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
     md_lines.extend(
         [
             "",
-            "## 📌 계좌 현황",
-            "",
-            *[f"- {line}" for line in account_lines],
-            "",
             "## 🎯 오늘의 대응",
             "",
             *[f"- {action_for(item)}" for item in quotes],
@@ -1259,6 +1265,15 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
             f"- 전체 분위기: {mood}",
         ]
     )
+
+    if account_lines:
+        action_index = md_lines.index("## 🎯 오늘의 대응")
+        md_lines[action_index:action_index] = [
+            "",
+            "## 📌 계좌 현황",
+            "",
+            *[f"- {line}" for line in account_lines],
+        ]
 
     if news_sections:
         md_lines.extend(["", "## 📰 참고 뉴스", ""])
@@ -1317,26 +1332,39 @@ def main():
     print("=" * 50)
 
     try:
-        print("[1/6] Fetching prices...")
+        use_toss = toss_is_configured()
+        total_steps = 6 if use_toss else 5
+
+        print(f"[1/{total_steps}] Fetching prices...")
         indexes_config, assets_config = load_portfolio()
-        assets_config, holding_errors = apply_toss_holdings_to_assets(assets_config)
+        holding_errors = []
+        account_snapshot = None
+        account_errors = []
+        if use_toss:
+            assets_config, holding_errors = apply_toss_holdings_to_assets(assets_config)
         indexes, index_errors = fetch_prices(indexes_config, require_any=False)
         quotes, quote_errors = fetch_prices(assets_config)
 
-        print("[2/6] Fetching account status...")
-        account_snapshot, account_errors = fetch_toss_management_snapshot()
+        next_step = 2
+        if use_toss:
+            print(f"[{next_step}/{total_steps}] Fetching account status...")
+            account_snapshot, account_errors = fetch_toss_management_snapshot()
+            next_step += 1
 
-        print("[3/6] Fetching news titles...")
+        print(f"[{next_step}/{total_steps}] Fetching news titles...")
         news, news_errors = fetch_news(assets_config)
         errors = holding_errors + account_errors + index_errors + quote_errors + news_errors
 
-        print("[4/6] Building rule-based briefing...")
+        next_step += 1
+        print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
         telegram_msg, md_content = build_content(indexes, quotes, news, errors, account_snapshot)
 
-        print("[5/6] Saving markdown...")
+        next_step += 1
+        print(f"[{next_step}/{total_steps}] Saving markdown...")
         save_markdown(md_content)
 
-        print("[6/6] Sending Telegram...")
+        next_step += 1
+        print(f"[{next_step}/{total_steps}] Sending Telegram...")
         print(telegram_msg)
         if not send_telegram(telegram_msg):
             raise RuntimeError("Telegram message was not sent.")

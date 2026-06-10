@@ -140,6 +140,11 @@ class QuoteProviderTests(unittest.TestCase):
                         "https://openapi.tossinvest.com/api/v1/prices",
                     )
 
+    def test_toss_is_disabled_by_default_even_when_credentials_exist(self):
+        with patch.object(briefing, "TOSS_ENABLED", "false"):
+            with patch.object(briefing, "TOSS_ACCESS_TOKEN", "token-123"):
+                self.assertFalse(briefing.toss_is_configured())
+
     def test_env_value_uses_default_for_empty_environment_value(self):
         with patch.dict(briefing.os.environ, {"TOSS_BASE_URL": ""}):
             self.assertEqual(
@@ -216,12 +221,13 @@ class QuoteProviderTests(unittest.TestCase):
                 )
             raise AssertionError(url)
 
-        with patch.object(briefing, "TOSS_ACCESS_TOKEN", "token-123"):
-            with patch.object(briefing, "TOSS_BASE_URL", "https://openapi.tossinvest.com"):
-                with patch.object(briefing, "TOSS_QUOTE_URL_TEMPLATE", ""):
-                    with patch.object(briefing, "TOSS_CANDLE_URL_TEMPLATE", ""):
-                        with patch.object(briefing, "toss_request", side_effect=fake_toss_request):
-                            quote = briefing.fetch_toss_quote(asset)
+        with patch.object(briefing, "TOSS_ENABLED", "true"):
+            with patch.object(briefing, "TOSS_ACCESS_TOKEN", "token-123"):
+                with patch.object(briefing, "TOSS_BASE_URL", "https://openapi.tossinvest.com"):
+                    with patch.object(briefing, "TOSS_QUOTE_URL_TEMPLATE", ""):
+                        with patch.object(briefing, "TOSS_CANDLE_URL_TEMPLATE", ""):
+                            with patch.object(briefing, "toss_request", side_effect=fake_toss_request):
+                                quote = briefing.fetch_toss_quote(asset)
 
         self.assertEqual(quote["provider"], "Toss")
         self.assertEqual(calls[0][2]["params"], {"symbols": "426030"})
@@ -417,6 +423,26 @@ class AccountBriefingTests(unittest.TestCase):
         self.assertIn("## 📌 계좌 현황", markdown)
         self.assertIn("대기 주문: 0건", markdown)
 
+    def test_build_content_omits_account_section_without_snapshot(self):
+        quotes = [
+            {
+                "ticker": "QLD",
+                "display": "QLD",
+                "name": "QLD",
+                "currency": "USD",
+                "price": 90.0,
+                "prev_close": 91.0,
+                "chg_amount": -1.0,
+                "chg_pct": -1.1,
+                "provider": "Yahoo",
+            }
+        ]
+
+        telegram, markdown = briefing.build_content([], quotes, {"QLD": []}, [])
+
+        self.assertNotIn("📌 계좌 현황", telegram)
+        self.assertNotIn("## 📌 계좌 현황", markdown)
+
     def test_account_summary_shows_missing_toss_account_config(self):
         lines = briefing.account_summary_lines(
             [],
@@ -452,10 +478,11 @@ class TossOrderApiTests(unittest.TestCase):
             captured["kwargs"] = kwargs
             return FakeResponse()
 
-        with patch.object(briefing, "TOSS_ACCESS_TOKEN", "token-123"):
-            with patch.object(briefing, "TOSS_ACCOUNT_SEQ", "1"):
-                with patch.object(briefing, "toss_request", side_effect=fake_toss_request):
-                    result = briefing.fetch_toss_buying_power("KRW")
+        with patch.object(briefing, "TOSS_ENABLED", "true"):
+            with patch.object(briefing, "TOSS_ACCESS_TOKEN", "token-123"):
+                with patch.object(briefing, "TOSS_ACCOUNT_SEQ", "1"):
+                    with patch.object(briefing, "toss_request", side_effect=fake_toss_request):
+                        result = briefing.fetch_toss_buying_power("KRW")
 
         self.assertEqual(result["cashBuyingPower"], "100000")
         self.assertEqual(captured["method"], "GET")
@@ -474,10 +501,11 @@ class TossOrderApiTests(unittest.TestCase):
             captured["kwargs"] = kwargs
             return FakeResponse()
 
-        with patch.object(briefing, "TOSS_ACCESS_TOKEN", "token-123"):
-            with patch.object(briefing, "TOSS_ACCOUNT_SEQ", "1"):
-                with patch.object(briefing, "toss_request", side_effect=fake_toss_request):
-                    result = briefing.fetch_toss_sellable_quantity("005930")
+        with patch.object(briefing, "TOSS_ENABLED", "true"):
+            with patch.object(briefing, "TOSS_ACCESS_TOKEN", "token-123"):
+                with patch.object(briefing, "TOSS_ACCOUNT_SEQ", "1"):
+                    with patch.object(briefing, "toss_request", side_effect=fake_toss_request):
+                        result = briefing.fetch_toss_sellable_quantity("005930")
 
         self.assertEqual(result["sellableQuantity"], "3")
         self.assertEqual(captured["kwargs"]["params"], {"symbol": "005930"})

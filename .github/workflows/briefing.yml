@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   briefing:
-    runs-on: ${{ vars.BRIEFING_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,11 +21,6 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests pytz
-      - name: Show runner public IP
-        run: |
-          echo "Runner public IPv4:"
-          curl -sS https://api.ipify.org
-          echo
       - name: Validate config and script
         run: |
           python -m py_compile portfolio_briefing.py
@@ -35,20 +30,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TOSS_CLIENT_ID: ${{ secrets.TOSS_CLIENT_ID }}
-          TOSS_CLIENT_SECRET: ${{ secrets.TOSS_CLIENT_SECRET }}
-          TOSS_API_KEY: ${{ secrets.TOSS_API_KEY }}
-          TOSS_API_SECRET: ${{ secrets.TOSS_API_SECRET }}
-          TOSS_ACCESS_TOKEN: ${{ secrets.TOSS_ACCESS_TOKEN }}
-          TOSS_TOKEN: ${{ secrets.TOSS_TOKEN }}
-          TOSS_BEARER_TOKEN: ${{ secrets.TOSS_BEARER_TOKEN }}
-          TOSS_BASE_URL: ${{ vars.TOSS_BASE_URL }}
-          TOSS_TOKEN_URL: ${{ vars.TOSS_TOKEN_URL }}
-          TOSS_QUOTE_URL_TEMPLATE: ${{ vars.TOSS_QUOTE_URL_TEMPLATE }}
-          TOSS_CANDLE_URL_TEMPLATE: ${{ vars.TOSS_CANDLE_URL_TEMPLATE }}
-          TOSS_ACCOUNT_SEQ: ${{ vars.TOSS_ACCOUNT_SEQ }}
-          TOSS_ENABLE_LIVE_ORDERS: ${{ vars.TOSS_ENABLE_LIVE_ORDERS }}
-          TOSS_LIVE_ORDER_CONFIRM: ${{ secrets.TOSS_LIVE_ORDER_CONFIRM }}
         run: python portfolio_briefing.py
       - name: Commit and push
         env:

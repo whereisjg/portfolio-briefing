@@ -12,8 +12,8 @@ The workflow generates a daily portfolio briefing for:
 - `AIPO`
 - `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 
-It fetches prices directly, adds news titles from the last 24 hours using free RSS search, translates English headlines to Korean when possible, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
-When Toss account access is configured, it reads holdings and account-side trading information for the briefing. Toss order helpers are present, but live order submission is locked by default.
+It fetches Yahoo Finance prices directly, adds news titles from the last 24 hours using free RSS search, translates English headlines to Korean when possible, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
+Toss Open API code remains available for future fixed-IP operation, but the scheduled GitHub Actions briefing does not use Toss by default.
 
 ## Source Of Truth
 
@@ -52,17 +52,12 @@ Create or update these repository secrets:
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Telegram BotFather token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
-| `TOSS_CLIENT_ID` | Toss Securities Open API client ID |
-| `TOSS_CLIENT_SECRET` | Toss Securities Open API client secret |
-| `TOSS_ACCESS_TOKEN` | Optional pre-issued Toss access token |
-| `TOSS_TOKEN` / `TOSS_BEARER_TOKEN` | Optional aliases for `TOSS_ACCESS_TOKEN` |
 
 If a secret already exists, use `Update`. Do not create a second secret with a different name unless the workflow is also updated.
-Prefer `TOSS_CLIENT_ID` and `TOSS_CLIENT_SECRET` for scheduled runs because access tokens can expire.
 
 ## Toss Securities API
 
-Toss price lookup is optional and uses Yahoo Finance as fallback.
+Toss price/account lookup is disabled by default because GitHub-hosted runner IPs are not stable enough for Toss IP allowlist operation. Daily scheduled briefing prices use Yahoo Finance.
 
 The default base URL is:
 
@@ -91,7 +86,7 @@ POST /api/v1/orders/{orderId}/cancel
 `/api/v1/prices` supplies `lastPrice`. `/api/v1/candles?interval=1d&count=2` supplies the previous close used for daily change calculations.
 `/api/v1/holdings` is read-only and is used to fill holding quantity and daily P/L.
 `/api/v1/buying-power`, `/api/v1/sellable-quantity`, `/api/v1/commissions`, and order history/detail helpers are available for portfolio management checks.
-The briefing account section uses holdings, KRW/USD buying power, and open order count. It shows total account value, purchase amount, holding value, daily change, accumulated P/L, available cash, and pending order count. If one account-side call fails, the rest of the briefing still runs and the failure is listed under data checks.
+These helpers are not called by the default scheduled briefing. Enable them only from a fixed-IP environment by setting `TOSS_ENABLED=true` and providing Toss credentials.
 
 Order create, modify, and cancel helpers default to dry-run. A live order can be submitted only when both of these are set:
 
@@ -108,6 +103,7 @@ Optional GitHub Actions variable:
 | --- | --- |
 | `TOSS_BASE_URL` | Override Toss Open API base URL |
 | `TOSS_ACCOUNT_SEQ` | Optional account sequence. If omitted, the first `/api/v1/accounts` result is used. |
+| `TOSS_ENABLED` | Set to `true` only in a fixed-IP environment where Toss allows the outbound IP. |
 | `TOSS_ENABLE_LIVE_ORDERS` | Set to `true` only when live order submission should be allowed |
 | `BRIEFING_RUNNER` | Optional runner label. Leave empty for `ubuntu-latest`, set to `self-hosted` for a fixed-IP runner. |
 
@@ -169,20 +165,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TOSS_CLIENT_ID: ${{ secrets.TOSS_CLIENT_ID }}
-          TOSS_CLIENT_SECRET: ${{ secrets.TOSS_CLIENT_SECRET }}
-          TOSS_API_KEY: ${{ secrets.TOSS_API_KEY }}
-          TOSS_API_SECRET: ${{ secrets.TOSS_API_SECRET }}
-          TOSS_ACCESS_TOKEN: ${{ secrets.TOSS_ACCESS_TOKEN }}
-          TOSS_TOKEN: ${{ secrets.TOSS_TOKEN }}
-          TOSS_BEARER_TOKEN: ${{ secrets.TOSS_BEARER_TOKEN }}
-          TOSS_BASE_URL: ${{ vars.TOSS_BASE_URL }}
-          TOSS_TOKEN_URL: ${{ vars.TOSS_TOKEN_URL }}
-          TOSS_QUOTE_URL_TEMPLATE: ${{ vars.TOSS_QUOTE_URL_TEMPLATE }}
-          TOSS_CANDLE_URL_TEMPLATE: ${{ vars.TOSS_CANDLE_URL_TEMPLATE }}
-          TOSS_ACCOUNT_SEQ: ${{ vars.TOSS_ACCOUNT_SEQ }}
-          TOSS_ENABLE_LIVE_ORDERS: ${{ vars.TOSS_ENABLE_LIVE_ORDERS }}
-          TOSS_LIVE_ORDER_CONFIRM: ${{ secrets.TOSS_LIVE_ORDER_CONFIRM }}
         run: python portfolio_briefing.py
       - name: Commit and push
         env:
@@ -316,7 +298,7 @@ access_denied / IP address not allowed
 ```
 
 the API key is valid but the request source IP is not allowed by Toss Open API.
-The workflow prints the current runner IP in the `Show runner public IP` step. Add that IP in Toss Open API allowlist and run the workflow again.
+The default scheduled workflow no longer calls Toss. If Toss is enabled again from a fixed-IP runner, check that runner's public IP directly on the server and add it in Toss Open API allowlist.
 
 GitHub-hosted Actions runners may not provide one stable outbound IP, so if the IP changes between runs, the stable fixes are:
 
@@ -335,7 +317,7 @@ Recommended path:
 1. Prepare a fixed-IP Linux VPS or always-on fixed-IP PC.
 2. In GitHub, open `Settings -> Actions -> Runners -> New self-hosted runner`.
 3. Install the runner on that machine and keep it running as a service.
-4. Run the workflow once and check `Show runner public IP`.
+4. Check that server's public IP with `curl https://api.ipify.org`.
 5. Register that IP in Toss Open API allowlist.
 6. In `Settings -> Secrets and variables -> Actions -> Variables`, set `BRIEFING_RUNNER=self-hosted`.
 7. Run the workflow again and confirm Toss account values appear in `📌 계좌 현황`.
