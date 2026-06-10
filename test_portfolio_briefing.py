@@ -140,6 +140,13 @@ class QuoteProviderTests(unittest.TestCase):
                         "https://openapi.tossinvest.com/api/v1/prices",
                     )
 
+    def test_env_value_uses_default_for_empty_environment_value(self):
+        with patch.dict(briefing.os.environ, {"TOSS_BASE_URL": ""}):
+            self.assertEqual(
+                briefing.env_value("TOSS_BASE_URL", "https://openapi.tossinvest.com"),
+                "https://openapi.tossinvest.com",
+            )
+
     def test_parse_toss_quote_accepts_common_price_fields(self):
         asset = {"ticker": "426030", "symbol": "426030.KS", "currency": "KRW"}
         price_data = {"result": [{"symbol": "426030", "lastPrice": "56135", "currency": "KRW"}]}

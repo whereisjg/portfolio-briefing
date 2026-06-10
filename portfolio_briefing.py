@@ -18,20 +18,27 @@ import pytz
 import requests
 
 
+def env_value(name, default=""):
+    value = os.getenv(name)
+    if value is None or not str(value).strip():
+        return default
+    return str(value).strip()
+
+
 KST = pytz.timezone("Asia/Seoul")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-SEND_TELEGRAM = os.getenv("SEND_TELEGRAM", "true").strip().lower()
-TOSS_CLIENT_ID = (os.getenv("TOSS_CLIENT_ID") or os.getenv("TOSS_API_KEY", "")).strip()
-TOSS_CLIENT_SECRET = (os.getenv("TOSS_CLIENT_SECRET") or os.getenv("TOSS_API_SECRET", "")).strip()
-TOSS_BASE_URL = os.getenv("TOSS_BASE_URL", "https://openapi.tossinvest.com").strip().rstrip("/")
-TOSS_TOKEN_URL = os.getenv("TOSS_TOKEN_URL", "").strip()
-TOSS_QUOTE_URL_TEMPLATE = os.getenv("TOSS_QUOTE_URL_TEMPLATE", "").strip()
-TOSS_CANDLE_URL_TEMPLATE = os.getenv("TOSS_CANDLE_URL_TEMPLATE", "").strip()
-TOSS_ACCESS_TOKEN = os.getenv("TOSS_ACCESS_TOKEN", "").strip()
-TOSS_ACCOUNT_SEQ = os.getenv("TOSS_ACCOUNT_SEQ", "").strip()
-TOSS_ENABLE_LIVE_ORDERS = os.getenv("TOSS_ENABLE_LIVE_ORDERS", "false").strip().lower()
-TOSS_LIVE_ORDER_CONFIRM = os.getenv("TOSS_LIVE_ORDER_CONFIRM", "").strip()
+TELEGRAM_BOT_TOKEN = env_value("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = env_value("TELEGRAM_CHAT_ID")
+SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
+TOSS_CLIENT_ID = env_value("TOSS_CLIENT_ID") or env_value("TOSS_API_KEY")
+TOSS_CLIENT_SECRET = env_value("TOSS_CLIENT_SECRET") or env_value("TOSS_API_SECRET")
+TOSS_BASE_URL = env_value("TOSS_BASE_URL", "https://openapi.tossinvest.com").rstrip("/")
+TOSS_TOKEN_URL = env_value("TOSS_TOKEN_URL")
+TOSS_QUOTE_URL_TEMPLATE = env_value("TOSS_QUOTE_URL_TEMPLATE")
+TOSS_CANDLE_URL_TEMPLATE = env_value("TOSS_CANDLE_URL_TEMPLATE")
+TOSS_ACCESS_TOKEN = env_value("TOSS_ACCESS_TOKEN") or env_value("TOSS_TOKEN") or env_value("TOSS_BEARER_TOKEN")
+TOSS_ACCOUNT_SEQ = env_value("TOSS_ACCOUNT_SEQ")
+TOSS_ENABLE_LIVE_ORDERS = env_value("TOSS_ENABLE_LIVE_ORDERS", "false").lower()
+TOSS_LIVE_ORDER_CONFIRM = env_value("TOSS_LIVE_ORDER_CONFIRM")
 TOSS_LIVE_ORDER_CONFIRM_PHRASE = "LIVE_ORDER_APPROVED"
 
 PORTFOLIO_FILE = "portfolio.json"

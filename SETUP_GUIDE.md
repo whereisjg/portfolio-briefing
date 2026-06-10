@@ -55,6 +55,7 @@ Create or update these repository secrets:
 | `TOSS_CLIENT_ID` | Toss Securities Open API client ID |
 | `TOSS_CLIENT_SECRET` | Toss Securities Open API client secret |
 | `TOSS_ACCESS_TOKEN` | Optional pre-issued Toss access token |
+| `TOSS_TOKEN` / `TOSS_BEARER_TOKEN` | Optional aliases for `TOSS_ACCESS_TOKEN` |
 
 If a secret already exists, use `Update`. Do not create a second secret with a different name unless the workflow is also updated.
 Prefer `TOSS_CLIENT_ID` and `TOSS_CLIENT_SECRET` for scheduled runs because access tokens can expire.
@@ -172,6 +173,8 @@ jobs:
           TOSS_API_KEY: ${{ secrets.TOSS_API_KEY }}
           TOSS_API_SECRET: ${{ secrets.TOSS_API_SECRET }}
           TOSS_ACCESS_TOKEN: ${{ secrets.TOSS_ACCESS_TOKEN }}
+          TOSS_TOKEN: ${{ secrets.TOSS_TOKEN }}
+          TOSS_BEARER_TOKEN: ${{ secrets.TOSS_BEARER_TOKEN }}
           TOSS_BASE_URL: ${{ vars.TOSS_BASE_URL }}
           TOSS_TOKEN_URL: ${{ vars.TOSS_TOKEN_URL }}
           TOSS_QUOTE_URL_TEMPLATE: ${{ vars.TOSS_QUOTE_URL_TEMPLATE }}

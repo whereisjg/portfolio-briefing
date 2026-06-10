@@ -91,6 +91,7 @@ Required GitHub Actions secrets:
 | `TOSS_CLIENT_ID` | Toss Securities Open API client ID |
 | `TOSS_CLIENT_SECRET` | Toss Securities Open API client secret |
 | `TOSS_ACCESS_TOKEN` | Optional pre-issued Toss access token |
+| `TOSS_TOKEN` / `TOSS_BEARER_TOKEN` | Optional aliases for `TOSS_ACCESS_TOKEN` |
 
 Do not commit real secret values to the repository. `TOSS_CLIENT_ID` and `TOSS_CLIENT_SECRET` are preferred because access tokens can expire.
 
