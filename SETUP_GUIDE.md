@@ -8,7 +8,7 @@ The workflow generates a daily portfolio briefing for:
 
 - `QLD`
 - `SSO`
-- `USD`
+- `TSLA`
 - `AIPO`
 - `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 

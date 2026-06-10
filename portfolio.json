@@ -68,44 +68,34 @@
       ]
     },
     {
-      "ticker": "USD",
-      "symbol": "USD",
-      "name": "USD",
-      "display": "USD",
+      "ticker": "TSLA",
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "display": "테슬라",
       "currency": "USD",
       "shares": null,
       "weight_pct": null,
-      "news_query": "ProShares Ultra Semiconductors ETF",
+      "news_query": "Tesla TSLA stock",
       "news_queries": [
-        "ProShares Ultra Semiconductors ETF",
-        "USD ETF ProShares Ultra Semiconductors",
-        "semiconductor ETF stocks",
-        "SOXL SMH semiconductor stocks"
+        "Tesla TSLA stock",
+        "Tesla earnings deliveries robotaxi EV",
+        "Tesla stock Elon Musk"
       ],
       "news_include": [
-        "ProShares Ultra Semiconductors",
-        "Ultra Semiconductors",
-        "semiconductor",
-        "semiconductors",
-        "chip",
-        "chips",
-        "SOXL",
-        "SMH",
-        "반도체",
-        "엔비디아",
-        "Nvidia",
-        "AMD"
+        "Tesla",
+        "TSLA",
+        "테슬라",
+        "EV",
+        "electric vehicle",
+        "robotaxi",
+        "로보택시",
+        "Elon Musk",
+        "일론 머스크"
       ],
       "news_exclude": [
-        "US dollar",
-        "U.S. dollar",
-        "dollar index",
-        "exchange rate",
-        "currency",
-        "forex",
-        "환율",
-        "달러",
-        "외환"
+        "Nikola Tesla",
+        "Tesla coil",
+        "테슬라 코일"
       ]
     },
     {
