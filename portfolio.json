@@ -68,34 +68,44 @@
       ]
     },
     {
-      "ticker": "TSLA",
-      "symbol": "TSLA",
-      "name": "Tesla",
-      "display": "테슬라",
+      "ticker": "USD",
+      "symbol": "USD",
+      "name": "USD",
+      "display": "USD",
       "currency": "USD",
       "shares": null,
       "weight_pct": null,
-      "news_query": "Tesla TSLA stock",
+      "news_query": "ProShares Ultra Semiconductors ETF",
       "news_queries": [
-        "Tesla TSLA stock",
-        "Tesla earnings deliveries robotaxi EV",
-        "Tesla stock Elon Musk"
+        "ProShares Ultra Semiconductors ETF",
+        "USD ETF ProShares Ultra Semiconductors",
+        "semiconductor ETF stocks",
+        "SOXL SMH semiconductor stocks"
       ],
       "news_include": [
-        "Tesla",
-        "TSLA",
-        "테슬라",
-        "EV",
-        "electric vehicle",
-        "robotaxi",
-        "로보택시",
-        "Elon Musk",
-        "일론 머스크"
+        "ProShares Ultra Semiconductors",
+        "Ultra Semiconductors",
+        "semiconductor",
+        "semiconductors",
+        "chip",
+        "chips",
+        "SOXL",
+        "SMH",
+        "반도체",
+        "엔비디아",
+        "Nvidia",
+        "AMD"
       ],
       "news_exclude": [
-        "Nikola Tesla",
-        "Tesla coil",
-        "테슬라 코일"
+        "US dollar",
+        "U.S. dollar",
+        "dollar index",
+        "exchange rate",
+        "currency",
+        "forex",
+        "환율",
+        "달러",
+        "외환"
       ]
     },
     {
@@ -135,6 +145,67 @@
         "cryptocurrency",
         "MARA",
         "마라홀딩스"
+      ]
+    },
+    {
+      "ticker": "AMD",
+      "symbol": "AMD",
+      "name": "AMD",
+      "display": "AMD",
+      "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
+      "news_query": "AMD stock Advanced Micro Devices",
+      "news_queries": [
+        "AMD stock Advanced Micro Devices",
+        "AMD earnings AI chips data center",
+        "Advanced Micro Devices GPU server AI"
+      ],
+      "news_include": [
+        "AMD",
+        "Advanced Micro Devices",
+        "AI chip",
+        "AI chips",
+        "GPU",
+        "data center",
+        "데이터센터",
+        "반도체"
+      ],
+      "news_exclude": [
+        "age-related macular degeneration",
+        "macular degeneration",
+        "황반변성"
+      ]
+    },
+    {
+      "ticker": "TSLA",
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "display": "테슬라",
+      "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
+      "news_query": "Tesla TSLA stock",
+      "news_queries": [
+        "Tesla TSLA stock",
+        "Tesla earnings deliveries robotaxi EV",
+        "Tesla stock Elon Musk"
+      ],
+      "news_include": [
+        "Tesla",
+        "TSLA",
+        "테슬라",
+        "EV",
+        "electric vehicle",
+        "robotaxi",
+        "로보택시",
+        "Elon Musk",
+        "일론 머스크"
+      ],
+      "news_exclude": [
+        "Nikola Tesla",
+        "Tesla coil",
+        "테슬라 코일"
       ]
     },
     {
