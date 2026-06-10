@@ -115,7 +115,7 @@ Optional GitHub Actions secret for live order confirmation:
 When Toss settings are present, prices use Toss first and fall back to Yahoo Finance if Toss fails.
 Toss current prices come from `/api/v1/prices`; previous close for daily change comes from `/api/v1/candles?interval=1d&count=2`.
 If account access is available, `/api/v1/accounts` and `/api/v1/holdings` are used read-only to fill `shares` and daily P/L.
-The briefing also includes account status from Toss account APIs: holding value, daily P/L, accumulated P/L, KRW/USD buying power, and open order count.
+The briefing also includes account status from Toss account APIs: total account value, purchase amount, holding value, daily change, accumulated P/L, KRW/USD buying power, and open order count.
 
 Toss management helpers are available for `/api/v1/buying-power`, `/api/v1/sellable-quantity`, `/api/v1/commissions`, and `/api/v1/orders`.
 Order create, modify, and cancel helpers default to dry-run and do not send live orders unless both `TOSS_ENABLE_LIVE_ORDERS=true` and `TOSS_LIVE_ORDER_CONFIRM=LIVE_ORDER_APPROVED` are set. The daily briefing workflow does not automatically call order submission.

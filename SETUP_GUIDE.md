@@ -88,7 +88,7 @@ POST /api/v1/orders/{orderId}/cancel
 `/api/v1/prices` supplies `lastPrice`. `/api/v1/candles?interval=1d&count=2` supplies the previous close used for daily change calculations.
 `/api/v1/holdings` is read-only and is used to fill holding quantity and daily P/L.
 `/api/v1/buying-power`, `/api/v1/sellable-quantity`, `/api/v1/commissions`, and order history/detail helpers are available for portfolio management checks.
-The briefing account section uses holdings, KRW/USD buying power, and open order count. If one account-side call fails, the rest of the briefing still runs and the failure is listed under data checks.
+The briefing account section uses holdings, KRW/USD buying power, and open order count. It shows total account value, purchase amount, holding value, daily change, accumulated P/L, available cash, and pending order count. If one account-side call fails, the rest of the briefing still runs and the failure is listed under data checks.
 
 Order create, modify, and cancel helpers default to dry-run. A live order can be submitted only when both of these are set:
 

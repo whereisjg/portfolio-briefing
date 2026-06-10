@@ -318,7 +318,7 @@ class HoldingsTests(unittest.TestCase):
                 "averagePurchasePrice": "50000",
                 "dailyProfitLoss": {"amount": "12000", "rate": "0.02"},
                 "profitLoss": {"amount": "72000", "rate": "0.12"},
-                "marketValue": {"amount": "672000"},
+                "marketValue": {"purchaseAmount": "600000", "amount": "672000"},
             }
         ]
 
@@ -328,6 +328,7 @@ class HoldingsTests(unittest.TestCase):
 
         self.assertEqual(errors, [])
         self.assertEqual(enriched_assets[0]["shares"], "12")
+        self.assertEqual(enriched_assets[0]["holding_purchase_amount"], "600000")
         self.assertEqual(enriched_assets[0]["daily_profit_loss_amount"], "12000")
         self.assertNotIn("shares", enriched_assets[1])
 
@@ -349,6 +350,7 @@ class AccountBriefingTests(unittest.TestCase):
                 "currency": "KRW",
                 "shares": "10",
                 "price": 70000,
+                "holding_purchase_amount": "650000",
                 "holding_market_value": "700000",
                 "daily_profit_loss_amount": "12000",
                 "holding_profit_loss_amount": "50000",
@@ -357,6 +359,7 @@ class AccountBriefingTests(unittest.TestCase):
                 "currency": "USD",
                 "shares": "2",
                 "price": 100,
+                "holding_profit_loss_amount": "10",
                 "daily_profit_loss_amount": "-3.5",
             },
         ]
@@ -367,10 +370,10 @@ class AccountBriefingTests(unittest.TestCase):
 
         lines = briefing.account_summary_lines(quotes, snapshot)
 
-        self.assertIn("KRW: 보유 1개, 평가금액 700,000원, 당일손익 +12,000원, 누적손익 +50,000원", lines)
-        self.assertIn("USD: 보유 1개, 평가금액 $200.00, 당일손익 -$3.50", lines)
-        self.assertIn("KRW 매수가능금액: 300,000원", lines)
-        self.assertIn("USD 매수가능금액: $25.50", lines)
+        self.assertIn("KRW: 총계좌가치 1,000,000원, 매입금액 650,000원, 평가금액 700,000원, 당일변동 +12,000원, 누적손익 +50,000원", lines)
+        self.assertIn("USD: 총계좌가치 $225.50, 매입금액 $190.00, 평가금액 $200.00, 당일변동 -$3.50, 누적손익 +$10.00", lines)
+        self.assertIn("KRW 현금/매수가능금액: 300,000원", lines)
+        self.assertIn("USD 현금/매수가능금액: $25.50", lines)
         self.assertIn("대기 주문: 1건", lines)
 
     def test_build_content_includes_account_section(self):
@@ -385,8 +388,10 @@ class AccountBriefingTests(unittest.TestCase):
                 "chg_amount": 1000,
                 "chg_pct": 1.45,
                 "shares": "10",
+                "holding_purchase_amount": "650000",
                 "holding_market_value": "700000",
                 "daily_profit_loss_amount": "12000",
+                "holding_profit_loss_amount": "50000",
                 "provider": "Toss",
             }
         ]
@@ -400,7 +405,8 @@ class AccountBriefingTests(unittest.TestCase):
         )
 
         self.assertIn("📌 계좌 현황", telegram)
-        self.assertIn("KRW 매수가능금액: 300,000원", telegram)
+        self.assertIn("총계좌가치 1,000,000원", telegram)
+        self.assertIn("KRW 현금/매수가능금액: 300,000원", telegram)
         self.assertIn("## 📌 계좌 현황", markdown)
         self.assertIn("대기 주문: 0건", markdown)
 

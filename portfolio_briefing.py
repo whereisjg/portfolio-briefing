@@ -508,10 +508,13 @@ def holding_map_key(symbol):
 
 
 def normalize_holding_item(item):
+    market_value = item.get("marketValue", {})
     return {
         "shares": item.get("quantity"),
         "average_purchase_price": item.get("averagePurchasePrice"),
-        "holding_market_value": pick_first_value(item.get("marketValue", {}), ["amount"]),
+        "holding_purchase_amount": pick_first_value(market_value, ["purchaseAmount"]),
+        "holding_market_value": pick_first_value(market_value, ["amount"]),
+        "holding_market_value_after_cost": pick_first_value(market_value, ["amountAfterCost"]),
         "holding_profit_loss_amount": pick_first_value(item.get("profitLoss", {}), ["amount"]),
         "holding_profit_loss_rate": pick_first_value(item.get("profitLoss", {}), ["rate"]),
         "daily_profit_loss_amount": pick_first_value(item.get("dailyProfitLoss", {}), ["amount"]),
@@ -578,6 +581,7 @@ def account_totals_from_quotes(quotes):
         currency = item.get("currency", "")
         if currency not in totals:
             totals[currency] = {
+                "purchase_amount": 0.0,
                 "market_value": 0.0,
                 "daily_profit_loss": 0.0,
                 "profit_loss": 0.0,
@@ -592,6 +596,13 @@ def account_totals_from_quotes(quotes):
         if market_value in (None, "") and shares not in (None, ""):
             market_value = to_float(item.get("price")) * to_float(shares)
 
+        purchase_amount = item.get("holding_purchase_amount")
+        if purchase_amount in (None, "") and item.get("holding_profit_loss_amount") not in (None, ""):
+            purchase_amount = to_float(market_value) - to_float(item.get("holding_profit_loss_amount"))
+        if purchase_amount in (None, "") and item.get("average_purchase_price") not in (None, "") and shares not in (None, ""):
+            purchase_amount = to_float(item.get("average_purchase_price")) * to_float(shares)
+
+        totals[currency]["purchase_amount"] += to_float(purchase_amount)
         totals[currency]["market_value"] += to_float(market_value)
         totals[currency]["daily_profit_loss"] += to_float(item.get("daily_profit_loss_amount"))
         totals[currency]["profit_loss"] += to_float(item.get("holding_profit_loss_amount"))
@@ -602,26 +613,28 @@ def account_totals_from_quotes(quotes):
 def account_summary_lines(quotes, account_snapshot=None):
     account_snapshot = account_snapshot or {}
     totals = account_totals_from_quotes(quotes)
+    buying_power = account_snapshot.get("buying_power", {})
     lines = []
 
     for currency in ("KRW", "USD"):
         total = totals.get(currency)
         if not total or total["holding_count"] == 0:
             continue
+        cash = to_float(buying_power.get(currency))
+        account_value = total["market_value"] + cash
         line = (
-            f"{currency}: 보유 {total['holding_count']}개, 평가금액 "
-            f"{format_signed_amount(total['market_value'], currency).lstrip('+')}, "
-            f"당일손익 {format_signed_amount(total['daily_profit_loss'], currency)}"
+            f"{currency}: 총계좌가치 {format_signed_amount(account_value, currency).lstrip('+')}, "
+            f"매입금액 {format_signed_amount(total['purchase_amount'], currency).lstrip('+')}, "
+            f"평가금액 {format_signed_amount(total['market_value'], currency).lstrip('+')}, "
+            f"당일변동 {format_signed_amount(total['daily_profit_loss'], currency)}"
         )
-        if total["profit_loss"]:
-            line += f", 누적손익 {format_signed_amount(total['profit_loss'], currency)}"
+        line += f", 누적손익 {format_signed_amount(total['profit_loss'], currency)}"
         lines.append(line)
 
-    buying_power = account_snapshot.get("buying_power", {})
     for currency in ("KRW", "USD"):
         amount = buying_power.get(currency)
         if amount not in (None, ""):
-            lines.append(f"{currency} 매수가능금액: {format_signed_amount(to_float(amount), currency).lstrip('+')}")
+            lines.append(f"{currency} 현금/매수가능금액: {format_signed_amount(to_float(amount), currency).lstrip('+')}")
 
     open_orders = account_snapshot.get("open_orders")
     if isinstance(open_orders, list):
