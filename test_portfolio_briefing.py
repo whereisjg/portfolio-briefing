@@ -410,6 +410,20 @@ class AccountBriefingTests(unittest.TestCase):
         self.assertIn("## 📌 계좌 현황", markdown)
         self.assertIn("대기 주문: 0건", markdown)
 
+    def test_account_summary_shows_missing_toss_account_config(self):
+        lines = briefing.account_summary_lines(
+            [],
+            {
+                "configured": False,
+                "missing": "TOSS_ACCESS_TOKEN 또는 TOSS_CLIENT_ID/TOSS_CLIENT_SECRET",
+            },
+        )
+
+        self.assertEqual(
+            lines,
+            ["Toss 계좌 연동 미설정: TOSS_ACCESS_TOKEN 또는 TOSS_CLIENT_ID/TOSS_CLIENT_SECRET"],
+        )
+
 
 class TossOrderApiTests(unittest.TestCase):
     def test_fetch_toss_buying_power_uses_currency_and_account_header(self):

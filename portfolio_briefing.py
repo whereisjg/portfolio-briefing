@@ -210,8 +210,17 @@ def toss_is_configured():
     )
 
 
+def toss_account_config_missing():
+    missing = []
+    if not toss_holdings_url():
+        missing.append("TOSS_BASE_URL")
+    if not (TOSS_ACCESS_TOKEN or (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and toss_token_url())):
+        missing.append("TOSS_ACCESS_TOKEN 또는 TOSS_CLIENT_ID/TOSS_CLIENT_SECRET")
+    return missing
+
+
 def toss_account_is_configured():
-    return bool(toss_holdings_url() and (TOSS_ACCESS_TOKEN or (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and toss_token_url())))
+    return not toss_account_config_missing()
 
 
 def toss_orders_are_configured():
@@ -554,9 +563,10 @@ def to_float(value, default=0.0):
 
 def fetch_toss_management_snapshot():
     if not toss_account_is_configured():
-        return {}, []
+        missing = ", ".join(toss_account_config_missing())
+        return {"configured": False, "missing": missing}, [f"Toss 계좌 연동 미설정: {missing}"]
 
-    snapshot = {"buying_power": {}, "open_orders": []}
+    snapshot = {"configured": True, "buying_power": {}, "open_orders": []}
     errors = []
 
     for currency in ("KRW", "USD"):
@@ -612,6 +622,10 @@ def account_totals_from_quotes(quotes):
 
 def account_summary_lines(quotes, account_snapshot=None):
     account_snapshot = account_snapshot or {}
+    if account_snapshot.get("configured") is False:
+        missing = account_snapshot.get("missing") or "필수 설정"
+        return [f"Toss 계좌 연동 미설정: {missing}"]
+
     totals = account_totals_from_quotes(quotes)
     buying_power = account_snapshot.get("buying_power", {})
     lines = []

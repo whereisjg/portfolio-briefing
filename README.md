@@ -90,8 +90,9 @@ Required GitHub Actions secrets:
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
 | `TOSS_CLIENT_ID` | Toss Securities Open API client ID |
 | `TOSS_CLIENT_SECRET` | Toss Securities Open API client secret |
+| `TOSS_ACCESS_TOKEN` | Optional pre-issued Toss access token |
 
-Do not commit real secret values to the repository.
+Do not commit real secret values to the repository. `TOSS_CLIENT_ID` and `TOSS_CLIENT_SECRET` are preferred because access tokens can expire.
 
 Legacy aliases `TOSS_API_KEY` and `TOSS_API_SECRET` are still accepted, but `TOSS_CLIENT_ID` and `TOSS_CLIENT_SECRET` are preferred.
 
