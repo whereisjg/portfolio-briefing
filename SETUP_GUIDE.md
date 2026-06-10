@@ -109,6 +109,7 @@ Optional GitHub Actions variable:
 | `TOSS_BASE_URL` | Override Toss Open API base URL |
 | `TOSS_ACCOUNT_SEQ` | Optional account sequence. If omitted, the first `/api/v1/accounts` result is used. |
 | `TOSS_ENABLE_LIVE_ORDERS` | Set to `true` only when live order submission should be allowed |
+| `BRIEFING_RUNNER` | Optional runner label. Leave empty for `ubuntu-latest`, set to `self-hosted` for a fixed-IP runner. |
 
 Optional GitHub Actions secret:
 
@@ -324,6 +325,22 @@ GitHub-hosted Actions runners may not provide one stable outbound IP, so if the 
 - If Toss supports a specific allowlist range for the account, register the exact outbound IP/range they require.
 
 Until the IP is allowed, Toss account data cannot be fetched from GitHub Actions. The briefing will continue with Yahoo prices and will show a data-check message instead of account values.
+
+### Fixed-IP Runner Setup
+
+For stable Toss account access, run this workflow on a fixed-IP self-hosted runner.
+
+Recommended path:
+
+1. Prepare a fixed-IP Linux VPS or always-on fixed-IP PC.
+2. In GitHub, open `Settings -> Actions -> Runners -> New self-hosted runner`.
+3. Install the runner on that machine and keep it running as a service.
+4. Run the workflow once and check `Show runner public IP`.
+5. Register that IP in Toss Open API allowlist.
+6. In `Settings -> Secrets and variables -> Actions -> Variables`, set `BRIEFING_RUNNER=self-hosted`.
+7. Run the workflow again and confirm Toss account values appear in `📌 계좌 현황`.
+
+If the self-hosted runner is Windows, ensure Python, Git, and curl are available in PATH. The current workflow commands are simplest on Linux.
 
 ## Notes
 
