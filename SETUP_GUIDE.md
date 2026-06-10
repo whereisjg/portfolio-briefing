@@ -9,9 +9,11 @@ The workflow generates a daily portfolio briefing for:
 - `QLD`
 - `SSO`
 - `USD`
+- `AIPO`
 - `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 
 It fetches prices directly, adds news titles from the last 24 hours using free RSS search, translates English headlines to Korean when possible, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
+When Toss account access is configured, it reads holdings and account-side trading information for the briefing. Toss order helpers are present, but live order submission is locked by default.
 
 ## Source Of Truth
 
@@ -50,8 +52,87 @@ Create or update these repository secrets:
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Telegram BotFather token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
+| `TOSS_CLIENT_ID` | Toss Securities Open API client ID |
+| `TOSS_CLIENT_SECRET` | Toss Securities Open API client secret |
 
 If a secret already exists, use `Update`. Do not create a second secret with a different name unless the workflow is also updated.
+
+## Toss Securities API
+
+Toss price lookup is optional and uses Yahoo Finance as fallback.
+
+The default base URL is:
+
+```text
+https://openapi.tossinvest.com
+```
+
+The script derives these paths:
+
+```text
+POST /oauth2/token
+GET /api/v1/prices
+GET /api/v1/candles
+GET /api/v1/accounts
+GET /api/v1/holdings
+GET /api/v1/buying-power
+GET /api/v1/sellable-quantity
+GET /api/v1/commissions
+GET /api/v1/orders
+GET /api/v1/orders/{orderId}
+POST /api/v1/orders
+POST /api/v1/orders/{orderId}/modify
+POST /api/v1/orders/{orderId}/cancel
+```
+
+`/api/v1/prices` supplies `lastPrice`. `/api/v1/candles?interval=1d&count=2` supplies the previous close used for daily change calculations.
+`/api/v1/holdings` is read-only and is used to fill holding quantity and daily P/L.
+`/api/v1/buying-power`, `/api/v1/sellable-quantity`, `/api/v1/commissions`, and order history/detail helpers are available for portfolio management checks.
+The briefing account section uses holdings, KRW/USD buying power, and open order count. If one account-side call fails, the rest of the briefing still runs and the failure is listed under data checks.
+
+Order create, modify, and cancel helpers default to dry-run. A live order can be submitted only when both of these are set:
+
+```text
+TOSS_ENABLE_LIVE_ORDERS=true
+TOSS_LIVE_ORDER_CONFIRM=LIVE_ORDER_APPROVED
+```
+
+The daily briefing workflow does not automatically submit orders. Strategy code must call the order helper explicitly.
+
+Optional GitHub Actions variable:
+
+| Name | Purpose |
+| --- | --- |
+| `TOSS_BASE_URL` | Override Toss Open API base URL |
+| `TOSS_ACCOUNT_SEQ` | Optional account sequence. If omitted, the first `/api/v1/accounts` result is used. |
+| `TOSS_ENABLE_LIVE_ORDERS` | Set to `true` only when live order submission should be allowed |
+
+Optional GitHub Actions secret:
+
+| Name | Purpose |
+| --- | --- |
+| `TOSS_LIVE_ORDER_CONFIRM` | Must equal `LIVE_ORDER_APPROVED` for live order submission |
+
+Optional advanced overrides:
+
+| Name | Purpose |
+| --- | --- |
+| `TOSS_TOKEN_URL` | Override token endpoint |
+| `TOSS_QUOTE_URL_TEMPLATE` | Override price endpoint, may use `{market}`, `{symbol}`, `{ticker}` |
+| `TOSS_CANDLE_URL_TEMPLATE` | Override candle endpoint, may use `{market}`, `{symbol}`, `{ticker}` |
+
+Do not put API keys, secrets, or access tokens in repository variables or files.
+
+Toss API errors are logged with:
+
+```text
+status code
+error code
+message
+requestId
+```
+
+If Toss support asks for diagnostics, use the `requestId` shown in the workflow log or briefing error section. If `requestId` is missing, use the `cf-ray` value when available.
 
 ## Current Workflow
 
@@ -75,10 +156,26 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests pytz
+      - name: Validate config and script
+        run: |
+          python -m py_compile portfolio_briefing.py
+          python -c "import json; json.load(open('portfolio.json', encoding='utf-8'))"
+          python -m unittest
       - name: Run briefing
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOSS_CLIENT_ID: ${{ secrets.TOSS_CLIENT_ID }}
+          TOSS_CLIENT_SECRET: ${{ secrets.TOSS_CLIENT_SECRET }}
+          TOSS_API_KEY: ${{ secrets.TOSS_API_KEY }}
+          TOSS_API_SECRET: ${{ secrets.TOSS_API_SECRET }}
+          TOSS_BASE_URL: ${{ vars.TOSS_BASE_URL }}
+          TOSS_TOKEN_URL: ${{ vars.TOSS_TOKEN_URL }}
+          TOSS_QUOTE_URL_TEMPLATE: ${{ vars.TOSS_QUOTE_URL_TEMPLATE }}
+          TOSS_CANDLE_URL_TEMPLATE: ${{ vars.TOSS_CANDLE_URL_TEMPLATE }}
+          TOSS_ACCOUNT_SEQ: ${{ vars.TOSS_ACCOUNT_SEQ }}
+          TOSS_ENABLE_LIVE_ORDERS: ${{ vars.TOSS_ENABLE_LIVE_ORDERS }}
+          TOSS_LIVE_ORDER_CONFIRM: ${{ secrets.TOSS_LIVE_ORDER_CONFIRM }}
         run: python portfolio_briefing.py
       - name: Commit and push
         env:
@@ -130,13 +227,27 @@ Example asset:
   "name": "QLD",
   "display": "QLD",
   "currency": "USD",
-  "news_query": "Nasdaq 100"
+  "news_query": "ProShares Ultra QQQ QLD ETF",
+  "news_include": ["QLD", "ProShares Ultra QQQ", "Nasdaq 100"],
+  "news_exclude": ["UK tech"]
 }
 ```
 
 To add a symbol, add an object to the `assets` list.
 To remove a symbol, delete that object from the `assets` list.
 Use Yahoo Finance symbols. Korean listings usually use `.KS`, such as `426030.KS`.
+
+News quality is controlled by:
+
+- `news_queries`: search phrases used in order
+- `news_include`: terms that make a title relevant
+- `news_exclude`: terms that remove noisy or misleading titles
+
+To preview locally without sending Telegram:
+
+```bash
+SEND_TELEGRAM=false python portfolio_briefing.py
+```
 
 The script saves generated files here:
 
@@ -149,10 +260,12 @@ briefings/briefing_YYYYMMDD.md
 After changing secrets or workflow settings:
 
 1. Confirm `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` exist in GitHub Actions secrets.
-2. Run the workflow manually from GitHub Actions.
-3. Confirm a Telegram message arrives.
-4. Confirm a new file appears under `briefings/`.
-5. Confirm the workflow commit is pushed to `main`.
+2. Run `python -m py_compile portfolio_briefing.py`.
+3. Run `python -m unittest`.
+4. Run the workflow manually from GitHub Actions.
+5. Confirm a Telegram message arrives.
+6. Confirm a new file appears under `briefings/`.
+7. Confirm the workflow commit is pushed to `main`.
 
 ## Troubleshooting
 

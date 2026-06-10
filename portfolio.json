@@ -24,7 +24,24 @@
       "currency": "USD",
       "shares": null,
       "weight_pct": null,
-      "news_query": "Nasdaq 100"
+      "news_query": "ProShares Ultra QQQ QLD ETF",
+      "news_queries": [
+        "ProShares Ultra QQQ QLD ETF",
+        "QLD ETF Nasdaq 100",
+        "Nasdaq 100 QQQ ETF"
+      ],
+      "news_include": [
+        "QLD",
+        "ProShares Ultra QQQ",
+        "Ultra QQQ",
+        "QQQ",
+        "Nasdaq 100",
+        "나스닥"
+      ],
+      "news_exclude": [
+        "UK tech",
+        "영국 기술"
+      ]
     },
     {
       "ticker": "SSO",
@@ -34,7 +51,21 @@
       "currency": "USD",
       "shares": null,
       "weight_pct": null,
-      "news_query": "S&P 500"
+      "news_query": "ProShares Ultra S&P500 SSO ETF",
+      "news_queries": [
+        "ProShares Ultra S&P500 SSO ETF",
+        "SSO ETF S&P 500",
+        "S&P 500 ETF"
+      ],
+      "news_include": [
+        "SSO",
+        "ProShares Ultra S&P500",
+        "Ultra S&P500",
+        "S&P 500",
+        "S&P500",
+        "스탠더드앤드푸어스",
+        "에스앤피"
+      ]
     },
     {
       "ticker": "USD",
@@ -50,6 +81,20 @@
         "USD ETF ProShares Ultra Semiconductors",
         "semiconductor ETF stocks",
         "SOXL SMH semiconductor stocks"
+      ],
+      "news_include": [
+        "ProShares Ultra Semiconductors",
+        "Ultra Semiconductors",
+        "semiconductor",
+        "semiconductors",
+        "chip",
+        "chips",
+        "SOXL",
+        "SMH",
+        "반도체",
+        "엔비디아",
+        "Nvidia",
+        "AMD"
       ],
       "news_exclude": [
         "US dollar",
@@ -77,6 +122,29 @@
         "Defiance AI Power Infrastructure ETF",
         "AI power infrastructure data centers energy stocks",
         "data center power infrastructure AI stocks"
+      ],
+      "news_include": [
+        "AIPO",
+        "Defiance",
+        "AI power",
+        "power infrastructure",
+        "data center",
+        "data centers",
+        "electricity",
+        "grid",
+        "energy infrastructure",
+        "AI infrastructure",
+        "데이터센터",
+        "전력",
+        "인프라"
+      ],
+      "news_exclude": [
+        "Bitcoin",
+        "비트코인",
+        "crypto",
+        "cryptocurrency",
+        "MARA",
+        "마라홀딩스"
       ]
     },
     {
@@ -87,7 +155,24 @@
       "currency": "KRW",
       "shares": null,
       "weight_pct": null,
-      "news_query": "나스닥100 ETF"
+      "news_query": "TIMEFOLIO 나스닥100액티브 ETF",
+      "news_queries": [
+        "TIMEFOLIO 나스닥100액티브 ETF",
+        "타임폴리오 나스닥100 액티브 ETF",
+        "나스닥100 액티브 ETF"
+      ],
+      "news_include": [
+        "TIMEFOLIO",
+        "타임폴리오",
+        "나스닥100",
+        "나스닥 100",
+        "액티브 ETF"
+      ],
+      "news_exclude": [
+        "우주",
+        "SpaceX",
+        "블랙록"
+      ]
     }
   ]
 }

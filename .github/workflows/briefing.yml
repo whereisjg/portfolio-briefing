@@ -25,10 +25,22 @@ jobs:
         run: |
           python -m py_compile portfolio_briefing.py
           python -c "import json; json.load(open('portfolio.json', encoding='utf-8'))"
+          python -m unittest
       - name: Run briefing
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOSS_CLIENT_ID: ${{ secrets.TOSS_CLIENT_ID }}
+          TOSS_CLIENT_SECRET: ${{ secrets.TOSS_CLIENT_SECRET }}
+          TOSS_API_KEY: ${{ secrets.TOSS_API_KEY }}
+          TOSS_API_SECRET: ${{ secrets.TOSS_API_SECRET }}
+          TOSS_BASE_URL: ${{ vars.TOSS_BASE_URL }}
+          TOSS_TOKEN_URL: ${{ vars.TOSS_TOKEN_URL }}
+          TOSS_QUOTE_URL_TEMPLATE: ${{ vars.TOSS_QUOTE_URL_TEMPLATE }}
+          TOSS_CANDLE_URL_TEMPLATE: ${{ vars.TOSS_CANDLE_URL_TEMPLATE }}
+          TOSS_ACCOUNT_SEQ: ${{ vars.TOSS_ACCOUNT_SEQ }}
+          TOSS_ENABLE_LIVE_ORDERS: ${{ vars.TOSS_ENABLE_LIVE_ORDERS }}
+          TOSS_LIVE_ORDER_CONFIRM: ${{ secrets.TOSS_LIVE_ORDER_CONFIRM }}
         run: python portfolio_briefing.py
       - name: Commit and push
         env:
