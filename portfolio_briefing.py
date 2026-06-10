@@ -61,6 +61,19 @@ class TossApiError(RuntimeError):
         self.request_id = request_id
 
 
+def format_toss_error(exc):
+    if not isinstance(exc, TossApiError):
+        return str(exc)
+
+    message = str(exc.message or "")
+    if exc.status_code == 403 and "IP address not allowed" in message:
+        detail = "GitHub Actions 실행 IP가 Toss Open API 허용 IP에 등록되지 않았습니다."
+        if exc.request_id:
+            detail += f" requestId={exc.request_id}"
+        return detail
+    return str(exc)
+
+
 def load_portfolio():
     with open(PORTFOLIO_FILE, "r", encoding="utf-8") as file:
         config = json.load(file)
@@ -545,7 +558,7 @@ def apply_toss_holdings_to_assets(assets):
     try:
         holdings = fetch_toss_holdings()
     except Exception as exc:
-        return assets, [f"Toss 보유자산: {exc}"]
+        return assets, [f"Toss 보유자산: {format_toss_error(exc)}"]
 
     holdings_by_symbol = {
         holding_map_key(item.get("symbol")): normalize_holding_item(item)
@@ -573,7 +586,7 @@ def fetch_toss_management_snapshot():
         missing = ", ".join(toss_account_config_missing())
         return {"configured": False, "missing": missing}, [f"Toss 계좌 연동 미설정: {missing}"]
 
-    snapshot = {"configured": True, "buying_power": {}, "open_orders": []}
+    snapshot = {"configured": True, "buying_power": {}, "open_orders": None}
     errors = []
 
     for currency in ("KRW", "USD"):
@@ -582,12 +595,12 @@ def fetch_toss_management_snapshot():
             if isinstance(result, dict):
                 snapshot["buying_power"][currency] = result.get("cashBuyingPower")
         except Exception as exc:
-            errors.append(f"Toss 매수가능금액 {currency}: {exc}")
+            errors.append(f"Toss 매수가능금액 {currency}: {format_toss_error(exc)}")
 
     try:
         snapshot["open_orders"] = fetch_toss_open_orders()
     except Exception as exc:
-        errors.append(f"Toss 대기주문: {exc}")
+        errors.append(f"Toss 대기주문: {format_toss_error(exc)}")
 
     return snapshot, errors
 

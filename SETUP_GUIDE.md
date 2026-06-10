@@ -306,6 +306,23 @@ output_dir = "briefings"
 
 Check whether Yahoo Finance is returning data for the ticker symbols. The Korean ETF uses `426030.KS`.
 
+### Toss API 403 IP Address Not Allowed
+
+If Toss returns:
+
+```text
+access_denied / IP address not allowed
+```
+
+the API key is valid but the request source IP is not allowed by Toss Open API.
+GitHub-hosted Actions runners do not provide one stable outbound IP, so the stable fixes are:
+
+- Run the workflow on a self-hosted runner from an IP registered in Toss Open API.
+- Run the briefing from another fixed-IP server and trigger the repository update from there.
+- If Toss supports a specific allowlist range for the account, register the exact outbound IP/range they require.
+
+Until the IP is allowed, Toss account data cannot be fetched from GitHub Actions. The briefing will continue with Yahoo prices and will show a data-check message instead of account values.
+
 ## Notes
 
 - GitHub Actions cron uses UTC. The current setup uses cron-job.org with `Asia/Seoul`, which is easier to reason about for a 07:00 KST schedule.

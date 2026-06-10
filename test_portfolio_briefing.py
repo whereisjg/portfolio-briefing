@@ -431,6 +431,12 @@ class AccountBriefingTests(unittest.TestCase):
             ["Toss 계좌 연동 미설정: TOSS_ACCESS_TOKEN 또는 TOSS_CLIENT_ID/TOSS_CLIENT_SECRET"],
         )
 
+    def test_account_summary_does_not_show_open_order_count_when_fetch_failed(self):
+        lines = briefing.account_summary_lines([], {"configured": True, "buying_power": {}, "open_orders": None})
+
+        self.assertEqual(lines, ["계좌 데이터 없음"])
+        self.assertNotIn("대기 주문: 0건", lines)
+
 
 class TossOrderApiTests(unittest.TestCase):
     def test_fetch_toss_buying_power_uses_currency_and_account_header(self):
@@ -569,6 +575,19 @@ class TossOrderApiTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(snapshot["buying_power"], {"KRW": "100000", "USD": "12.5"})
         self.assertEqual(len(snapshot["open_orders"]), 1)
+
+    def test_toss_ip_allowlist_error_is_human_readable(self):
+        error = briefing.TossApiError(
+            403,
+            None,
+            '{"error":"access_denied","error_description":"IP address not allowed"}',
+            "req-1",
+        )
+
+        self.assertEqual(
+            briefing.format_toss_error(error),
+            "GitHub Actions 실행 IP가 Toss Open API 허용 IP에 등록되지 않았습니다. requestId=req-1",
+        )
 
 
 if __name__ == "__main__":
