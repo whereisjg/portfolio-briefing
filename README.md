@@ -12,7 +12,7 @@ Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Fin
 | `AIPO` | Defiance AI & Power Infrastructure ETF | US |
 | `AMD` | Advanced Micro Devices | US |
 | `SPCX` | SPCX ETF | US |
-| `VTV` | Vanguard Value ETF | US |
+| `SCHD` | Schwab US Dividend Equity ETF | US |
 
 ## What It Does
 

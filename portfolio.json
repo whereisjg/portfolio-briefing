@@ -23,7 +23,7 @@
       "display": "QLD",
       "currency": "USD",
       "shares": 40.173111,
-      "weight_pct": 27.96,
+      "weight_pct": 27.92,
       "news_query": "ProShares Ultra QQQ QLD ETF",
       "news_queries": [
         "ProShares Ultra QQQ QLD ETF",
@@ -50,7 +50,7 @@
       "display": "SSO",
       "currency": "USD",
       "shares": 56.125231,
-      "weight_pct": 27.84,
+      "weight_pct": 27.7,
       "news_query": "ProShares Ultra S&P500 SSO ETF",
       "news_queries": [
         "ProShares Ultra S&P500 SSO ETF",
@@ -74,7 +74,7 @@
       "display": "USD",
       "currency": "USD",
       "shares": 37.337306,
-      "weight_pct": 27.36,
+      "weight_pct": 27.3,
       "news_query": "ProShares Ultra Semiconductors ETF",
       "news_queries": [
         "ProShares Ultra Semiconductors ETF",
@@ -115,7 +115,7 @@
       "display": "AIPO",
       "currency": "USD",
       "shares": 12,
-      "weight_pct": 2.82,
+      "weight_pct": 2.8,
       "news_query": "AIPO ETF",
       "news_queries": [
         "AIPO ETF",
@@ -184,7 +184,7 @@
       "display": "SPCX",
       "currency": "USD",
       "shares": 2,
-      "weight_pct": 2.49,
+      "weight_pct": 2.56,
       "news_query": "SPCX ETF",
       "news_queries": [
         "SPCX ETF",
@@ -205,28 +205,29 @@
       ]
     },
     {
-      "ticker": "VTV",
-      "symbol": "VTV",
-      "name": "VTV",
-      "display": "VTV",
+      "ticker": "SCHD",
+      "symbol": "SCHD",
+      "name": "SCHD",
+      "display": "SCHD",
       "currency": "USD",
-      "shares": 0.030147,
-      "weight_pct": 0.05,
-      "news_query": "VTV Vanguard Value ETF",
+      "shares": 1,
+      "weight_pct": 0.24,
+      "news_query": "SCHD Schwab US Dividend Equity ETF",
       "news_queries": [
-        "VTV Vanguard Value ETF",
-        "VTV value ETF",
-        "Vanguard Value ETF"
+        "SCHD Schwab US Dividend Equity ETF",
+        "SCHD dividend ETF",
+        "Schwab US Dividend Equity ETF"
       ],
       "news_include": [
-        "VTV",
-        "Vanguard Value",
-        "value ETF",
-        "value stocks"
+        "SCHD",
+        "Schwab US Dividend Equity",
+        "dividend ETF",
+        "dividend stocks"
       ],
       "news_exclude": [
         "video",
-        "tv"
+        "tv",
+        "school district"
       ]
     }
   ]
