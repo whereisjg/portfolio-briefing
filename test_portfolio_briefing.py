@@ -98,12 +98,12 @@ class FormattingTests(unittest.TestCase):
         quotes = [
             {"ticker": "QLD", "chg_pct": -3.77},
             {"ticker": "SSO", "chg_pct": -2.03},
-            {"ticker": "426030", "chg_pct": 2.95},
+            {"ticker": "AMD", "chg_pct": 2.95},
         ]
 
         self.assertEqual(
             briefing.market_snapshot(quotes),
-            "3개 중 상승 1개, 하락 2개 / 상대강세 426030 +2.95% / 최대약세 QLD -3.77%",
+            "3개 중 상승 1개, 하락 2개 / 상대강세 AMD +2.95% / 최대약세 QLD -3.77%",
         )
 
 

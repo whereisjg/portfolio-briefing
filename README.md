@@ -11,11 +11,8 @@ Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Fin
 | `USD` | ProShares Ultra Semiconductors | US |
 | `AIPO` | Defiance AI & Power Infrastructure ETF | US |
 | `AMD` | Advanced Micro Devices | US |
-| `TSLA` | Tesla | US |
 | `SPCX` | SPCX ETF | US |
-| `CEG` | Constellation Energy | US |
 | `VTV` | Vanguard Value ETF | US |
-| `426030` | TIMEFOLIO Nasdaq 100 Active ETF | Korea |
 
 ## What It Does
 
@@ -74,7 +71,7 @@ Each asset needs:
 }
 ```
 
-Use Yahoo Finance symbols. For Korean stocks and ETFs, use the `.KS` suffix, for example `426030.KS`.
+Use Yahoo Finance symbols.
 
 Optional fields:
 

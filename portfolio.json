@@ -22,8 +22,8 @@
       "name": "QLD",
       "display": "QLD",
       "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
+      "shares": 40.173111,
+      "weight_pct": 27.96,
       "news_query": "ProShares Ultra QQQ QLD ETF",
       "news_queries": [
         "ProShares Ultra QQQ QLD ETF",
@@ -49,8 +49,8 @@
       "name": "SSO",
       "display": "SSO",
       "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
+      "shares": 56.125231,
+      "weight_pct": 27.84,
       "news_query": "ProShares Ultra S&P500 SSO ETF",
       "news_queries": [
         "ProShares Ultra S&P500 SSO ETF",
@@ -73,8 +73,8 @@
       "name": "USD",
       "display": "USD",
       "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
+      "shares": 37.337306,
+      "weight_pct": 27.36,
       "news_query": "ProShares Ultra Semiconductors ETF",
       "news_queries": [
         "ProShares Ultra Semiconductors ETF",
@@ -114,8 +114,8 @@
       "name": "AIPO",
       "display": "AIPO",
       "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
+      "shares": 12,
+      "weight_pct": 2.82,
       "news_query": "AIPO ETF",
       "news_queries": [
         "AIPO ETF",
@@ -153,8 +153,8 @@
       "name": "AMD",
       "display": "AMD",
       "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
+      "shares": 3,
+      "weight_pct": 11.47,
       "news_query": "AMD stock Advanced Micro Devices",
       "news_queries": [
         "AMD stock Advanced Micro Devices",
@@ -178,44 +178,13 @@
       ]
     },
     {
-      "ticker": "TSLA",
-      "symbol": "TSLA",
-      "name": "Tesla",
-      "display": "테슬라",
-      "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
-      "news_query": "Tesla TSLA stock",
-      "news_queries": [
-        "Tesla TSLA stock",
-        "Tesla earnings deliveries robotaxi EV",
-        "Tesla stock Elon Musk"
-      ],
-      "news_include": [
-        "Tesla",
-        "TSLA",
-        "테슬라",
-        "EV",
-        "electric vehicle",
-        "robotaxi",
-        "로보택시",
-        "Elon Musk",
-        "일론 머스크"
-      ],
-      "news_exclude": [
-        "Nikola Tesla",
-        "Tesla coil",
-        "테슬라 코일"
-      ]
-    },
-    {
       "ticker": "SPCX",
       "symbol": "SPCX",
       "name": "SPCX",
       "display": "SPCX",
       "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
+      "shares": 2,
+      "weight_pct": 2.49,
       "news_query": "SPCX ETF",
       "news_queries": [
         "SPCX ETF",
@@ -236,39 +205,13 @@
       ]
     },
     {
-      "ticker": "CEG",
-      "symbol": "CEG",
-      "name": "Constellation Energy",
-      "display": "CEG",
-      "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
-      "news_query": "Constellation Energy CEG stock",
-      "news_queries": [
-        "Constellation Energy CEG stock",
-        "CEG earnings nuclear energy",
-        "Constellation Energy power grid"
-      ],
-      "news_include": [
-        "CEG",
-        "Constellation Energy",
-        "nuclear",
-        "energy",
-        "power grid",
-        "data center"
-      ],
-      "news_exclude": [
-        "constellation software"
-      ]
-    },
-    {
       "ticker": "VTV",
       "symbol": "VTV",
       "name": "VTV",
       "display": "VTV",
       "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
+      "shares": 0.030147,
+      "weight_pct": 0.05,
       "news_query": "VTV Vanguard Value ETF",
       "news_queries": [
         "VTV Vanguard Value ETF",

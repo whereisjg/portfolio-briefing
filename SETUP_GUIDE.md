@@ -9,13 +9,10 @@ The workflow generates a daily portfolio briefing for:
 - `QLD`
 - `SSO`
 - `USD`
-- `TSLA`
 - `AMD`
 - `AIPO`
 - `SPCX`
-- `CEG`
 - `VTV`
-- `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 
 It fetches Yahoo Finance prices directly, adds news titles from the last 24 hours using free RSS search, translates English headlines to Korean when possible, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
 
@@ -150,7 +147,7 @@ Example asset:
 
 To add a symbol, add an object to the `assets` list.
 To remove a symbol, delete that object from the `assets` list.
-Use Yahoo Finance symbols. Korean listings usually use `.KS`, such as `426030.KS`.
+Use Yahoo Finance symbols.
 
 News quality is controlled by:
 
@@ -213,7 +210,7 @@ output_dir = "briefings"
 
 ### Price Data Errors
 
-Check whether Yahoo Finance is returning data for the ticker symbols. The Korean ETF uses `426030.KS`.
+Check whether Yahoo Finance is returning data for the ticker symbols.
 
 ## Notes
 
