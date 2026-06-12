@@ -27,7 +27,7 @@ It fetches Yahoo Finance prices directly, adds news titles from the last 24 hour
 - `.github/workflows/briefing.yml`: GitHub Actions workflow
 - `portfolio_briefing.py`: main rule-based briefing script
 - `portfolio.json`: editable portfolio and index configuration
-- `screener.json`: optional value-screening universe and criteria
+- `screener.json`: optional value-screening universe and criteria. Disabled by default because Yahoo fundamentals can return `401 Unauthorized`.
 - `briefings/`: generated daily briefing files
 
 ## Security Rules

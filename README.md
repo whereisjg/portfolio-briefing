@@ -87,7 +87,8 @@ Optional fields:
 
 ## Daily Value Screener
 
-The daily run also reads [screener.json](screener.json).
+The daily run can read [screener.json](screener.json), but it is disabled by default.
+Yahoo Finance frequently returns `401 Unauthorized` for fundamentals endpoints, so the screener should stay off unless a stable data source is added.
 
 Current filter:
 
@@ -96,7 +97,7 @@ Current filter:
 - Exclude `PSR >= 3`
 - `PBR <= 1.5`
 
-`symbols` controls the search universe. The screener is informational only.
+`symbols` controls the search universe. The screener is informational only and does not place orders.
 
 ## Configuration
 

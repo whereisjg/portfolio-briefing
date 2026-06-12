@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 import portfolio_briefing as briefing
 
@@ -108,6 +108,14 @@ class FormattingTests(unittest.TestCase):
 
 
 class FundamentalScreeningTests(unittest.TestCase):
+    def test_load_screener_config_returns_none_when_disabled(self):
+        with patch.object(briefing.os.path, "exists", return_value=True):
+            with patch(
+                "builtins.open",
+                mock_open(read_data='{"enabled": false, "symbols": ["AAPL"]}'),
+            ):
+                self.assertIsNone(briefing.load_screener_config())
+
     def test_fetch_yahoo_fundamentals_parses_quote_summary(self):
         class FakeResponse:
             def raise_for_status(self):
