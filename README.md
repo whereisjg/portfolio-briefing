@@ -10,11 +10,18 @@ Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Fin
 | `SSO` | ProShares Ultra S&P500 | US |
 | `USD` | ProShares Ultra Semiconductors | US |
 | `AIPO` | Defiance AI & Power Infrastructure ETF | US |
+| `AMD` | Advanced Micro Devices | US |
+| `TSLA` | Tesla | US |
+| `SPCX` | SPCX ETF | US |
+| `CEG` | Constellation Energy | US |
+| `VTV` | Vanguard Value ETF | US |
+| `XOVR` | XOVR ETF | US |
 | `426030` | TIMEFOLIO Nasdaq 100 Active ETF | Korea |
 
 ## What It Does
 
 - Fetches market prices directly
+- Screens configured stocks for ROE/PER/PSR/PBR value criteria
 - Adds news titles from the last 24 hours using free RSS search
 - Translates English news headlines to Korean when possible
 - Generates a concise Korean briefing with rule-based guidance
@@ -42,6 +49,7 @@ portfolio-briefing-kakao/
 ├─ briefings/
 │  └─ briefing_YYYYMMDD.md
 ├─ portfolio.json
+├─ screener.json
 ├─ portfolio_briefing.py
 ├─ test_portfolio_briefing.py
 ├─ README.md
@@ -77,6 +85,19 @@ Optional fields:
 - `news_include`: terms that make a news title relevant to the asset.
 - `news_exclude`: terms to exclude from news results.
 
+## Daily Value Screener
+
+The daily run also reads [screener.json](screener.json).
+
+Current filter:
+
+- `ROE >= 15%`
+- `PER <= 15`
+- Exclude `PSR >= 3`
+- `PBR <= 1.5`
+
+`symbols` controls the search universe. The screener is informational only.
+
 ## Configuration
 
 Required GitHub Actions secrets:
@@ -87,8 +108,6 @@ Required GitHub Actions secrets:
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
 
 Do not commit real secret values to the repository.
-
-Toss Open API integration code remains in the script, but the scheduled GitHub Actions briefing does not use Toss by default because Toss blocks unregistered runner IPs. Daily briefing prices use Yahoo Finance.
 
 ## Local Preview
 

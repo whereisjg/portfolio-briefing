@@ -1,0 +1,40 @@
+{
+  "enabled": true,
+  "criteria": {
+    "min_roe": 0.15,
+    "max_per": 15,
+    "exclude_psr_gte": 3,
+    "max_pbr": 1.5
+  },
+  "symbols": [
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "META",
+    "NVDA",
+    "AVGO",
+    "JPM",
+    "V",
+    "MA",
+    "UNH",
+    "XOM",
+    "CVX",
+    "HD",
+    "COST",
+    "WMT",
+    "PG",
+    "KO",
+    "PEP",
+    "ORCL",
+    "CSCO",
+    "QCOM",
+    "TXN",
+    "AMAT",
+    "INTC",
+    "IBM",
+    "T",
+    "VZ",
+    "PFE",
+    "MRK"
+  ]
+}

@@ -25,6 +25,7 @@ jobs:
         run: |
           python -m py_compile portfolio_briefing.py
           python -c "import json; json.load(open('portfolio.json', encoding='utf-8'))"
+          python -c "import json; json.load(open('screener.json', encoding='utf-8'))"
           python -m unittest
       - name: Run briefing
         env:

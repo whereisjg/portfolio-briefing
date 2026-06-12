@@ -12,10 +12,13 @@ The workflow generates a daily portfolio briefing for:
 - `TSLA`
 - `AMD`
 - `AIPO`
+- `SPCX`
+- `CEG`
+- `VTV`
+- `XOVR`
 - `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 
 It fetches Yahoo Finance prices directly, adds news titles from the last 24 hours using free RSS search, translates English headlines to Korean when possible, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.
-Toss Open API code remains available for future fixed-IP operation, but the scheduled GitHub Actions briefing does not use Toss by default.
 
 ## Source Of Truth
 
@@ -24,6 +27,7 @@ Toss Open API code remains available for future fixed-IP operation, but the sche
 - `.github/workflows/briefing.yml`: GitHub Actions workflow
 - `portfolio_briefing.py`: main rule-based briefing script
 - `portfolio.json`: editable portfolio and index configuration
+- `screener.json`: optional value-screening universe and criteria
 - `briefings/`: generated daily briefing files
 
 ## Security Rules
@@ -56,85 +60,6 @@ Create or update these repository secrets:
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
 
 If a secret already exists, use `Update`. Do not create a second secret with a different name unless the workflow is also updated.
-
-## Toss Securities API
-
-Toss price/account lookup is disabled by default because GitHub-hosted runner IPs are not stable enough for Toss IP allowlist operation. Daily scheduled briefing prices use Yahoo Finance.
-
-The default base URL is:
-
-```text
-https://openapi.tossinvest.com
-```
-
-The script derives these paths:
-
-```text
-POST /oauth2/token
-GET /api/v1/prices
-GET /api/v1/candles
-GET /api/v1/accounts
-GET /api/v1/holdings
-GET /api/v1/buying-power
-GET /api/v1/sellable-quantity
-GET /api/v1/commissions
-GET /api/v1/orders
-GET /api/v1/orders/{orderId}
-POST /api/v1/orders
-POST /api/v1/orders/{orderId}/modify
-POST /api/v1/orders/{orderId}/cancel
-```
-
-`/api/v1/prices` supplies `lastPrice`. `/api/v1/candles?interval=1d&count=2` supplies the previous close used for daily change calculations.
-`/api/v1/holdings` is read-only and is used to fill holding quantity and daily P/L.
-`/api/v1/buying-power`, `/api/v1/sellable-quantity`, `/api/v1/commissions`, and order history/detail helpers are available for portfolio management checks.
-These helpers are not called by the default scheduled briefing. Enable them only from a fixed-IP environment by setting `TOSS_ENABLED=true` and providing Toss credentials.
-
-Order create, modify, and cancel helpers default to dry-run. A live order can be submitted only when both of these are set:
-
-```text
-TOSS_ENABLE_LIVE_ORDERS=true
-TOSS_LIVE_ORDER_CONFIRM=LIVE_ORDER_APPROVED
-```
-
-The daily briefing workflow does not automatically submit orders. Strategy code must call the order helper explicitly.
-
-Optional GitHub Actions variable:
-
-| Name | Purpose |
-| --- | --- |
-| `TOSS_BASE_URL` | Override Toss Open API base URL |
-| `TOSS_ACCOUNT_SEQ` | Optional account sequence. If omitted, the first `/api/v1/accounts` result is used. |
-| `TOSS_ENABLED` | Set to `true` only in a fixed-IP environment where Toss allows the outbound IP. |
-| `TOSS_ENABLE_LIVE_ORDERS` | Set to `true` only when live order submission should be allowed |
-| `BRIEFING_RUNNER` | Optional runner label. Leave empty for `ubuntu-latest`, set to `self-hosted` for a fixed-IP runner. |
-
-Optional GitHub Actions secret:
-
-| Name | Purpose |
-| --- | --- |
-| `TOSS_LIVE_ORDER_CONFIRM` | Must equal `LIVE_ORDER_APPROVED` for live order submission |
-
-Optional advanced overrides:
-
-| Name | Purpose |
-| --- | --- |
-| `TOSS_TOKEN_URL` | Override token endpoint |
-| `TOSS_QUOTE_URL_TEMPLATE` | Override price endpoint, may use `{market}`, `{symbol}`, `{ticker}` |
-| `TOSS_CANDLE_URL_TEMPLATE` | Override candle endpoint, may use `{market}`, `{symbol}`, `{ticker}` |
-
-Do not put API keys, secrets, or access tokens in repository variables or files.
-
-Toss API errors are logged with:
-
-```text
-status code
-error code
-message
-requestId
-```
-
-If Toss support asks for diagnostics, use the `requestId` shown in the workflow log or briefing error section. If `requestId` is missing, use the `cf-ray` value when available.
 
 ## Current Workflow
 
@@ -290,41 +215,6 @@ output_dir = "briefings"
 ### Price Data Errors
 
 Check whether Yahoo Finance is returning data for the ticker symbols. The Korean ETF uses `426030.KS`.
-
-### Toss API 403 IP Address Not Allowed
-
-If Toss returns:
-
-```text
-access_denied / IP address not allowed
-```
-
-the API key is valid but the request source IP is not allowed by Toss Open API.
-The default scheduled workflow no longer calls Toss. If Toss is enabled again from a fixed-IP runner, check that runner's public IP directly on the server and add it in Toss Open API allowlist.
-
-GitHub-hosted Actions runners may not provide one stable outbound IP, so if the IP changes between runs, the stable fixes are:
-
-- Run the workflow on a self-hosted runner from an IP registered in Toss Open API.
-- Run the briefing from another fixed-IP server and trigger the repository update from there.
-- If Toss supports a specific allowlist range for the account, register the exact outbound IP/range they require.
-
-Until the IP is allowed, Toss account data cannot be fetched from GitHub Actions. The briefing will continue with Yahoo prices and will show a data-check message instead of account values.
-
-### Fixed-IP Runner Setup
-
-For stable Toss account access, run this workflow on a fixed-IP self-hosted runner.
-
-Recommended path:
-
-1. Prepare a fixed-IP Linux VPS or always-on fixed-IP PC.
-2. In GitHub, open `Settings -> Actions -> Runners -> New self-hosted runner`.
-3. Install the runner on that machine and keep it running as a service.
-4. Check that server's public IP with `curl https://api.ipify.org`.
-5. Register that IP in Toss Open API allowlist.
-6. In `Settings -> Secrets and variables -> Actions -> Variables`, set `BRIEFING_RUNNER=self-hosted`.
-7. Run the workflow again and confirm Toss account values appear in `📌 계좌 현황`.
-
-If the self-hosted runner is Windows, ensure Python, Git, and curl are available in PATH. The current workflow commands are simplest on Linux.
 
 ## Notes
 

@@ -8,7 +8,6 @@ Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
 
 import json
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote_plus, unquote
@@ -29,50 +28,9 @@ KST = pytz.timezone("Asia/Seoul")
 TELEGRAM_BOT_TOKEN = env_value("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = env_value("TELEGRAM_CHAT_ID")
 SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
-TOSS_CLIENT_ID = env_value("TOSS_CLIENT_ID") or env_value("TOSS_API_KEY")
-TOSS_CLIENT_SECRET = env_value("TOSS_CLIENT_SECRET") or env_value("TOSS_API_SECRET")
-TOSS_BASE_URL = env_value("TOSS_BASE_URL", "https://openapi.tossinvest.com").rstrip("/")
-TOSS_TOKEN_URL = env_value("TOSS_TOKEN_URL")
-TOSS_QUOTE_URL_TEMPLATE = env_value("TOSS_QUOTE_URL_TEMPLATE")
-TOSS_CANDLE_URL_TEMPLATE = env_value("TOSS_CANDLE_URL_TEMPLATE")
-TOSS_ACCESS_TOKEN = env_value("TOSS_ACCESS_TOKEN") or env_value("TOSS_TOKEN") or env_value("TOSS_BEARER_TOKEN")
-TOSS_ACCOUNT_SEQ = env_value("TOSS_ACCOUNT_SEQ")
-TOSS_ENABLED = env_value("TOSS_ENABLED", "false").lower()
-TOSS_ENABLE_LIVE_ORDERS = env_value("TOSS_ENABLE_LIVE_ORDERS", "false").lower()
-TOSS_LIVE_ORDER_CONFIRM = env_value("TOSS_LIVE_ORDER_CONFIRM")
-TOSS_LIVE_ORDER_CONFIRM_PHRASE = "LIVE_ORDER_APPROVED"
 
 PORTFOLIO_FILE = "portfolio.json"
-_TOSS_ACCESS_TOKEN_CACHE = None
-
-
-class TossApiError(RuntimeError):
-    def __init__(self, status_code, code, message, request_id=None):
-        parts = [f"Toss API {status_code}"]
-        if code:
-            parts.append(str(code))
-        if message:
-            parts.append(str(message))
-        if request_id:
-            parts.append(f"requestId={request_id}")
-        super().__init__(" - ".join(parts))
-        self.status_code = status_code
-        self.code = code
-        self.message = message
-        self.request_id = request_id
-
-
-def format_toss_error(exc):
-    if not isinstance(exc, TossApiError):
-        return str(exc)
-
-    message = str(exc.message or "")
-    if exc.status_code == 403 and "IP address not allowed" in message:
-        detail = "GitHub Actions 실행 IP가 Toss Open API 허용 IP에 등록되지 않았습니다."
-        if exc.request_id:
-            detail += f" requestId={exc.request_id}"
-        return detail
-    return str(exc)
+SCREENER_FILE = "screener.json"
 
 
 def load_portfolio():
@@ -106,682 +64,6 @@ def quote_from_price(asset, price, previous_close, provider):
     }
 
 
-def pick_first_value(data, keys):
-    if isinstance(data, dict):
-        for key in keys:
-            if key in data and data[key] not in (None, ""):
-                return data[key]
-        for value in data.values():
-            found = pick_first_value(value, keys)
-            if found not in (None, ""):
-                return found
-    elif isinstance(data, list):
-        for value in data:
-            found = pick_first_value(value, keys)
-            if found not in (None, ""):
-                return found
-    return None
-
-
-def toss_market_code(asset):
-    if asset.get("toss_market"):
-        return asset["toss_market"]
-    if asset.get("currency") == "KRW":
-        return "KR"
-    if asset.get("currency") == "USD":
-        return "US"
-    return asset.get("currency", "")
-
-
-def toss_symbol(asset):
-    return asset.get("toss_symbol") or asset.get("symbol", "").replace(".KS", "")
-
-
-def toss_token_url():
-    if TOSS_TOKEN_URL:
-        return TOSS_TOKEN_URL
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/oauth2/token"
-    return ""
-
-
-def toss_quote_url():
-    if TOSS_QUOTE_URL_TEMPLATE:
-        return TOSS_QUOTE_URL_TEMPLATE
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/prices"
-    return ""
-
-
-def toss_candle_url():
-    if TOSS_CANDLE_URL_TEMPLATE:
-        return TOSS_CANDLE_URL_TEMPLATE
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/candles"
-    return ""
-
-
-def toss_accounts_url():
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/accounts"
-    return ""
-
-
-def toss_holdings_url():
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/holdings"
-    return ""
-
-
-def toss_buying_power_url():
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/buying-power"
-    return ""
-
-
-def toss_sellable_quantity_url():
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/sellable-quantity"
-    return ""
-
-
-def toss_commissions_url():
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/commissions"
-    return ""
-
-
-def toss_orders_url(order_id=None):
-    if not TOSS_BASE_URL:
-        return ""
-    if order_id:
-        return f"{TOSS_BASE_URL}/api/v1/orders/{quote_plus(str(order_id))}"
-    return f"{TOSS_BASE_URL}/api/v1/orders"
-
-
-def toss_order_modify_url(order_id):
-    if not TOSS_BASE_URL:
-        return ""
-    return f"{TOSS_BASE_URL}/api/v1/orders/{quote_plus(str(order_id))}/modify"
-
-
-def toss_order_cancel_url(order_id):
-    if not TOSS_BASE_URL:
-        return ""
-    return f"{TOSS_BASE_URL}/api/v1/orders/{quote_plus(str(order_id))}/cancel"
-
-
-def toss_exchange_rate_url():
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/exchange-rate"
-    return ""
-
-
-def toss_market_calendar_url(market_country):
-    if TOSS_BASE_URL:
-        return f"{TOSS_BASE_URL}/api/v1/market-calendar/{quote_plus(str(market_country).upper())}"
-    return ""
-
-
-def toss_is_configured():
-    return bool(
-        TOSS_ENABLED in {"1", "true", "yes", "on"}
-        and
-        toss_quote_url()
-        and toss_candle_url()
-        and (TOSS_ACCESS_TOKEN or (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and toss_token_url()))
-    )
-
-
-def toss_account_config_missing():
-    missing = []
-    if TOSS_ENABLED not in {"1", "true", "yes", "on"}:
-        missing.append("TOSS_ENABLED=true")
-    if not toss_holdings_url():
-        missing.append("TOSS_BASE_URL")
-    if not (TOSS_ACCESS_TOKEN or (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and toss_token_url())):
-        missing.append("TOSS_ACCESS_TOKEN 또는 TOSS_CLIENT_ID/TOSS_CLIENT_SECRET")
-    return missing
-
-
-def toss_account_is_configured():
-    return not toss_account_config_missing()
-
-
-def toss_orders_are_configured():
-    return bool(toss_orders_url() and (TOSS_ACCESS_TOKEN or (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and toss_token_url())))
-
-
-def live_toss_orders_enabled():
-    return TOSS_ENABLE_LIVE_ORDERS == "true" and TOSS_LIVE_ORDER_CONFIRM == TOSS_LIVE_ORDER_CONFIRM_PHRASE
-
-
-def toss_error_from_response(response):
-    request_id = response.headers.get("X-Request-Id") or response.headers.get("cf-ray")
-    code = None
-    message = None
-
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = {}
-
-    error = payload.get("error") if isinstance(payload, dict) else None
-    if isinstance(error, dict):
-        request_id = error.get("requestId") or request_id
-        code = error.get("code")
-        message = error.get("message")
-
-    if not message:
-        message = response.text[:200].strip()
-
-    return TossApiError(response.status_code, code, message, request_id)
-
-
-def toss_request(method, url, **kwargs):
-    for attempt in range(3):
-        response = requests.request(method, url, timeout=20, **kwargs)
-        if response.status_code < 400:
-            return response
-        if response.status_code != 429:
-            raise toss_error_from_response(response)
-
-        retry_after = response.headers.get("Retry-After")
-        try:
-            wait_seconds = float(retry_after) if retry_after else 2**attempt
-        except ValueError:
-            wait_seconds = 2**attempt
-        time.sleep(min(wait_seconds, 8))
-
-    raise toss_error_from_response(response)
-
-
-def fetch_toss_access_token():
-    global _TOSS_ACCESS_TOKEN_CACHE
-
-    if TOSS_ACCESS_TOKEN:
-        return TOSS_ACCESS_TOKEN
-    if _TOSS_ACCESS_TOKEN_CACHE:
-        return _TOSS_ACCESS_TOKEN_CACHE
-    token_url = toss_token_url()
-    if not (TOSS_CLIENT_ID and TOSS_CLIENT_SECRET and token_url):
-        raise ValueError("Toss API token settings are missing.")
-
-    response = toss_request(
-        "POST",
-        token_url,
-        data={
-            "grant_type": "client_credentials",
-            "client_id": TOSS_CLIENT_ID,
-            "client_secret": TOSS_CLIENT_SECRET,
-        },
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-    )
-    data = response.json()
-    token = pick_first_value(data, ["access_token", "accessToken", "token"])
-    if not token:
-        raise ValueError("Toss access token was not found in response.")
-
-    _TOSS_ACCESS_TOKEN_CACHE = str(token)
-    return _TOSS_ACCESS_TOKEN_CACHE
-
-
-def authorized_toss_headers(token, account_seq=None):
-    headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {token}",
-    }
-    if account_seq not in (None, ""):
-        headers["X-Tossinvest-Account"] = str(account_seq)
-    return headers
-
-
-def fetch_toss_account_seq(token):
-    if TOSS_ACCOUNT_SEQ:
-        return TOSS_ACCOUNT_SEQ
-    if not toss_accounts_url():
-        raise ValueError("Toss accounts URL is not configured.")
-
-    response = toss_request(
-        "GET",
-        toss_accounts_url(),
-        headers=authorized_toss_headers(token),
-    )
-    result = response.json().get("result", [])
-    if not isinstance(result, list) or not result:
-        raise ValueError("Toss account list is empty.")
-
-    account_seq = result[0].get("accountSeq")
-    if account_seq in (None, ""):
-        raise ValueError("Toss accountSeq was not found.")
-    return str(account_seq)
-
-
-def fetch_toss_holdings():
-    if not toss_account_is_configured():
-        raise ValueError("Toss holdings API is not configured.")
-
-    token = fetch_toss_access_token()
-    account_seq = fetch_toss_account_seq(token)
-    response = toss_request(
-        "GET",
-        toss_holdings_url(),
-        headers=authorized_toss_headers(token, account_seq),
-    )
-    result = response.json().get("result", {})
-    items = result.get("items", []) if isinstance(result, dict) else []
-    return items if isinstance(items, list) else []
-
-
-def fetch_toss_account_resource(url, params=None):
-    if not toss_account_is_configured():
-        raise ValueError("Toss account API is not configured.")
-    if not url:
-        raise ValueError("Toss account resource URL is not configured.")
-
-    token = fetch_toss_access_token()
-    account_seq = fetch_toss_account_seq(token)
-    response = toss_request(
-        "GET",
-        url,
-        params=params,
-        headers=authorized_toss_headers(token, account_seq),
-    )
-    return response.json().get("result")
-
-
-def fetch_toss_buying_power(currency):
-    if currency not in ("KRW", "USD"):
-        raise ValueError("currency must be KRW or USD.")
-    return fetch_toss_account_resource(
-        toss_buying_power_url(),
-        params={"currency": currency},
-    )
-
-
-def fetch_toss_sellable_quantity(symbol):
-    if not symbol:
-        raise ValueError("symbol is required.")
-    return fetch_toss_account_resource(
-        toss_sellable_quantity_url(),
-        params={"symbol": str(symbol)},
-    )
-
-
-def fetch_toss_commissions():
-    result = fetch_toss_account_resource(toss_commissions_url())
-    return result if isinstance(result, list) else []
-
-
-def fetch_toss_open_orders():
-    result = fetch_toss_account_resource(toss_orders_url(), params={"status": "OPEN"})
-    return result if isinstance(result, list) else []
-
-
-def fetch_toss_order_detail(order_id):
-    if not order_id:
-        raise ValueError("order_id is required.")
-    return fetch_toss_account_resource(toss_orders_url(order_id))
-
-
-def fetch_toss_exchange_rate():
-    if not toss_is_configured():
-        raise ValueError("Toss API is not configured.")
-    response = toss_request(
-        "GET",
-        toss_exchange_rate_url(),
-        headers=authorized_toss_headers(fetch_toss_access_token()),
-    )
-    return response.json().get("result")
-
-
-def fetch_toss_market_calendar(market_country):
-    if market_country not in ("KR", "US"):
-        raise ValueError("market_country must be KR or US.")
-    if not toss_is_configured():
-        raise ValueError("Toss API is not configured.")
-    response = toss_request(
-        "GET",
-        toss_market_calendar_url(market_country),
-        headers=authorized_toss_headers(fetch_toss_access_token()),
-    )
-    return response.json().get("result")
-
-
-def build_toss_order_payload(
-    symbol,
-    side,
-    order_type,
-    quantity=None,
-    order_amount=None,
-    price=None,
-    client_order_id=None,
-    confirm_high_value_order=False,
-    time_in_force=None,
-):
-    if not symbol:
-        raise ValueError("symbol is required.")
-    if side not in ("BUY", "SELL"):
-        raise ValueError("side must be BUY or SELL.")
-    if order_type not in ("LIMIT", "MARKET"):
-        raise ValueError("order_type must be LIMIT or MARKET.")
-    if (quantity is None) == (order_amount is None):
-        raise ValueError("Set exactly one of quantity or order_amount.")
-    if order_type == "LIMIT" and price in (None, ""):
-        raise ValueError("LIMIT orders require price.")
-    if order_type == "MARKET" and price not in (None, ""):
-        raise ValueError("MARKET orders must not include price.")
-
-    payload = {
-        "symbol": str(symbol),
-        "side": side,
-        "orderType": order_type,
-    }
-    if quantity is not None:
-        payload["quantity"] = str(quantity)
-    if order_amount is not None:
-        payload["orderAmount"] = str(order_amount)
-    if price not in (None, ""):
-        payload["price"] = str(price)
-    if client_order_id:
-        payload["clientOrderId"] = str(client_order_id)
-    if confirm_high_value_order:
-        payload["confirmHighValueOrder"] = True
-    if time_in_force:
-        payload["timeInForce"] = str(time_in_force)
-    return payload
-
-
-def submit_toss_order(order_payload, dry_run=True):
-    return send_toss_order_request("POST", toss_orders_url(), order_payload, dry_run=dry_run)
-
-
-def modify_toss_order(order_id, order_payload, dry_run=True):
-    if not order_id:
-        raise ValueError("order_id is required.")
-    return send_toss_order_request("POST", toss_order_modify_url(order_id), order_payload, dry_run=dry_run)
-
-
-def cancel_toss_order(order_id, dry_run=True):
-    if not order_id:
-        raise ValueError("order_id is required.")
-    return send_toss_order_request("POST", toss_order_cancel_url(order_id), {}, dry_run=dry_run)
-
-
-def send_toss_order_request(method, url, payload, dry_run=True):
-    if not toss_orders_are_configured():
-        raise ValueError("Toss order API is not configured.")
-    if dry_run or not live_toss_orders_enabled():
-        return {
-            "dryRun": True,
-            "method": method,
-            "url": url,
-            "payload": payload,
-            "liveOrderRequiredEnv": {
-                "TOSS_ENABLE_LIVE_ORDERS": "true",
-                "TOSS_LIVE_ORDER_CONFIRM": TOSS_LIVE_ORDER_CONFIRM_PHRASE,
-            },
-        }
-
-    token = fetch_toss_access_token()
-    account_seq = fetch_toss_account_seq(token)
-    response = toss_request(
-        method,
-        url,
-        json=payload,
-        headers=authorized_toss_headers(token, account_seq),
-    )
-    return response.json().get("result")
-
-
-def holding_map_key(symbol):
-    return str(symbol or "").casefold()
-
-
-def normalize_holding_item(item):
-    market_value = item.get("marketValue", {})
-    return {
-        "shares": item.get("quantity"),
-        "average_purchase_price": item.get("averagePurchasePrice"),
-        "holding_purchase_amount": pick_first_value(market_value, ["purchaseAmount"]),
-        "holding_market_value": pick_first_value(market_value, ["amount"]),
-        "holding_market_value_after_cost": pick_first_value(market_value, ["amountAfterCost"]),
-        "holding_profit_loss_amount": pick_first_value(item.get("profitLoss", {}), ["amount"]),
-        "holding_profit_loss_rate": pick_first_value(item.get("profitLoss", {}), ["rate"]),
-        "daily_profit_loss_amount": pick_first_value(item.get("dailyProfitLoss", {}), ["amount"]),
-        "daily_profit_loss_rate": pick_first_value(item.get("dailyProfitLoss", {}), ["rate"]),
-    }
-
-
-def apply_toss_holdings_to_assets(assets):
-    if not toss_account_is_configured():
-        return assets, []
-
-    try:
-        holdings = fetch_toss_holdings()
-    except Exception as exc:
-        return assets, [f"Toss 보유자산: {format_toss_error(exc)}"]
-
-    holdings_by_symbol = {
-        holding_map_key(item.get("symbol")): normalize_holding_item(item)
-        for item in holdings
-        if isinstance(item, dict)
-    }
-    enriched_assets = []
-    for asset in assets:
-        holding = holdings_by_symbol.get(holding_map_key(toss_symbol(asset)))
-        enriched_assets.append({**asset, **holding} if holding else asset)
-    return enriched_assets, []
-
-
-def to_float(value, default=0.0):
-    if value in (None, ""):
-        return default
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def fetch_toss_management_snapshot():
-    if not toss_account_is_configured():
-        missing = ", ".join(toss_account_config_missing())
-        return {"configured": False, "missing": missing}, [f"Toss 계좌 연동 미설정: {missing}"]
-
-    snapshot = {"configured": True, "buying_power": {}, "open_orders": None}
-    errors = []
-
-    for currency in ("KRW", "USD"):
-        try:
-            result = fetch_toss_buying_power(currency)
-            if isinstance(result, dict):
-                snapshot["buying_power"][currency] = result.get("cashBuyingPower")
-        except Exception as exc:
-            errors.append(f"Toss 매수가능금액 {currency}: {format_toss_error(exc)}")
-
-    try:
-        snapshot["open_orders"] = fetch_toss_open_orders()
-    except Exception as exc:
-        errors.append(f"Toss 대기주문: {format_toss_error(exc)}")
-
-    return snapshot, errors
-
-
-def account_totals_from_quotes(quotes):
-    totals = {}
-    for item in quotes:
-        currency = item.get("currency", "")
-        if currency not in totals:
-            totals[currency] = {
-                "purchase_amount": 0.0,
-                "market_value": 0.0,
-                "daily_profit_loss": 0.0,
-                "profit_loss": 0.0,
-                "holding_count": 0,
-            }
-
-        shares = item.get("shares")
-        if shares not in (None, ""):
-            totals[currency]["holding_count"] += 1
-
-        market_value = item.get("holding_market_value")
-        if market_value in (None, "") and shares not in (None, ""):
-            market_value = to_float(item.get("price")) * to_float(shares)
-
-        purchase_amount = item.get("holding_purchase_amount")
-        if purchase_amount in (None, "") and item.get("holding_profit_loss_amount") not in (None, ""):
-            purchase_amount = to_float(market_value) - to_float(item.get("holding_profit_loss_amount"))
-        if purchase_amount in (None, "") and item.get("average_purchase_price") not in (None, "") and shares not in (None, ""):
-            purchase_amount = to_float(item.get("average_purchase_price")) * to_float(shares)
-
-        totals[currency]["purchase_amount"] += to_float(purchase_amount)
-        totals[currency]["market_value"] += to_float(market_value)
-        totals[currency]["daily_profit_loss"] += to_float(item.get("daily_profit_loss_amount"))
-        totals[currency]["profit_loss"] += to_float(item.get("holding_profit_loss_amount"))
-
-    return totals
-
-
-def account_summary_lines(quotes, account_snapshot=None):
-    account_snapshot = account_snapshot or {}
-    if account_snapshot.get("configured") is False:
-        missing = account_snapshot.get("missing") or "필수 설정"
-        return [f"Toss 계좌 연동 미설정: {missing}"]
-
-    totals = account_totals_from_quotes(quotes)
-    buying_power = account_snapshot.get("buying_power", {})
-    lines = []
-
-    for currency in ("KRW", "USD"):
-        total = totals.get(currency)
-        if not total or total["holding_count"] == 0:
-            continue
-        cash = to_float(buying_power.get(currency))
-        account_value = total["market_value"] + cash
-        line = (
-            f"{currency}: 총계좌가치 {format_signed_amount(account_value, currency).lstrip('+')}, "
-            f"매입금액 {format_signed_amount(total['purchase_amount'], currency).lstrip('+')}, "
-            f"평가금액 {format_signed_amount(total['market_value'], currency).lstrip('+')}, "
-            f"당일변동 {format_signed_amount(total['daily_profit_loss'], currency)}"
-        )
-        line += f", 누적손익 {format_signed_amount(total['profit_loss'], currency)}"
-        lines.append(line)
-
-    for currency in ("KRW", "USD"):
-        amount = buying_power.get(currency)
-        if amount not in (None, ""):
-            lines.append(f"{currency} 현금/매수가능금액: {format_signed_amount(to_float(amount), currency).lstrip('+')}")
-
-    open_orders = account_snapshot.get("open_orders")
-    if isinstance(open_orders, list):
-        lines.append(f"대기 주문: {len(open_orders)}건")
-
-    return lines or ["계좌 데이터 없음"]
-
-
-def select_toss_price_item(asset, data):
-    result = data.get("result") if isinstance(data, dict) else data
-    items = result if isinstance(result, list) else [result]
-    symbol = toss_symbol(asset).casefold()
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        item_symbol = str(item.get("symbol", "")).casefold()
-        if item_symbol == symbol:
-            return item
-
-    for item in items:
-        if isinstance(item, dict):
-            return item
-    return {}
-
-
-def toss_previous_close_from_candles(candle_data):
-    result = candle_data.get("result") if isinstance(candle_data, dict) else candle_data
-    candles = result.get("candles") if isinstance(result, dict) else result
-    if not isinstance(candles, list) or len(candles) < 2:
-        raise ValueError("Toss candle response does not include previous close.")
-
-    previous_close = candles[1].get("closePrice") if isinstance(candles[1], dict) else None
-    if previous_close in (None, ""):
-        raise ValueError("Toss previous close was not found in candle response.")
-    return previous_close
-
-
-def parse_toss_quote(asset, price_data, candle_data=None):
-    price_item = select_toss_price_item(asset, price_data)
-    price = pick_first_value(price_item, ["lastPrice", "price", "currentPrice"])
-    previous_close = (
-        toss_previous_close_from_candles(candle_data)
-        if candle_data is not None
-        else pick_first_value(price_item, ["previousClose", "prevClose", "basePrice", "priorClose"])
-    )
-    return quote_from_price(asset, price, previous_close, "Toss")
-
-
-def format_toss_url(url_template, asset):
-    if "{" not in url_template:
-        return url_template
-    return url_template.format(
-        symbol=quote_plus(toss_symbol(asset)),
-        ticker=quote_plus(asset["ticker"]),
-        market=quote_plus(toss_market_code(asset)),
-    )
-
-
-def fetch_toss_quote(asset):
-    if not toss_is_configured():
-        raise ValueError("Toss API is not configured.")
-
-    token = fetch_toss_access_token()
-    quote_url = toss_quote_url()
-    if "{" in quote_url:
-        url = format_toss_url(quote_url, asset)
-        params = None
-    else:
-        url = quote_url
-        params = {
-            "symbols": toss_symbol(asset),
-        }
-    response = toss_request(
-        "GET",
-        url,
-        params=params,
-        headers={
-            "Accept": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
-    )
-    price_data = response.json()
-
-    candle_url = toss_candle_url()
-    if "{" in candle_url:
-        url = format_toss_url(candle_url, asset)
-        params = None
-    else:
-        url = candle_url
-        params = {
-            "symbol": toss_symbol(asset),
-            "interval": "1d",
-            "count": 2,
-            "adjusted": "true",
-        }
-    candle_response = toss_request(
-        "GET",
-        url,
-        params=params,
-        headers={
-            "Accept": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
-    )
-    return parse_toss_quote(asset, price_data, candle_response.json())
-
-
 def fetch_yahoo_quote(asset):
     url = f"https://query2.finance.yahoo.com/v8/finance/chart/{asset['symbol']}"
     params = {"range": "1d", "interval": "1m"}
@@ -803,13 +85,160 @@ def fetch_yahoo_quote(asset):
     return quote_from_price(asset, price, previous_close, "Yahoo")
 
 
-def fetch_quote(asset):
-    if toss_is_configured():
-        try:
-            return fetch_toss_quote(asset)
-        except Exception as exc:
-            print(f"TOSS FALLBACK {asset['ticker']}: {exc}")
+def load_screener_config():
+    if not os.path.exists(SCREENER_FILE):
+        return None
 
+    with open(SCREENER_FILE, "r", encoding="utf-8") as file:
+        config = json.load(file)
+
+    if not config.get("enabled", True):
+        return None
+    return config
+
+
+def raw_value(value):
+    if isinstance(value, dict):
+        return value.get("raw")
+    return value
+
+
+def float_or_none(value):
+    value = raw_value(value)
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_screen_symbol(item):
+    if isinstance(item, str):
+        return {"symbol": item, "ticker": item, "currency": "USD"}
+    symbol = item.get("symbol") or item.get("ticker")
+    return {
+        "symbol": symbol,
+        "ticker": item.get("ticker") or symbol,
+        "currency": item.get("currency", "USD"),
+        "name": item.get("name"),
+    }
+
+
+def fetch_yahoo_fundamentals(symbol):
+    modules = ",".join(["price", "summaryDetail", "defaultKeyStatistics", "financialData"])
+    url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{quote_plus(symbol)}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, params={"modules": modules}, headers=headers, timeout=20)
+    response.raise_for_status()
+
+    result = response.json().get("quoteSummary", {}).get("result") or []
+    if not result:
+        raise ValueError("Yahoo fundamentals not found")
+
+    data = result[0]
+    price = data.get("price", {})
+    summary = data.get("summaryDetail", {})
+    stats = data.get("defaultKeyStatistics", {})
+    financial = data.get("financialData", {})
+
+    return {
+        "symbol": symbol,
+        "name": raw_value(price.get("shortName")) or raw_value(price.get("longName")) or symbol,
+        "currency": raw_value(price.get("currency")) or "USD",
+        "roe": float_or_none(financial.get("returnOnEquity")),
+        "per": float_or_none(summary.get("trailingPE")) or float_or_none(stats.get("trailingPE")),
+        "psr": float_or_none(summary.get("priceToSalesTrailing12Months"))
+        or float_or_none(stats.get("priceToSalesTrailing12Months")),
+        "pbr": float_or_none(stats.get("priceToBook")),
+        "provider": "Yahoo fundamentals",
+    }
+
+
+def passes_fundamental_screen(item, criteria):
+    roe = item.get("roe")
+    per = item.get("per")
+    psr = item.get("psr")
+    pbr = item.get("pbr")
+    return (
+        roe is not None
+        and per is not None
+        and psr is not None
+        and pbr is not None
+        and roe >= float(criteria.get("min_roe", 0.15))
+        and per <= float(criteria.get("max_per", 15))
+        and psr < float(criteria.get("exclude_psr_gte", 3))
+        and pbr <= float(criteria.get("max_pbr", 1.5))
+    )
+
+
+def screen_fundamental_candidates(config):
+    criteria = config.get("criteria", {})
+    candidates = []
+    errors = []
+
+    for raw_symbol in config.get("symbols", []):
+        candidate = normalize_screen_symbol(raw_symbol)
+        symbol = candidate.get("symbol")
+        if not symbol:
+            continue
+        try:
+            data = fetch_yahoo_fundamentals(symbol)
+            data.update({key: value for key, value in candidate.items() if value})
+            data["passes"] = passes_fundamental_screen(data, criteria)
+            if data["passes"]:
+                candidates.append(data)
+            print(
+                f"SCREEN {symbol}: "
+                f"ROE={data.get('roe')} PER={data.get('per')} "
+                f"PSR={data.get('psr')} PBR={data.get('pbr')} pass={data['passes']}"
+            )
+        except Exception as exc:
+            errors.append(f"{symbol}: {exc}")
+            print(f"ERROR SCREEN {symbol}: {exc}")
+
+    candidates.sort(key=lambda item: (-(item.get("roe") or 0), item.get("per") or 999))
+    return candidates, errors
+
+
+def format_ratio(value, multiplier=1.0, suffix=""):
+    if value is None:
+        return "-"
+    return f"{value * multiplier:.2f}{suffix}"
+
+
+def build_screening_sections(candidates, screen_errors):
+    if not candidates and not screen_errors:
+        return [], []
+
+    telegram_lines = ["", "🔎 가치 조건 검색"]
+    markdown_lines = ["", "## 🔎 가치 조건 검색", ""]
+
+    if candidates:
+        for item in candidates[:5]:
+            line = (
+                f"{item['symbol']} ROE {format_ratio(item.get('roe'), 100, '%')}, "
+                f"PER {format_ratio(item.get('per'), suffix='배')}, "
+                f"PSR {format_ratio(item.get('psr'), suffix='배')}, "
+                f"PBR {format_ratio(item.get('pbr'), suffix='배')}"
+            )
+            telegram_lines.append(f"  • {line}")
+            markdown_lines.append(f"- {line}")
+    else:
+        telegram_lines.append("  • 조건 통과 종목 없음")
+        markdown_lines.append("- 조건 통과 종목 없음")
+
+    if screen_errors:
+        telegram_lines.extend(["", "⚠️ 검색 데이터 확인 필요"])
+        markdown_lines.extend(["", "### ⚠️ 검색 데이터 확인 필요", ""])
+        for error in screen_errors[:5]:
+            telegram_lines.append(f"  • {error}")
+            markdown_lines.append(f"- {error}")
+
+    return telegram_lines, markdown_lines
+
+
+def fetch_quote(asset):
     return fetch_yahoo_quote(asset)
 
 
@@ -1125,7 +554,7 @@ def build_alert_lines(quotes, errors, news):
     return alerts[:6] if alerts else ["특이사항 없음"]
 
 
-def build_content(indexes, quotes, news, errors, account_snapshot=None):
+def build_content(indexes, quotes, news, errors, screen_result=None):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -1147,7 +576,6 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
     ]
     alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors, news)]
     action_lines = [f"  ▸ {action_for(item)}" for item in quotes]
-    account_lines = account_summary_lines(quotes, account_snapshot) if account_snapshot else []
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
     news_sections = []
@@ -1156,6 +584,11 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
         if not titles:
             continue
         news_sections.append((item["display"], titles))
+    screen_result = screen_result or {}
+    screen_telegram_lines, screen_markdown_lines = build_screening_sections(
+        screen_result.get("candidates", []),
+        screen_result.get("errors", []),
+    )
 
     telegram_lines = [
         f"📈 포트폴리오 브리핑 {today_short}",
@@ -1182,14 +615,6 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
         f"  ▸ 전체 분위기: {mood}",
     ]
 
-    if account_lines:
-        volatility_index = telegram_lines.index("🎯 오늘의 대응")
-        telegram_lines[volatility_index:volatility_index] = [
-            "📌 계좌 현황",
-            *[f"  ▸ {line}" for line in account_lines],
-            "",
-        ]
-
     if news_sections:
         telegram_lines.extend(["", "📰 참고 뉴스"])
         for display, titles in news_sections:
@@ -1198,6 +623,9 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
 
     if errors:
         telegram_lines.extend(["", "⚠️ 데이터 확인 필요", *[f"  ▸ {error}" for error in errors]])
+
+    if screen_telegram_lines:
+        telegram_lines.extend(screen_telegram_lines)
 
     md_lines = [
         "# 📈 포트폴리오 일일 브리핑",
@@ -1266,15 +694,6 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
         ]
     )
 
-    if account_lines:
-        action_index = md_lines.index("## 🎯 오늘의 대응")
-        md_lines[action_index:action_index] = [
-            "",
-            "## 📌 계좌 현황",
-            "",
-            *[f"- {line}" for line in account_lines],
-        ]
-
     if news_sections:
         md_lines.extend(["", "## 📰 참고 뉴스", ""])
         for display, titles in news_sections:
@@ -1284,6 +703,9 @@ def build_content(indexes, quotes, news, errors, account_snapshot=None):
 
     if errors:
         md_lines.extend(["", "## ⚠️ 데이터 확인 필요", "", *[f"- {error}" for error in errors]])
+
+    if screen_markdown_lines:
+        md_lines.extend(screen_markdown_lines)
 
     return "\n".join(telegram_lines), "\n".join(md_lines) + "\n"
 
@@ -1332,32 +754,34 @@ def main():
     print("=" * 50)
 
     try:
-        use_toss = toss_is_configured()
-        total_steps = 6 if use_toss else 5
+        screener_config = load_screener_config()
+        total_steps = 5
+        if screener_config:
+            total_steps += 1
 
         print(f"[1/{total_steps}] Fetching prices...")
         indexes_config, assets_config = load_portfolio()
-        holding_errors = []
-        account_snapshot = None
-        account_errors = []
-        if use_toss:
-            assets_config, holding_errors = apply_toss_holdings_to_assets(assets_config)
         indexes, index_errors = fetch_prices(indexes_config, require_any=False)
         quotes, quote_errors = fetch_prices(assets_config)
 
         next_step = 2
-        if use_toss:
-            print(f"[{next_step}/{total_steps}] Fetching account status...")
-            account_snapshot, account_errors = fetch_toss_management_snapshot()
-            next_step += 1
-
         print(f"[{next_step}/{total_steps}] Fetching news titles...")
         news, news_errors = fetch_news(assets_config)
-        errors = holding_errors + account_errors + index_errors + quote_errors + news_errors
+        errors = index_errors + quote_errors + news_errors
+
+        screen_result = None
+        if screener_config:
+            next_step += 1
+            print(f"[{next_step}/{total_steps}] Screening fundamentals...")
+            screen_candidates, screen_errors = screen_fundamental_candidates(screener_config)
+            screen_result = {
+                "candidates": screen_candidates,
+                "errors": screen_errors,
+            }
 
         next_step += 1
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
-        telegram_msg, md_content = build_content(indexes, quotes, news, errors, account_snapshot)
+        telegram_msg, md_content = build_content(indexes, quotes, news, errors, screen_result)
 
         next_step += 1
         print(f"[{next_step}/{total_steps}] Saving markdown...")
