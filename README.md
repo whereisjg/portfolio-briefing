@@ -15,7 +15,6 @@ Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Fin
 | `SPCX` | SPCX ETF | US |
 | `CEG` | Constellation Energy | US |
 | `VTV` | Vanguard Value ETF | US |
-| `XOVR` | XOVR ETF | US |
 | `426030` | TIMEFOLIO Nasdaq 100 Active ETF | Korea |
 
 ## What It Does

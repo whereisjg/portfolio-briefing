@@ -15,7 +15,6 @@ The workflow generates a daily portfolio briefing for:
 - `SPCX`
 - `CEG`
 - `VTV`
-- `XOVR`
 - `426030` / TIMEFOLIO Nasdaq 100 Active ETF
 
 It fetches Yahoo Finance prices directly, adds news titles from the last 24 hours using free RSS search, translates English headlines to Korean when possible, applies rule-based guidance, sends the briefing to Telegram, and saves a markdown copy under `briefings/`.

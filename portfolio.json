@@ -285,30 +285,6 @@
         "video",
         "tv"
       ]
-    },
-    {
-      "ticker": "XOVR",
-      "symbol": "XOVR",
-      "name": "XOVR",
-      "display": "XOVR",
-      "currency": "USD",
-      "shares": null,
-      "weight_pct": null,
-      "news_query": "XOVR ETF",
-      "news_queries": [
-        "XOVR ETF",
-        "XOVR holdings",
-        "cross over ETF"
-      ],
-      "news_include": [
-        "XOVR",
-        "ETF",
-        "cross over"
-      ],
-      "news_exclude": [
-        "Xover",
-        "crossover cars"
-      ]
     }
   ]
 }
