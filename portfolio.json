@@ -209,30 +209,105 @@
       ]
     },
     {
-      "ticker": "426030",
-      "symbol": "426030.KS",
-      "name": "TIMEFOLIO 나스닥100액티브",
-      "display": "TIMEFOLIO나스닥100",
-      "currency": "KRW",
+      "ticker": "SPCX",
+      "symbol": "SPCX",
+      "name": "SPCX",
+      "display": "SPCX",
+      "currency": "USD",
       "shares": null,
       "weight_pct": null,
-      "news_query": "TIMEFOLIO 나스닥100액티브 ETF",
+      "news_query": "SPCX ETF",
       "news_queries": [
-        "TIMEFOLIO 나스닥100액티브 ETF",
-        "타임폴리오 나스닥100 액티브 ETF",
-        "나스닥100 액티브 ETF"
+        "SPCX ETF",
+        "SPCX holdings",
+        "special purpose acquisition company ETF"
       ],
       "news_include": [
-        "TIMEFOLIO",
-        "타임폴리오",
-        "나스닥100",
-        "나스닥 100",
-        "액티브 ETF"
+        "SPCX",
+        "SPAC",
+        "special purpose acquisition company",
+        "IPO",
+        "merger",
+        "de-SPAC"
       ],
       "news_exclude": [
-        "우주",
-        "SpaceX",
-        "블랙록"
+        "space x",
+        "SpaceX"
+      ]
+    },
+    {
+      "ticker": "CEG",
+      "symbol": "CEG",
+      "name": "Constellation Energy",
+      "display": "CEG",
+      "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
+      "news_query": "Constellation Energy CEG stock",
+      "news_queries": [
+        "Constellation Energy CEG stock",
+        "CEG earnings nuclear energy",
+        "Constellation Energy power grid"
+      ],
+      "news_include": [
+        "CEG",
+        "Constellation Energy",
+        "nuclear",
+        "energy",
+        "power grid",
+        "data center"
+      ],
+      "news_exclude": [
+        "constellation software"
+      ]
+    },
+    {
+      "ticker": "VTV",
+      "symbol": "VTV",
+      "name": "VTV",
+      "display": "VTV",
+      "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
+      "news_query": "VTV Vanguard Value ETF",
+      "news_queries": [
+        "VTV Vanguard Value ETF",
+        "VTV value ETF",
+        "Vanguard Value ETF"
+      ],
+      "news_include": [
+        "VTV",
+        "Vanguard Value",
+        "value ETF",
+        "value stocks"
+      ],
+      "news_exclude": [
+        "video",
+        "tv"
+      ]
+    },
+    {
+      "ticker": "XOVR",
+      "symbol": "XOVR",
+      "name": "XOVR",
+      "display": "XOVR",
+      "currency": "USD",
+      "shares": null,
+      "weight_pct": null,
+      "news_query": "XOVR ETF",
+      "news_queries": [
+        "XOVR ETF",
+        "XOVR holdings",
+        "cross over ETF"
+      ],
+      "news_include": [
+        "XOVR",
+        "ETF",
+        "cross over"
+      ],
+      "news_exclude": [
+        "Xover",
+        "crossover cars"
       ]
     }
   ]
