@@ -75,6 +75,7 @@
       "currency": "USD",
       "shares": 37.337306,
       "weight_pct": 27.3,
+      "news_optional": true,
       "news_query": "ProShares Ultra Semiconductors ETF",
       "news_queries": [
         "ProShares Ultra Semiconductors ETF",

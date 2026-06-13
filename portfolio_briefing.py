@@ -8,6 +8,7 @@ Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
 
 import json
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote_plus, unquote
@@ -31,6 +32,17 @@ SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
 
 PORTFOLIO_FILE = "portfolio.json"
 SCREENER_FILE = "screener.json"
+
+
+def configure_console_output():
+    """Avoid UnicodeEncodeError during local Windows previews."""
+    for stream in (sys.stdout, sys.stderr):
+        if not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def load_portfolio():
@@ -749,6 +761,7 @@ def send_telegram(message):
 
 
 def main():
+    configure_console_output()
     print("=" * 50)
     print(f"Portfolio briefing - {now_kst()}")
     print("=" * 50)
