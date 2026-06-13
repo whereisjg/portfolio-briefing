@@ -106,6 +106,11 @@ class FormattingTests(unittest.TestCase):
             "3개 중 상승 1개, 하락 2개 / 상대강세 AMD +2.95% / 최대약세 QLD -3.77%",
         )
 
+    def test_news_optional_suppresses_missing_news_alert(self):
+        quotes = [{"ticker": "SCHD", "chg_pct": 0.5, "news_optional": True}]
+
+        self.assertEqual(briefing.build_alert_lines(quotes, [], {"SCHD": []}), ["특이사항 없음"])
+
 
 class FundamentalScreeningTests(unittest.TestCase):
     def test_load_screener_config_returns_none_when_disabled(self):

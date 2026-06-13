@@ -545,7 +545,7 @@ def build_alert_lines(quotes, errors, news):
         elif item["chg_pct"] <= -3:
             alerts.append(f"급락: {item['ticker']} {item['chg_pct']:+.2f}%")
 
-        if not news.get(item["ticker"]):
+        if not item.get("news_optional") and not news.get(item["ticker"]):
             alerts.append(f"뉴스 없음: {item['ticker']}")
 
     if errors:

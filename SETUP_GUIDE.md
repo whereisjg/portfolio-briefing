@@ -154,6 +154,7 @@ News quality is controlled by:
 - `news_queries`: search phrases used in order
 - `news_include`: terms that make a title relevant
 - `news_exclude`: terms that remove noisy or misleading titles
+- `news_optional`: set to `true` when missing daily news should not be treated as an alert
 
 To preview locally without sending Telegram:
 

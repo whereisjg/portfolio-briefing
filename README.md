@@ -80,6 +80,7 @@ Optional fields:
 - `news_queries`: fallback news searches for tickers with weak direct coverage.
 - `news_include`: terms that make a news title relevant to the asset.
 - `news_exclude`: terms to exclude from news results.
+- `news_optional`: set to `true` when missing daily news should not be treated as an alert.
 
 ## Daily Value Screener
 

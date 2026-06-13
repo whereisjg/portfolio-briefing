@@ -212,6 +212,7 @@
       "currency": "USD",
       "shares": 1,
       "weight_pct": 0.24,
+      "news_optional": true,
       "news_query": "SCHD Schwab US Dividend Equity ETF",
       "news_queries": [
         "SCHD Schwab US Dividend Equity ETF",
