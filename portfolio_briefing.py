@@ -8,6 +8,7 @@ Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -388,7 +389,6 @@ def split_news_source(title):
 
 
 def clean_news_headline(title):
-    import re
     headline, _ = split_news_source(title)
     # 끝에 붙는 ,펀드명,TICKER 패턴 반복 제거 (대문자 약어 포함된 세그먼트)
     for _ in range(3):
@@ -669,7 +669,6 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         for item in quotes
     ]
     alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors, news)]
-    action_lines = [f"  ▸ {action_for(item)}" for item in quotes]
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
     news_sections = []
@@ -816,7 +815,12 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
             "",
             "## 🎯 오늘의 대응",
             "",
-            *[f"- {action_for(item)}" for item in quotes],
+            *[
+                f"- {item['ticker']}: {claude_actions[item['ticker']].split(': ', 1)[-1]}"
+                if item["ticker"] in claude_actions
+                else f"- {action_for(item)}"
+                for item in quotes
+            ],
             "",
             "## 📊 변동성 체크",
             "",
@@ -830,7 +834,10 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         md_lines.extend(["", "## 📰 참고 뉴스", ""])
         for display, titles in news_sections:
             md_lines.extend([f"### {display}", ""])
-            md_lines.extend(f"- {title}" for title in titles)
+            for title in titles:
+                headline = clean_news_headline(title)
+                _, src = split_news_source(title)
+                md_lines.append(f"- {headline} - {src}" if src else f"- {headline}")
             md_lines.append("")
 
     if errors:
