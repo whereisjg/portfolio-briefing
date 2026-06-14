@@ -386,6 +386,15 @@ def split_news_source(title):
     return headline.strip(), source.strip()
 
 
+def clean_news_headline(title):
+    headline, _ = split_news_source(title)
+    import re
+    # 끝에 붙는 ,펀드명,TICKER 패턴 제거
+    headline = re.sub(r',\s*[A-Z]{2,6}\s*$', '', headline).strip()
+    headline = re.sub(r',\s*[^,]+,\s*[A-Z]{2,6}\s*$', '', headline).strip()
+    return headline
+
+
 def translate_to_korean(text):
     url = "https://translate.googleapis.com/translate_a/single"
     params = {
@@ -644,8 +653,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
     flat_news = []
     for item in quotes:
         for title in news.get(item["ticker"], [])[:1]:
-            headline_text_news, _ = split_news_source(title)
-            flat_news.append(f"📰 {item['ticker']}: {headline_text_news}")
+            flat_news.append(f"📰 {item['ticker']}: {clean_news_headline(title)}")
 
     telegram_lines = [f"📈 포트폴리오 브리핑 {today_short}", ""]
 
