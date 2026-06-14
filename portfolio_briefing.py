@@ -387,11 +387,14 @@ def split_news_source(title):
 
 
 def clean_news_headline(title):
-    headline, _ = split_news_source(title)
     import re
-    # 끝에 붙는 ,펀드명,TICKER 패턴 제거
-    headline = re.sub(r',\s*[A-Z]{2,6}\s*$', '', headline).strip()
-    headline = re.sub(r',\s*[^,]+,\s*[A-Z]{2,6}\s*$', '', headline).strip()
+    headline, _ = split_news_source(title)
+    # 끝에 붙는 ,펀드명,TICKER 패턴 반복 제거 (대문자 약어 포함된 세그먼트)
+    for _ in range(3):
+        cleaned = re.sub(r',\s*(?=[^,]*\b[A-Z]{2,}\b)[^,]+$', '', headline).strip()
+        if cleaned == headline:
+            break
+        headline = cleaned
     return headline
 
 
