@@ -448,6 +448,8 @@ def collect_raw_news_candidates(asset, limit=2):
 
     for query_text in news_queries_for_asset(asset):
         for raw_title in fetch_news_for_query(query_text, candidate_limit):
+            if "|" in raw_title:
+                continue
             if is_excluded_news(asset, raw_title):
                 continue
             score = news_relevance_score(asset, raw_title)
@@ -481,6 +483,9 @@ def apply_translations_and_rank(asset, candidates, translation_map, limit=2):
                 title = f"[원문] {raw_title}"
 
         if is_excluded_news(asset, title):
+            continue
+
+        if len(clean_news_headline(title).strip()) < 8:
             continue
 
         score = max(raw_score, news_relevance_score(asset, title))
