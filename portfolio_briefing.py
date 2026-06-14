@@ -602,39 +602,72 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         screen_result.get("errors", []),
     )
 
-    telegram_lines = [
-        f"📈 포트폴리오 브리핑 {today_short}",
-        "",
-        "🔎 한 줄 판단",
-        f"{headline_text}",
-        f"분위기: {mood}",
-        f"가격 출처: {provider_text}",
-        "",
-        "⚠️ 먼저 볼 것",
-        *alert_lines,
-        "",
-        "💰 가격",
-        *index_lines,
-        "",
-        *price_lines,
-        "",
-        "🎯 오늘의 대응",
-        *action_lines,
-        "",
-        "📊 변동성 체크",
-        f"  ▸ 급등 종목: {surge_text}",
-        f"  ▸ 급락 종목: {drop_text}",
-        f"  ▸ 전체 분위기: {mood}",
-    ]
+    # 지수 요약 한 줄
+    index_summary = " | ".join(
+        f"{item['display']} {format_price(item)} ({item['chg_pct']:+.2f}%)"
+        for item in indexes
+    )
 
-    if news_sections:
-        telegram_lines.extend(["", "📰 참고 뉴스"])
-        for display, titles in news_sections:
-            telegram_lines.extend(["", f"[{display}]"])
-            telegram_lines.extend(f"  ▸ {title}" for title in titles)
+    # 상승/하락 카운트
+    pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
+    neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
+    count_str = f"🔴{pos_count} 🔵{neg_count}"
+
+    # 종목별 한 줄 요약
+    def price_row(item):
+        alert = "🚨" if abs(item["chg_pct"]) >= 5 else ("⚠️" if abs(item["chg_pct"]) >= 3 else "")
+        shares = item.get("shares")
+        if shares not in (None, ""):
+            effect = item.get("chg_amount", 0) * float(shares)
+            if item["currency"] == "USD":
+                effect_str = f"  +${effect:,.0f}" if effect >= 0 else f"  -${abs(effect):,.0f}"
+            else:
+                effect_str = f"  {effect:+,.0f}원"
+        else:
+            effect_str = ""
+        return (
+            f"{movement_emoji(item['chg_pct'])} {item['ticker']:<5} "
+            f"{format_price(item):>9}  {item['chg_pct']:>+6.2f}%{alert}{effect_str}"
+        )
+
+    compact_rows = [price_row(item) for item in quotes]
+
+    # 주목 종목만 대응 한 줄로
+    alert_action_lines = []
+    for item in quotes:
+        if abs(item["chg_pct"]) >= 3:
+            icon = "🚨" if abs(item["chg_pct"]) >= 5 else "⚠️"
+            action_text = action_for(item).split(": ", 1)[-1]
+            alert_action_lines.append(f"{icon} {item['ticker']} {item['chg_pct']:+.2f}% → {action_text}")
+
+    # 뉴스 압축 (종목당 1줄)
+    flat_news = []
+    for item in quotes:
+        for title in news.get(item["ticker"], [])[:1]:
+            headline_text_news, _ = split_news_source(title)
+            flat_news.append(f"📰 {item['ticker']}: {headline_text_news}")
+
+    telegram_lines = [f"📈 포트폴리오 브리핑 {today_short}", ""]
+
+    if indexes:
+        telegram_lines.append(index_summary)
+
+    telegram_lines.extend([
+        f"분위기: {mood} · {count_str}",
+        "",
+        "─" * 26,
+        *compact_rows,
+        "─" * 26,
+    ])
+
+    if alert_action_lines:
+        telegram_lines.extend(["", *alert_action_lines])
+
+    if flat_news:
+        telegram_lines.extend(["", *flat_news])
 
     if errors:
-        telegram_lines.extend(["", "⚠️ 데이터 확인 필요", *[f"  ▸ {error}" for error in errors]])
+        telegram_lines.extend(["", "⚠️ 오류", *[f"  • {e}" for e in errors]])
 
     if screen_telegram_lines:
         telegram_lines.extend(screen_telegram_lines)
