@@ -5,10 +5,11 @@ import portfolio_briefing as briefing
 
 
 class NewsFilteringTests(unittest.TestCase):
-    def test_excludes_raw_title_before_translation(self):
+    def test_collect_excludes_raw_title_matching_exclusion_terms(self):
         asset = {
             "ticker": "USD",
-            "news_query": "semiconductors",
+            "news_queries": ["semiconductors"],
+            "news_include": ["semiconductor", "chip"],
             "news_exclude": ["US dollar"],
         }
         raw_titles = [
@@ -17,55 +18,16 @@ class NewsFilteringTests(unittest.TestCase):
         ]
 
         with patch.object(briefing, "fetch_news_for_query", return_value=raw_titles):
-            with patch.object(
-                briefing,
-                "translate_title_if_needed",
-                side_effect=lambda title: f"KO: {title}",
-            ) as translate:
-                titles = briefing.fetch_news_for_asset(asset, limit=1)
+            candidates = briefing.collect_raw_news_candidates(asset)
 
-        self.assertEqual(
-            titles,
-            ["KO: Semiconductor ETF rebounds after chip rally - MarketWatch"],
-        )
-        translate.assert_called_once_with(
-            "Semiconductor ETF rebounds after chip rally - MarketWatch"
-        )
+        titles = [raw_title for raw_title, _, _ in candidates]
+        self.assertNotIn("US dollar rises before Fed decision - Reuters", titles)
+        self.assertIn("Semiconductor ETF rebounds after chip rally - MarketWatch", titles)
 
-    def test_excludes_translated_title_after_translation(self):
-        asset = {
-            "ticker": "USD",
-            "news_query": "semiconductors",
-            "news_exclude": ["currency"],
-        }
-
-        with patch.object(
-            briefing,
-            "fetch_news_for_query",
-            return_value=["Dollar index rises - Reuters"],
-        ):
-            with patch.object(
-                briefing,
-                "translate_title_if_needed",
-                return_value="US currency rises - Reuters",
-            ):
-                titles = briefing.fetch_news_for_asset(asset, limit=1)
-
-        self.assertEqual(titles, [])
-
-    def test_returns_empty_when_limit_is_zero(self):
-        asset = {"ticker": "QLD", "news_query": "Nasdaq 100"}
-
-        with patch.object(briefing, "fetch_news_for_query") as fetch_news:
-            titles = briefing.fetch_news_for_asset(asset, limit=0)
-
-        self.assertEqual(titles, [])
-        fetch_news.assert_not_called()
-
-    def test_requires_relevant_news_terms(self):
+    def test_collect_requires_relevant_news_terms(self):
         asset = {
             "ticker": "AIPO",
-            "news_query": "AIPO ETF",
+            "news_queries": ["AIPO ETF"],
             "news_include": ["AIPO", "power infrastructure", "data center"],
             "news_exclude": ["Bitcoin", "MARA"],
         }
@@ -76,17 +38,39 @@ class NewsFilteringTests(unittest.TestCase):
         ]
 
         with patch.object(briefing, "fetch_news_for_query", return_value=raw_titles):
-            with patch.object(
-                briefing,
-                "translate_title_if_needed",
-                side_effect=lambda title: title,
-            ):
-                titles = briefing.fetch_news_for_asset(asset, limit=2)
+            candidates = briefing.collect_raw_news_candidates(asset)
 
+        titles = [raw_title for raw_title, _, _ in candidates]
         self.assertEqual(
             titles,
             ["Defiance AIPO ETF tracks AI power infrastructure - ETF.com"],
         )
+
+    def test_apply_translations_uses_mapping(self):
+        asset = {
+            "ticker": "QLD",
+            "news_include": ["QQQ", "Nasdaq", "나스닥"],
+            "news_exclude": [],
+        }
+        candidates = [("QQQ ETF surges on Nasdaq rally - Reuters", 2, 0)]
+        translation_map = {"QQQ ETF surges on Nasdaq rally": "나스닥 랠리로 QQQ ETF 급등"}
+
+        titles = briefing.apply_translations_and_rank(asset, candidates, translation_map, limit=1)
+
+        self.assertEqual(titles, ["나스닥 랠리로 QQQ ETF 급등 - Reuters"])
+
+    def test_apply_excludes_translated_title(self):
+        asset = {
+            "ticker": "USD",
+            "news_include": ["semiconductor", "반도체"],
+            "news_exclude": ["달러"],
+        }
+        candidates = [("Dollar rises as chip fears ease - Reuters", 2, 0)]
+        translation_map = {"Dollar rises as chip fears ease": "달러 상승, 반도체 우려 완화"}
+
+        titles = briefing.apply_translations_and_rank(asset, candidates, translation_map, limit=1)
+
+        self.assertEqual(titles, [])
 
 
 class FormattingTests(unittest.TestCase):

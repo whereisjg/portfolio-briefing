@@ -34,6 +34,8 @@ CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
 
 PORTFOLIO_FILE = "portfolio.json"
 SCREENER_FILE = "screener.json"
+SIGNIFICANT_MOVE_PCT = 3.0
+CRITICAL_MOVE_PCT = 5.0
 
 
 def configure_console_output():
@@ -55,6 +57,17 @@ def load_portfolio():
     assets = config.get("assets", [])
     if not assets:
         raise ValueError("portfolio.json에 assets가 없습니다.")
+
+    try:
+        weights = [float(a["weight_pct"]) for a in assets
+                   if str(a.get("weight_pct", "")).strip() not in ("", "None")]
+        if weights:
+            total = sum(weights)
+            if abs(total - 100) > 1:
+                print(f"WARNING: 비중 합계 {total:.2f}% (100%와 {total - 100:+.2f}% 차이)")
+    except (ValueError, TypeError) as exc:
+        print(f"WARNING: weight_pct 변환 오류, 비중 검증 건너뜀: {exc}")
+
     return indexes, assets
 
 
@@ -340,43 +353,6 @@ def news_dedupe_key(title):
     return " ".join(headline.casefold().split())
 
 
-def fetch_news_for_asset(asset, limit=2):
-    if limit <= 0:
-        return []
-
-    seen = set()
-    ranked_titles = []
-    candidate_limit = max(limit * 4, 6)
-    order = 0
-
-    for query_text in news_queries_for_asset(asset):
-        for raw_title in fetch_news_for_query(query_text, candidate_limit):
-            if is_excluded_news(asset, raw_title):
-                continue
-
-            raw_score = news_relevance_score(asset, raw_title)
-            if raw_score <= 0:
-                continue
-
-            title = translate_title_if_needed(raw_title)
-            if is_excluded_news(asset, title):
-                continue
-
-            score = max(raw_score, news_relevance_score(asset, title))
-            if score <= 0:
-                continue
-
-            title_key = news_dedupe_key(title)
-            if title_key in seen:
-                continue
-            seen.add(title_key)
-            ranked_titles.append((score, order, title))
-            order += 1
-
-    ranked_titles.sort(key=lambda item: (-item[0], item[1]))
-    return [title for _score, _order, title in ranked_titles[:limit]]
-
-
 def has_korean(text):
     return any("가" <= char <= "힣" for char in text)
 
@@ -390,7 +366,6 @@ def split_news_source(title):
 
 def clean_news_headline(title):
     headline, _ = split_news_source(title)
-    # 끝에 붙는 ,펀드명,TICKER 패턴 반복 제거 (대문자 약어 포함된 세그먼트)
     for _ in range(3):
         cleaned = re.sub(r',\s*(?=[^,]*\b[A-Z]{2,}\b)[^,]+$', '', headline).strip()
         if cleaned == headline:
@@ -399,8 +374,17 @@ def clean_news_headline(title):
     return headline
 
 
-def translate_to_korean(text):
+def translate_batch_to_korean(headlines):
+    """번역이 필요한 영어 헤드라인 목록을 한 번의 API 호출로 번역. {원문: 번역} 반환."""
+    if not headlines:
+        return {}
+
     if CLAUDE_API_KEY:
+        numbered = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headlines))
+        prompt = (
+            "다음 영어 뉴스 제목들을 자연스러운 한국어로 번역해줘. "
+            "번호. 번역문 형식으로만 출력:\n\n" + numbered
+        )
         url = "https://api.anthropic.com/v1/messages"
         headers = {
             "x-api-key": CLAUDE_API_KEY,
@@ -409,64 +393,147 @@ def translate_to_korean(text):
         }
         payload = {
             "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 256,
-            "messages": [{
-                "role": "user",
-                "content": f"다음 영어 뉴스 제목을 자연스러운 한국어로 번역해줘. 번역문만 출력해:\n{text}"
-            }]
+            "max_tokens": 2048,
+            "messages": [{"role": "user", "content": prompt}],
         }
-        response = requests.post(url, headers=headers, json=payload, timeout=20)
-        response.raise_for_status()
-        return response.json()["content"][0]["text"].strip()
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            if result.get("stop_reason") == "max_tokens":
+                print(f"TRANSLATE BATCH WARN: 응답이 max_tokens({payload['max_tokens']})에서 잘림 — 번역 누락 가능")
+            text = result["content"][0]["text"].strip()
+            mapping = {}
+            for line in text.splitlines():
+                m = re.match(r"^(\d+)[.:\)]\s*(.+)$", line.strip())
+                if m:
+                    idx = int(m.group(1)) - 1
+                    if 0 <= idx < len(headlines):
+                        mapping[headlines[idx]] = m.group(2).strip()
+            print(f"TRANSLATE BATCH: {len(mapping)}/{len(headlines)} translated")
+            return mapping
+        except Exception as exc:
+            print(f"TRANSLATE BATCH SKIP (falling back to Google): {exc}")
 
-    # fallback: Google 번역
-    url = "https://translate.googleapis.com/translate_a/single"
-    params = {
-        "client": "gtx",
-        "sl": "auto",
-        "tl": "ko",
-        "dt": "t",
-        "q": text,
-    }
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, params=params, headers=headers, timeout=20)
-    response.raise_for_status()
-    data = response.json()
-    translated = "".join(part[0] for part in data[0] if part and part[0])
-    return unquote(translated).strip()
+    # fallback: Google 번역 개별 처리
+    mapping = {}
+    consecutive_fails = 0
+    for headline in headlines:
+        try:
+            url = "https://translate.googleapis.com/translate_a/single"
+            params = {"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t", "q": headline}
+            g_headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, params=params, headers=g_headers, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
+            translated = "".join(part[0] for part in data[0] if part and part[0])
+            mapping[headline] = unquote(translated).strip()
+            consecutive_fails = 0
+        except Exception as exc:
+            print(f"TRANSLATE SKIP {headline[:30]}: {exc}")
+            consecutive_fails += 1
+            if consecutive_fails >= 3:
+                remaining = len(headlines) - len(mapping)
+                print(f"TRANSLATE GOOGLE: 연속 {consecutive_fails}회 실패, 나머지 {remaining}개 건너뜀")
+                break
+    return mapping
 
 
-def translate_title_if_needed(title):
-    headline, source = split_news_source(title)
-    if has_korean(headline):
-        return title
+def collect_raw_news_candidates(asset, limit=2):
+    """번역 없이 뉴스 raw 후보를 수집. [(raw_title, score, order)] 반환."""
+    seen = set()
+    candidates = []
+    candidate_limit = max(limit * 4, 6)
+    order = 0
 
-    try:
-        translated = translate_to_korean(headline)
-    except Exception as exc:
-        print(f"TRANSLATE SKIP: {exc}")
-        return f"[원문] {title}"
+    for query_text in news_queries_for_asset(asset):
+        for raw_title in fetch_news_for_query(query_text, candidate_limit):
+            if is_excluded_news(asset, raw_title):
+                continue
+            score = news_relevance_score(asset, raw_title)
+            if score <= 0:
+                continue
+            key = news_dedupe_key(raw_title)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append((raw_title, score, order))
+            order += 1
 
-    if not translated:
-        return f"[원문] {title}"
-    if source:
-        return f"{translated} - {source}"
-    return translated
+    return candidates
+
+
+def apply_translations_and_rank(asset, candidates, translation_map, limit=2):
+    """번역 결과를 적용해 필터링·랭킹 후 최종 제목 반환."""
+    seen = set()
+    ranked = []
+
+    for raw_title, raw_score, order in candidates:
+        headline, source = split_news_source(raw_title)
+
+        if has_korean(headline):
+            title = raw_title
+        else:
+            translated = translation_map.get(headline)
+            if translated:
+                title = f"{translated} - {source}" if source else translated
+            else:
+                title = f"[원문] {raw_title}"
+
+        if is_excluded_news(asset, title):
+            continue
+
+        score = max(raw_score, news_relevance_score(asset, title))
+        if score <= 0:
+            continue
+
+        key = news_dedupe_key(title)
+        if key in seen:
+            continue
+        seen.add(key)
+        ranked.append((score, order, title))
+
+    ranked.sort(key=lambda x: (-x[0], x[1]))
+    return [title for _, _, title in ranked[:limit]]
 
 
 def fetch_news(assets):
     news = {}
     errors = []
 
+    # Phase 1: 모든 종목 raw 후보 수집 (번역 없이)
+    raw_candidates = {}
+    seen_headlines: dict = {}  # headline → None, 삽입 순서 보존 + 중복 제거
+
     for asset in assets:
         try:
-            titles = fetch_news_for_asset(asset)
-            news[asset["ticker"]] = titles
-            print(f"NEWS {asset['ticker']}: {len(titles)} titles")
+            candidates = collect_raw_news_candidates(asset)
+            raw_candidates[asset["ticker"]] = candidates
+            for raw_title, _, _ in candidates:
+                headline, _ = split_news_source(raw_title)
+                if not has_korean(headline):
+                    seen_headlines.setdefault(headline, None)
         except Exception as exc:
-            news[asset["ticker"]] = []
+            raw_candidates[asset["ticker"]] = []
             errors.append(f"{asset['ticker']} 뉴스: {exc}")
             print(f"ERROR NEWS {asset['ticker']}: {exc}")
+
+    # Phase 2: 배치 번역 (전체 종목 통합 1회 API 호출)
+    translation_map = translate_batch_to_korean(list(seen_headlines))
+
+    # Phase 3: 번역 적용 및 ranking
+    for asset in assets:
+        ticker = asset["ticker"]
+        try:
+            titles = apply_translations_and_rank(
+                asset, raw_candidates.get(ticker, []), translation_map
+            )
+            news[ticker] = titles
+            print(f"NEWS {ticker}: {len(titles)} titles")
+        except Exception as exc:
+            news[ticker] = []
+            errors.append(f"{ticker} 뉴스 후처리: {exc}")
+            print(f"ERROR NEWS {ticker}: {exc}")
 
     return news, errors
 
@@ -525,8 +592,13 @@ def generate_actions_with_claude(quotes, news):
     if not CLAUDE_API_KEY:
         return {}
 
+    # 급등/급락(±3% 이상) 종목만 Claude로 처리, 나머지는 규칙 기반 fallback
+    significant = [item for item in quotes if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT]
+    if not significant:
+        return {}
+
     lines = []
-    for item in quotes:
+    for item in significant:
         ticker = item["ticker"]
         chg = item["chg_pct"]
         news_titles = news.get(ticker, [])
@@ -562,7 +634,7 @@ def generate_actions_with_claude(quotes, news):
             if ":" in line:
                 ticker, _, msg = line.partition(":")
                 ticker = ticker.strip()
-                if ticker in {q["ticker"] for q in quotes}:
+                if ticker in {q["ticker"] for q in significant}:
                     actions[ticker] = f"{ticker}: {msg.strip()}"
         return actions
     except Exception as exc:
@@ -592,8 +664,8 @@ def action_for(item):
 def market_summary(quotes):
     positives = [item for item in quotes if item["chg_pct"] > 0]
     negatives = [item for item in quotes if item["chg_pct"] < 0]
-    surges = [item for item in quotes if item["chg_pct"] >= 3]
-    drops = [item for item in quotes if item["chg_pct"] <= -3]
+    surges = [item for item in quotes if item["chg_pct"] >= SIGNIFICANT_MOVE_PCT]
+    drops = [item for item in quotes if item["chg_pct"] <= -SIGNIFICANT_MOVE_PCT]
 
     if len(positives) == len(quotes) and surges:
         return "레버리지 ETF 전반 강세", "위험자산 선호", surges, drops
@@ -634,9 +706,9 @@ def focused_headline(quotes, headline):
 def build_alert_lines(quotes, errors, news):
     alerts = []
     for item in quotes:
-        if item["chg_pct"] >= 3:
+        if item["chg_pct"] >= SIGNIFICANT_MOVE_PCT:
             alerts.append(f"급등: {item['ticker']} {item['chg_pct']:+.2f}%")
-        elif item["chg_pct"] <= -3:
+        elif item["chg_pct"] <= -SIGNIFICANT_MOVE_PCT:
             alerts.append(f"급락: {item['ticker']} {item['chg_pct']:+.2f}%")
 
         if not item.get("news_optional") and not news.get(item["ticker"]):
@@ -683,20 +755,17 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         screen_result.get("errors", []),
     )
 
-    # 지수 요약 한 줄
     index_summary = " | ".join(
         f"{item['display']} {format_price(item)} ({item['chg_pct']:+.2f}%)"
         for item in indexes
     )
 
-    # 상승/하락 카운트
     pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
     neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
     count_str = f"🔴{pos_count} 🔵{neg_count}"
 
-    # 종목별 한 줄 요약
     def price_row(item):
-        alert = "🚨" if abs(item["chg_pct"]) >= 5 else ("⚠️" if abs(item["chg_pct"]) >= 3 else "")
+        alert = "🚨" if abs(item["chg_pct"]) >= CRITICAL_MOVE_PCT else ("⚠️" if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT else "")
         shares = item.get("shares")
         if shares not in (None, ""):
             effect = item.get("chg_amount", 0) * float(shares)
@@ -713,21 +782,18 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
 
     compact_rows = [price_row(item) for item in quotes]
 
-    # Claude로 대응 멘트 생성 (실패 시 규칙 기반 fallback)
     claude_actions = generate_actions_with_claude(quotes, news)
 
-    # 주목 종목만 대응 한 줄로
     alert_action_lines = []
     for item in quotes:
-        if abs(item["chg_pct"]) >= 3:
-            icon = "🚨" if abs(item["chg_pct"]) >= 5 else "⚠️"
+        if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT:
+            icon = "🚨" if abs(item["chg_pct"]) >= CRITICAL_MOVE_PCT else "⚠️"
             if item["ticker"] in claude_actions:
                 action_text = claude_actions[item["ticker"]].split(": ", 1)[-1]
             else:
                 action_text = action_for(item).split(": ", 1)[-1]
             alert_action_lines.append(f"{icon} {item['ticker']} {item['chg_pct']:+.2f}% → {action_text}")
 
-    # 뉴스 압축 (종목당 1줄)
     flat_news = []
     for item in quotes:
         for title in news.get(item["ticker"], [])[:1]:
@@ -871,20 +937,36 @@ def send_telegram(message):
         print("Telegram secrets are missing. Skipping send.")
         return False
 
+    MAX_LEN = 4096
+    chunks = []
+    remaining = message
+    while len(remaining) > MAX_LEN:
+        split_at = remaining.rfind("\n", 0, MAX_LEN)
+        if split_at <= 0:
+            split_at = MAX_LEN
+        chunks.append(remaining[:split_at])
+        remaining = remaining[split_at:].lstrip("\n")
+    if remaining:
+        chunks.append(remaining)
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    try:
-        response = requests.post(url, json=payload, timeout=20)
-    except Exception as exc:
-        print(f"Telegram failed: {exc}")
-        return False
+    for i, chunk in enumerate(chunks, 1):
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
+        try:
+            response = requests.post(url, json=payload, timeout=20)
+        except Exception as exc:
+            print(f"Telegram failed: {exc}")
+            return False
 
-    if response.status_code == 200:
-        print("Telegram sent.")
-        return True
+        if response.status_code != 200:
+            print(f"Telegram failed: {response.status_code} - {response.text[:200]}")
+            return False
 
-    print(f"Telegram failed: {response.status_code} - {response.text[:200]}")
-    return False
+        if len(chunks) > 1:
+            print(f"Telegram sent ({i}/{len(chunks)}).")
+
+    print("Telegram sent.")
+    return True
 
 
 def main():
@@ -902,6 +984,7 @@ def main():
         print(f"[1/{total_steps}] Fetching prices...")
         indexes_config, assets_config = load_portfolio()
         indexes, index_errors = fetch_prices(indexes_config, require_any=False)
+
         quotes, quote_errors = fetch_prices(assets_config)
 
         next_step = 2
