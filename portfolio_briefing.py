@@ -29,6 +29,7 @@ KST = pytz.timezone("Asia/Seoul")
 TELEGRAM_BOT_TOKEN = env_value("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = env_value("TELEGRAM_CHAT_ID")
 SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
+CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
 
 PORTFOLIO_FILE = "portfolio.json"
 SCREENER_FILE = "screener.json"
@@ -399,6 +400,26 @@ def clean_news_headline(title):
 
 
 def translate_to_korean(text):
+    if CLAUDE_API_KEY:
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": CLAUDE_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        payload = {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 256,
+            "messages": [{
+                "role": "user",
+                "content": f"다음 영어 뉴스 제목을 자연스러운 한국어로 번역해줘. 번역문만 출력해:\n{text}"
+            }]
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=20)
+        response.raise_for_status()
+        return response.json()["content"][0]["text"].strip()
+
+    # fallback: Google 번역
     url = "https://translate.googleapis.com/translate_a/single"
     params = {
         "client": "gtx",
