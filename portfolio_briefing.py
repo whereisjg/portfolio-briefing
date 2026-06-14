@@ -521,6 +521,55 @@ def movement_emoji(chg_pct):
     return "⚪"
 
 
+def generate_actions_with_claude(quotes, news):
+    if not CLAUDE_API_KEY:
+        return {}
+
+    lines = []
+    for item in quotes:
+        ticker = item["ticker"]
+        chg = item["chg_pct"]
+        news_titles = news.get(ticker, [])
+        news_text = " / ".join(clean_news_headline(t) for t in news_titles) if news_titles else "뉴스 없음"
+        lines.append(f"{ticker}: {chg:+.2f}%, 뉴스: {news_text}")
+
+    prompt = (
+        "다음 포트폴리오 종목들의 오늘 등락률과 뉴스를 보고, "
+        "각 종목에 대한 투자 대응 멘트를 한 줄로 작성해줘. "
+        "뉴스 맥락을 반영해서 구체적으로 써줘. "
+        "형식: 티커: 멘트 (줄바꿈으로 구분)\n\n"
+        + "\n".join(lines)
+    )
+
+    try:
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": CLAUDE_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        payload = {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 512,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response.raise_for_status()
+        text = response.json()["content"][0]["text"].strip()
+
+        actions = {}
+        for line in text.splitlines():
+            if ":" in line:
+                ticker, _, msg = line.partition(":")
+                ticker = ticker.strip()
+                if ticker in {q["ticker"] for q in quotes}:
+                    actions[ticker] = f"{ticker}: {msg.strip()}"
+        return actions
+    except Exception as exc:
+        print(f"Claude action generation failed: {exc}")
+        return {}
+
+
 def action_for(item):
     ticker = item["ticker"]
     chg = item["chg_pct"]
@@ -665,12 +714,18 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
 
     compact_rows = [price_row(item) for item in quotes]
 
+    # Claude로 대응 멘트 생성 (실패 시 규칙 기반 fallback)
+    claude_actions = generate_actions_with_claude(quotes, news)
+
     # 주목 종목만 대응 한 줄로
     alert_action_lines = []
     for item in quotes:
         if abs(item["chg_pct"]) >= 3:
             icon = "🚨" if abs(item["chg_pct"]) >= 5 else "⚠️"
-            action_text = action_for(item).split(": ", 1)[-1]
+            if item["ticker"] in claude_actions:
+                action_text = claude_actions[item["ticker"]].split(": ", 1)[-1]
+            else:
+                action_text = action_for(item).split(": ", 1)[-1]
             alert_action_lines.append(f"{icon} {item['ticker']} {item['chg_pct']:+.2f}% → {action_text}")
 
     # 뉴스 압축 (종목당 1줄)
