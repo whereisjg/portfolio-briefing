@@ -8,7 +8,7 @@ class NewsFilteringTests(unittest.TestCase):
     def test_collect_excludes_raw_title_matching_exclusion_terms(self):
         asset = {
             "ticker": "USD",
-            "news_queries": ["semiconductors"],
+            "symbol": "USD",
             "news_include": ["semiconductor", "chip"],
             "news_exclude": ["US dollar"],
         }
@@ -17,7 +17,7 @@ class NewsFilteringTests(unittest.TestCase):
             "Semiconductor ETF rebounds after chip rally - MarketWatch",
         ]
 
-        with patch.object(briefing, "fetch_news_for_query", return_value=raw_titles):
+        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
             candidates = briefing.collect_raw_news_candidates(asset)
 
         titles = [raw_title for raw_title, _, _ in candidates]
@@ -27,7 +27,7 @@ class NewsFilteringTests(unittest.TestCase):
     def test_collect_requires_relevant_news_terms(self):
         asset = {
             "ticker": "AIPO",
-            "news_queries": ["AIPO ETF"],
+            "symbol": "AIPO",
             "news_include": ["AIPO", "power infrastructure", "data center"],
             "news_exclude": ["Bitcoin", "MARA"],
         }
@@ -37,7 +37,7 @@ class NewsFilteringTests(unittest.TestCase):
             "MARA falls as Bitcoin mining revenue slows - MarketWatch",
         ]
 
-        with patch.object(briefing, "fetch_news_for_query", return_value=raw_titles):
+        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
             candidates = briefing.collect_raw_news_candidates(asset)
 
         titles = [raw_title for raw_title, _, _ in candidates]

@@ -11,9 +11,7 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
 from urllib.parse import quote_plus, unquote
-import xml.etree.ElementTree as ET
 
 import pytz
 import requests
@@ -288,37 +286,27 @@ def fetch_prices(assets, require_any=True):
     return quotes, errors
 
 
-def news_queries_for_asset(asset):
-    queries = asset.get("news_queries")
-    if queries:
-        return queries
-    return [asset["news_query"]]
-
-
-def fetch_news_for_query(query_text, limit):
-    query = quote_plus(f"{query_text} when:1d")
-    url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
+def fetch_yahoo_news(symbol, limit):
+    """Yahoo Finance에서 ticker 기반 뉴스를 가져옴. 'title - publisher' 문자열 목록 반환."""
+    url = "https://query1.finance.yahoo.com/v1/finance/search"
+    params = {"q": symbol, "newsCount": limit, "enableFuzzyQuery": "false", "enableCb": "false"}
     headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers, timeout=20)
+    response = requests.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
 
-    root = ET.fromstring(response.content)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     titles = []
-    for item in root.findall(".//item"):
-        title = item.findtext("title", "").strip()
-        pub_date = item.findtext("pubDate", "").strip()
+    for item in response.json().get("news", []):
+        if item.get("type") != "STORY":
+            continue
+        title = item.get("title", "").strip()
         if not title:
             continue
-        if pub_date:
-            published_at = parsedate_to_datetime(pub_date)
-            if published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=timezone.utc)
-            if published_at.astimezone(timezone.utc) < cutoff:
-                continue
-        titles.append(title)
-        if len(titles) >= limit:
-            break
+        pub_time = item.get("providerPublishTime")
+        if pub_time and datetime.fromtimestamp(pub_time, tz=timezone.utc) < cutoff:
+            continue
+        publisher = item.get("publisher", "")
+        titles.append(f"{title} - {publisher}" if publisher else title)
     return titles
 
 
@@ -446,21 +434,20 @@ def collect_raw_news_candidates(asset, limit=2):
     candidate_limit = max(limit * 4, 6)
     order = 0
 
-    for query_text in news_queries_for_asset(asset):
-        for raw_title in fetch_news_for_query(query_text, candidate_limit):
-            if "|" in raw_title:
-                continue
-            if is_excluded_news(asset, raw_title):
-                continue
-            score = news_relevance_score(asset, raw_title)
-            if score <= 0:
-                continue
-            key = news_dedupe_key(raw_title)
-            if key in seen:
-                continue
-            seen.add(key)
-            candidates.append((raw_title, score, order))
-            order += 1
+    for raw_title in fetch_yahoo_news(asset["symbol"], candidate_limit):
+        if "|" in raw_title:
+            continue
+        if is_excluded_news(asset, raw_title):
+            continue
+        score = news_relevance_score(asset, raw_title)
+        if score <= 0:
+            continue
+        key = news_dedupe_key(raw_title)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append((raw_title, score, order))
+        order += 1
 
     return candidates
 
