@@ -15,6 +15,8 @@ from urllib.parse import quote_plus, unquote
 
 import pytz
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 def env_value(name, default=""):
@@ -36,6 +38,21 @@ SIGNIFICANT_MOVE_PCT = 3.0
 CRITICAL_MOVE_PCT = 5.0
 
 
+def get_http_session(retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504)):
+    """재시도 로직이 포함된 HTTP 세션 생성"""
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
 def configure_console_output():
     """Avoid UnicodeEncodeError during local Windows previews."""
     for stream in (sys.stdout, sys.stderr):
@@ -48,8 +65,14 @@ def configure_console_output():
 
 
 def load_portfolio():
-    with open(PORTFOLIO_FILE, "r", encoding="utf-8") as file:
-        config = json.load(file)
+    if not os.path.exists(PORTFOLIO_FILE):
+        raise FileNotFoundError(f"설정 파일({PORTFOLIO_FILE})을 찾을 수 없습니다.")
+
+    try:
+        with open(PORTFOLIO_FILE, "r", encoding="utf-8") as file:
+            config = json.load(file)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{PORTFOLIO_FILE}의 JSON 형식이 올바르지 않습니다: {exc}")
 
     indexes = config.get("indexes", [])
     assets = config.get("assets", [])
@@ -92,15 +115,22 @@ def quote_from_price(asset, price, previous_close, provider):
 def fetch_yahoo_quote(asset):
     url = f"https://query2.finance.yahoo.com/v8/finance/chart/{asset['symbol']}"
     params = {"range": "1d", "interval": "1m"}
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, params=params, headers=headers, timeout=20)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    session = get_http_session()
+    response = session.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
 
-    result = response.json()["chart"]["result"][0]
+    data = response.json()
+    result_list = data.get("chart", {}).get("result")
+    if not result_list:
+        raise ValueError(f"Yahoo Finance 응답에 데이터가 없습니다: {asset['symbol']}")
+
+    result = result_list[0]
     meta = result["meta"]
 
     price = meta.get("regularMarketPrice")
-    previous_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+    previous_close = meta.get("chartPreviousClose") or meta.get("previousClose")
 
     if price is None:
         closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
@@ -114,8 +144,11 @@ def load_screener_config():
     if not os.path.exists(SCREENER_FILE):
         return None
 
-    with open(SCREENER_FILE, "r", encoding="utf-8") as file:
-        config = json.load(file)
+    try:
+        with open(SCREENER_FILE, "r", encoding="utf-8") as file:
+            config = json.load(file)
+    except json.JSONDecodeError:
+        return None
 
     if not config.get("enabled", True):
         return None
@@ -153,12 +186,14 @@ def normalize_screen_symbol(item):
 def fetch_yahoo_fundamentals(symbol):
     modules = ",".join(["price", "summaryDetail", "defaultKeyStatistics", "financialData"])
     url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{quote_plus(symbol)}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, params={"modules": modules}, headers=headers, timeout=20)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    session = get_http_session()
+    response = session.get(url, params={"modules": modules}, headers=headers, timeout=20)
     response.raise_for_status()
 
     result = response.json().get("quoteSummary", {}).get("result") or []
-    if not result:
+    if not result or not result[0]:
         raise ValueError("Yahoo fundamentals not found")
 
     data = result[0]
@@ -290,11 +325,13 @@ def fetch_yahoo_news(symbol, limit):
     """Yahoo Finance에서 ticker 기반 뉴스를 가져옴. 'title - publisher' 문자열 목록 반환."""
     url = "https://query1.finance.yahoo.com/v1/finance/search"
     params = {"q": symbol, "newsCount": limit, "enableFuzzyQuery": "false", "enableCb": "false"}
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, params=params, headers=headers, timeout=20)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    session = get_http_session()
+    response = session.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=36) # 24 -> 36시간으로 여유 확보
     titles = []
     for item in response.json().get("news", []):
         if item.get("type") != "STORY":
@@ -385,7 +422,8 @@ def translate_batch_to_korean(headlines):
             "messages": [{"role": "user", "content": prompt}],
         }
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            session = get_http_session(retries=2)
+            response = session.post(url, headers=headers, json=payload, timeout=40)
             response.raise_for_status()
             result = response.json()
             if result.get("stop_reason") == "max_tokens":
@@ -407,11 +445,12 @@ def translate_batch_to_korean(headlines):
     mapping = {}
     consecutive_fails = 0
     for headline in headlines:
+        session = get_http_session(retries=1)
         try:
             url = "https://translate.googleapis.com/translate_a/single"
             params = {"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t", "q": headline}
             g_headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, params=params, headers=g_headers, timeout=20)
+            resp = session.get(url, params=params, headers=g_headers, timeout=15)
             resp.raise_for_status()
             data = resp.json()
             translated = "".join(part[0] for part in data[0] if part and part[0])
@@ -617,7 +656,8 @@ def generate_actions_with_claude(quotes, news):
             "max_tokens": 512,
             "messages": [{"role": "user", "content": prompt}],
         }
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        session = get_http_session(retries=2)
+        response = session.post(url, headers=headers, json=payload, timeout=40)
         response.raise_for_status()
         text = response.json()["content"][0]["text"].strip()
 
@@ -941,11 +981,12 @@ def send_telegram(message):
     if remaining:
         chunks.append(remaining)
 
+    session = get_http_session()
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     for i, chunk in enumerate(chunks, 1):
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
         try:
-            response = requests.post(url, json=payload, timeout=20)
+            response = session.post(url, json=payload, timeout=20)
         except Exception as exc:
             print(f"Telegram failed: {exc}")
             return False
