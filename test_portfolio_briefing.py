@@ -127,7 +127,11 @@ class FundamentalScreeningTests(unittest.TestCase):
                     }
                 }
 
-        with patch.object(briefing.requests, "get", return_value=FakeResponse()):
+        class FakeSession:
+            def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        with patch.object(briefing, "get_http_session", return_value=FakeSession()):
             data = briefing.fetch_yahoo_fundamentals("AAA")
 
         self.assertEqual(data["symbol"], "AAA")

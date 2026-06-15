@@ -2,8 +2,8 @@
 """
 Daily portfolio briefing for GitHub Actions.
 
-This version does not call an AI API. It fetches prices directly from Yahoo
-Finance, applies simple rule-based guidance, sends Telegram, and saves markdown.
+Fetches prices from Yahoo Finance, translates news via Claude Haiku (or Google
+Translate fallback), applies rule-based guidance, sends Telegram, and saves markdown.
 """
 
 import json
@@ -36,9 +36,10 @@ PORTFOLIO_FILE = "portfolio.json"
 SCREENER_FILE = "screener.json"
 SIGNIFICANT_MOVE_PCT = 3.0
 CRITICAL_MOVE_PCT = 5.0
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 
 
-def get_http_session(retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504)):
+def get_http_session(retries=3, backoff_factor=0.3, status_forcelist=(429, 500, 502, 504)):
     """재시도 로직이 포함된 HTTP 세션 생성"""
     session = requests.Session()
     retry = Retry(
@@ -49,7 +50,6 @@ def get_http_session(retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 
         status_forcelist=status_forcelist,
     )
     adapter = HTTPAdapter(max_retries=retry)
-    session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
 
@@ -417,7 +417,7 @@ def translate_batch_to_korean(headlines):
             "content-type": "application/json",
         }
         payload = {
-            "model": "claude-haiku-4-5-20251001",
+            "model": CLAUDE_MODEL,
             "max_tokens": 2048,
             "messages": [{"role": "user", "content": prompt}],
         }
@@ -444,8 +444,8 @@ def translate_batch_to_korean(headlines):
     # fallback: Google 번역 개별 처리
     mapping = {}
     consecutive_fails = 0
+    session = get_http_session(retries=1)
     for headline in headlines:
-        session = get_http_session(retries=1)
         try:
             url = "https://translate.googleapis.com/translate_a/single"
             params = {"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t", "q": headline}
@@ -453,6 +453,8 @@ def translate_batch_to_korean(headlines):
             resp = session.get(url, params=params, headers=g_headers, timeout=15)
             resp.raise_for_status()
             data = resp.json()
+            if not isinstance(data, list) or not data or not isinstance(data[0], list):
+                raise ValueError(f"예상치 못한 응답 형식: {str(data)[:80]}")
             translated = "".join(part[0] for part in data[0] if part and part[0])
             mapping[headline] = unquote(translated).strip()
             consecutive_fails = 0
@@ -652,7 +654,7 @@ def generate_actions_with_claude(quotes, news):
             "content-type": "application/json",
         }
         payload = {
-            "model": "claude-haiku-4-5-20251001",
+            "model": CLAUDE_MODEL,
             "max_tokens": 512,
             "messages": [{"role": "user", "content": prompt}],
         }
