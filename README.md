@@ -1,6 +1,6 @@
-# Portfolio Briefing Kakao
+# Portfolio Briefing
 
-Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Finance data, rule-based guidance, and Telegram.
+Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Telegram.
 
 ## Portfolio
 
@@ -16,40 +16,25 @@ Automated daily portfolio briefing using GitHub Actions, cron-job.org, Yahoo Fin
 
 ## What It Does
 
-- Fetches market prices directly
+- Fetches market prices from Yahoo Finance
 - Screens configured stocks for ROE/PER/PSR/PBR value criteria
-- Adds news titles from the last 24 hours using free RSS search
-- Translates English news headlines to Korean when possible
+- Adds news titles from the last 36 hours using Yahoo Finance News API
+- Translates English headlines to Korean (Claude Haiku if key set, otherwise Google Translate)
 - Generates a concise Korean briefing with rule-based guidance
 - Sends the result to Telegram
-- Saves each briefing under `briefings/`
-- Commits generated briefing files back to GitHub
-
-## Current Operation
-
-The workflow is triggered through `workflow_dispatch`, usually by cron-job.org every morning.
-
-Generated files are stored here:
-
-```text
-briefings/briefing_YYYYMMDD.md
-```
+- Saves and commits each briefing under `briefings/`
 
 ## Repository Structure
 
 ```text
 portfolio-briefing-kakao/
-├─ .github/
-│  └─ workflows/
-│     └─ briefing.yml
-├─ briefings/
-│  └─ briefing_YYYYMMDD.md
+├─ .github/workflows/briefing.yml
+├─ briefings/briefing_YYYYMMDD.md
 ├─ portfolio.json
 ├─ screener.json
 ├─ portfolio_briefing.py
 ├─ test_portfolio_briefing.py
-├─ README.md
-└─ SETUP_GUIDE.md
+└─ README.md
 ```
 
 ## Editing The Portfolio
@@ -66,55 +51,67 @@ Each asset needs:
   "display": "QLD",
   "currency": "USD",
   "shares": null,
-  "weight_pct": null,
-  "news_query": "Nasdaq 100"
+  "weight_pct": null
 }
 ```
 
-Use Yahoo Finance symbols.
+Use Yahoo Finance symbols. Optional fields:
 
-Optional fields:
-
-- `shares`: holding quantity. If set, the briefing shows estimated daily P/L.
-- `weight_pct`: portfolio weight. If set, the briefing shows asset weight.
-- `news_queries`: fallback news searches for tickers with weak direct coverage.
-- `news_include`: terms that make a news title relevant to the asset.
-- `news_exclude`: terms to exclude from news results.
-- `news_optional`: set to `true` when missing daily news should not be treated as an alert.
+- `shares`: holding quantity — shows estimated daily P/L in the briefing
+- `weight_pct`: portfolio weight — shows asset weight in the briefing
+- `news_include`: terms that make a news title relevant to the asset
+- `news_exclude`: terms to exclude from news results
+- `news_optional`: set to `true` when missing daily news should not be treated as an alert
 
 ## Daily Value Screener
 
-The daily run can read [screener.json](screener.json), but it is disabled by default.
-Yahoo Finance frequently returns `401 Unauthorized` for fundamentals endpoints, so the screener should stay off unless a stable data source is added.
+Configured in [screener.json](screener.json). Disabled by default — Yahoo Finance fundamentals endpoints return `401 Unauthorized` intermittently.
 
-Current filter:
+Criteria: `ROE >= 15%`, `PER <= 15`, `PSR < 3`, `PBR <= 1.5`
 
-- `ROE >= 15%`
-- `PER <= 15`
-- Exclude `PSR >= 3`
-- `PBR <= 1.5`
-
-`symbols` controls the search universe. The screener is informational only and does not place orders.
-
-## Configuration
-
-Required GitHub Actions secrets:
+## GitHub Secrets
 
 | Name | Purpose |
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
+| `CLAUDE_API_KEY` | (Optional) Claude Haiku for news translation and action commentary |
 
-Do not commit real secret values to the repository.
+## cron-job.org Setup
+
+Triggers `workflow_dispatch` every morning at 07:00 KST:
+
+```
+URL:    https://api.github.com/repos/{owner}/portfolio-briefing-kakao/actions/workflows/briefing.yml/dispatches
+Method: POST
+Headers:
+  Authorization: Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}
+  Content-Type: application/json
+Body:   {"ref":"main"}
+```
+
+Required token permission: `Actions: Read and write` on this repository only.
 
 ## Local Preview
-
-Run without sending Telegram:
 
 ```bash
 SEND_TELEGRAM=false python portfolio_briefing.py
 ```
 
-## Setup
+Verify before pushing:
 
-See [SETUP_GUIDE.md](SETUP_GUIDE.md) for the full setup, maintenance, and troubleshooting guide.
+```bash
+python -m py_compile portfolio_briefing.py
+python -m unittest
+python -c "import json; json.load(open('portfolio.json', encoding='utf-8')); json.load(open('screener.json', encoding='utf-8'))"
+```
+
+## Troubleshooting
+
+**Telegram message does not arrive** — check `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in GitHub Secrets, then trigger the workflow manually.
+
+**Workflow cannot push the briefing file** — confirm `permissions: contents: write` is set in `briefing.yml`.
+
+**Price data errors** — Yahoo Finance does not have a stable public API. Retry the workflow or check the ticker symbol.
+
+**Workflow push fails with "non-fast-forward"** — run `git pull --rebase origin main` locally before pushing, or re-trigger the workflow.
