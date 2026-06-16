@@ -630,20 +630,24 @@ def generate_actions_with_claude(quotes, news):
     if not significant:
         return {}
 
+    legend_lines = [
+        f"- {item['ticker']}: {item.get('news_query') or item['ticker']}"
+        for item in significant
+    ]
     lines = []
     for item in significant:
         ticker = item["ticker"]
         chg = item["chg_pct"]
         news_titles = news.get(ticker, [])
         news_text = " / ".join(clean_news_headline(t) for t in news_titles) if news_titles else "뉴스 없음"
-        desc = item.get("news_query") or ticker
-        lines.append(f"{ticker} ({desc}): {chg:+.2f}%, 뉴스: {news_text}")
+        lines.append(f"{ticker}: {chg:+.2f}%, 뉴스: {news_text}")
 
     prompt = (
         "다음 포트폴리오 종목들의 오늘 등락률과 뉴스를 보고, "
         "각 종목에 대한 투자 대응 멘트를 한 줄로 작성해줘. "
         "뉴스 맥락을 반영해서 구체적으로 써줘. "
-        "형식: 티커: 멘트 (줄바꿈으로 구분)\n\n"
+        "형식: 티커: 멘트 (줄바꿈으로 구분, 반드시 티커 이름만 사용)\n\n"
+        "종목 설명:\n" + "\n".join(legend_lines) + "\n\n"
         + "\n".join(lines)
     )
 
@@ -664,13 +668,16 @@ def generate_actions_with_claude(quotes, news):
         response.raise_for_status()
         text = response.json()["content"][0]["text"].strip()
 
+        ticker_set = {q["ticker"] for q in significant}
         actions = {}
         for line in text.splitlines():
             if ":" in line:
                 ticker, _, msg = line.partition(":")
                 ticker = ticker.strip()
-                if ticker in {q["ticker"] for q in significant}:
+                if ticker in ticker_set:
                     actions[ticker] = f"{ticker}: {msg.strip()}"
+                else:
+                    print(f"Claude action parse miss: {ticker!r} not in {ticker_set}")
         return actions
     except Exception as exc:
         print(f"Claude action generation failed: {exc}")
