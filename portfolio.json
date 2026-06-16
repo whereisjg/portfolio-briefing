@@ -23,7 +23,7 @@
       "display": "QLD",
       "currency": "USD",
       "shares": 40.173111,
-      "weight_pct": 27.92,
+      "weight_pct": 27.37,
       "news_query": "ProShares Ultra QQQ QLD ETF",
       "news_queries": [
         "ProShares Ultra QQQ QLD ETF",
@@ -50,7 +50,7 @@
       "display": "SSO",
       "currency": "USD",
       "shares": 56.125231,
-      "weight_pct": 27.7,
+      "weight_pct": 26.60,
       "news_query": "ProShares Ultra S&P500 SSO ETF",
       "news_queries": [
         "ProShares Ultra S&P500 SSO ETF",
@@ -82,7 +82,7 @@
       "display": "USD",
       "currency": "USD",
       "shares": 37.337306,
-      "weight_pct": 27.3,
+      "weight_pct": 27.41,
       "news_optional": true,
       "news_query": "ProShares Ultra Semiconductors ETF",
       "news_queries": [
@@ -124,52 +124,13 @@
       ]
     },
     {
-      "ticker": "AIPO",
-      "symbol": "AIPO",
-      "name": "AIPO",
-      "display": "AIPO",
-      "currency": "USD",
-      "shares": 12,
-      "weight_pct": 2.8,
-      "news_query": "AIPO ETF",
-      "news_queries": [
-        "AIPO ETF",
-        "Defiance AI Power Infrastructure ETF",
-        "AI power infrastructure data centers energy stocks",
-        "data center power infrastructure AI stocks"
-      ],
-      "news_include": [
-        "AIPO",
-        "Defiance",
-        "AI power",
-        "power infrastructure",
-        "data center",
-        "data centers",
-        "electricity",
-        "grid",
-        "energy infrastructure",
-        "AI infrastructure",
-        "데이터센터",
-        "전력",
-        "인프라"
-      ],
-      "news_exclude": [
-        "Bitcoin",
-        "비트코인",
-        "crypto",
-        "cryptocurrency",
-        "MARA",
-        "마라홀딩스"
-      ]
-    },
-    {
       "ticker": "AMD",
       "symbol": "AMD",
       "name": "AMD",
       "display": "AMD",
       "currency": "USD",
       "shares": 3,
-      "weight_pct": 11.47,
+      "weight_pct": 11.25,
       "news_query": "AMD stock Advanced Micro Devices",
       "news_queries": [
         "AMD stock Advanced Micro Devices",
@@ -198,8 +159,8 @@
       "name": "SPCX",
       "display": "SPCX",
       "currency": "USD",
-      "shares": 2,
-      "weight_pct": 2.56,
+      "shares": 5,
+      "weight_pct": 7.37,
       "news_query": "SPCX ETF",
       "news_queries": [
         "SPCX ETF",
@@ -217,33 +178,6 @@
       "news_exclude": [
         "space x",
         "SpaceX"
-      ]
-    },
-    {
-      "ticker": "SCHD",
-      "symbol": "SCHD",
-      "name": "SCHD",
-      "display": "SCHD",
-      "currency": "USD",
-      "shares": 1,
-      "weight_pct": 0.24,
-      "news_optional": true,
-      "news_query": "SCHD Schwab US Dividend Equity ETF",
-      "news_queries": [
-        "SCHD Schwab US Dividend Equity ETF",
-        "SCHD dividend ETF",
-        "Schwab US Dividend Equity ETF"
-      ],
-      "news_include": [
-        "SCHD",
-        "Schwab US Dividend Equity",
-        "dividend ETF",
-        "dividend stocks"
-      ],
-      "news_exclude": [
-        "video",
-        "tv",
-        "school district"
       ]
     }
   ]
