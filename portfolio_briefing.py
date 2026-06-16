@@ -636,7 +636,8 @@ def generate_actions_with_claude(quotes, news):
         chg = item["chg_pct"]
         news_titles = news.get(ticker, [])
         news_text = " / ".join(clean_news_headline(t) for t in news_titles) if news_titles else "뉴스 없음"
-        lines.append(f"{ticker}: {chg:+.2f}%, 뉴스: {news_text}")
+        desc = item.get("news_query") or ticker
+        lines.append(f"{ticker} ({desc}): {chg:+.2f}%, 뉴스: {news_text}")
 
     prompt = (
         "다음 포트폴리오 종목들의 오늘 등락률과 뉴스를 보고, "
