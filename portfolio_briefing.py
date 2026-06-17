@@ -127,6 +127,8 @@ def fetch_yahoo_quote(asset):
         raise ValueError(f"Yahoo Finance 응답에 데이터가 없습니다: {asset['symbol']}")
 
     result = result_list[0]
+    if not isinstance(result, dict):
+        raise ValueError(f"Yahoo Finance 응답 형식 오류: {asset['symbol']}")
     meta = result.get("meta")
     if not meta:
         raise ValueError(f"Yahoo Finance 응답에 meta 데이터가 없습니다: {asset['symbol']}")
@@ -401,6 +403,14 @@ def clean_news_headline(title):
     return headline
 
 
+def _parse_claude_text(resp_json):
+    """Claude API 응답에서 텍스트를 추출. 구조가 올바르지 않으면 None 반환."""
+    content = resp_json.get("content", [])
+    if not content or not isinstance(content[0], dict) or "text" not in content[0]:
+        return None
+    return content[0]["text"].strip()
+
+
 def translate_batch_to_korean(headlines):
     """번역이 필요한 영어 헤드라인 목록을 한 번의 API 호출로 번역. {원문: 번역} 반환."""
     if not headlines:
@@ -429,21 +439,22 @@ def translate_batch_to_korean(headlines):
             response = session.post(url, headers=headers, json=payload, timeout=40)
             response.raise_for_status()
             result = response.json()
-            if result.get("stop_reason") == "max_tokens":
-                print(f"TRANSLATE BATCH WARN: 응답이 max_tokens({payload['max_tokens']})에서 잘림 — 번역 누락 가능")
-            content = result.get("content", [])
-            if not content or "text" not in content[0]:
-                raise ValueError(f"Claude 응답 구조 오류: {result}")
-            text = content[0]["text"].strip()
-            for line in text.splitlines():
-                m = re.match(r"^(\d+)[.:\)]\s*(.+)$", line.strip())
-                if m:
-                    idx = int(m.group(1)) - 1
-                    if 0 <= idx < len(headlines):
-                        mapping[headlines[idx]] = m.group(2).strip()
-            print(f"TRANSLATE BATCH: {len(mapping)}/{len(headlines)} translated")
         except Exception as exc:
             print(f"TRANSLATE BATCH SKIP (falling back to Google): {exc}")
+        else:
+            if result.get("stop_reason") == "max_tokens":
+                print(f"TRANSLATE BATCH WARN: 응답이 max_tokens({payload['max_tokens']})에서 잘림 — 번역 누락 가능")
+            text = _parse_claude_text(result)
+            if text is None:
+                print(f"TRANSLATE BATCH ERROR: Claude 응답 구조 오류 — {result}")
+            else:
+                for line in text.splitlines():
+                    m = re.match(r"^(\d+)[.:\)]\s*(.+)$", line.strip())
+                    if m:
+                        idx = int(m.group(1)) - 1
+                        if 0 <= idx < len(headlines):
+                            mapping[headlines[idx]] = m.group(2).strip()
+                print(f"TRANSLATE BATCH: {len(mapping)}/{len(headlines)} translated")
 
     missing = [headline for headline in headlines if headline not in mapping]
     if not missing:
@@ -491,7 +502,6 @@ def collect_raw_news_candidates(asset, limit=2):
     query_terms.extend(asset.get("news_queries") or [])
 
     for query_text in dict.fromkeys(term for term in query_terms if term):
-        order = 0
         for raw_title in fetch_yahoo_news(query_text, candidate_limit):
             if "|" in raw_title:
                 continue
@@ -686,25 +696,26 @@ def generate_actions_with_claude(quotes, news):
         response = session.post(url, headers=headers, json=payload, timeout=40)
         response.raise_for_status()
         resp_json = response.json()
-        content = resp_json.get("content", [])
-        if not content or "text" not in content[0]:
-            raise ValueError(f"Claude 응답 구조 오류: {resp_json}")
-        text = content[0]["text"].strip()
-
-        ticker_set = {q["ticker"] for q in significant}
-        actions = {}
-        for line in text.splitlines():
-            if ":" in line:
-                ticker, _, msg = line.partition(":")
-                ticker = ticker.strip()
-                if ticker in ticker_set:
-                    actions[ticker] = f"{ticker}: {msg.strip()}"
-                else:
-                    print(f"Claude action parse miss: {ticker!r} not in {ticker_set}")
-        return actions
     except Exception as exc:
         print(f"Claude action generation failed: {exc}")
         return {}
+
+    text = _parse_claude_text(resp_json)
+    if text is None:
+        print(f"Claude action generation: 응답 구조 오류 — {resp_json}")
+        return {}
+
+    ticker_set = {q["ticker"] for q in significant}
+    actions = {}
+    for line in text.splitlines():
+        if ":" in line:
+            ticker, _, msg = line.partition(":")
+            ticker = ticker.strip()
+            if ticker in ticker_set:
+                actions[ticker] = f"{ticker}: {msg.strip()}"
+            else:
+                print(f"Claude action parse miss: {ticker!r} not in {ticker_set}")
+    return actions
 
 
 def action_for(item):
