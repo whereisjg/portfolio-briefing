@@ -441,8 +441,9 @@ def translate_batch_to_korean(headlines):
             print(f"TRANSLATE BATCH SKIP (falling back to Google): {exc}")
 
     missing = [headline for headline in headlines if headline not in mapping]
-    if missing:
-        mapping.update(translate_with_google(missing))
+    if not missing:
+        return mapping
+    mapping.update(translate_with_google(missing))
     return mapping
 
 
@@ -485,6 +486,7 @@ def collect_raw_news_candidates(asset, limit=2):
     query_terms.extend(asset.get("news_queries") or [])
 
     for query_text in dict.fromkeys(term for term in query_terms if term):
+        order = 0
         for raw_title in fetch_yahoo_news(query_text, candidate_limit):
             if "|" in raw_title:
                 continue
