@@ -22,7 +22,7 @@
       "name": "QLD",
       "display": "QLD",
       "currency": "USD",
-      "shares": 40.173111,
+      "shares": 80.930316,
       "weight_pct": 27.37,
       "news_query": "ProShares Ultra QQQ QLD ETF",
       "news_queries": [
@@ -41,38 +41,6 @@
       "news_exclude": [
         "UK tech",
         "영국 기술"
-      ]
-    },
-    {
-      "ticker": "SSO",
-      "symbol": "SSO",
-      "name": "SSO",
-      "display": "SSO",
-      "currency": "USD",
-      "shares": 56.125231,
-      "weight_pct": 26.60,
-      "news_query": "ProShares Ultra S&P500 SSO ETF",
-      "news_queries": [
-        "ProShares Ultra S&P500 SSO ETF",
-        "SSO ETF S&P 500",
-        "S&P 500 ETF"
-      ],
-      "news_include": [
-        "SSO",
-        "ProShares Ultra S&P500",
-        "Ultra S&P500",
-        "S&P 500",
-        "S&P500",
-        "스탠더드앤드푸어스",
-        "에스앤피"
-      ],
-      "news_exclude": [
-        "TIGER",
-        "KODEX",
-        "KBSTAR",
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
       ]
     },
     {
@@ -124,12 +92,44 @@
       ]
     },
     {
+      "ticker": "UPRO",
+      "symbol": "UPRO",
+      "name": "UPRO",
+      "display": "UPRO",
+      "currency": "USD",
+      "shares": 0.04512,
+      "weight_pct": 0,
+      "news_query": "ProShares UltraPro S&P500 UPRO ETF",
+      "news_queries": [
+        "ProShares UltraPro S&P500 UPRO ETF",
+        "UPRO ETF S&P 500",
+        "S&P 500 ETF"
+      ],
+      "news_include": [
+        "UPRO",
+        "ProShares UltraPro S&P500",
+        "UltraPro S&P500",
+        "S&P 500",
+        "S&P500",
+        "스탠더드앤드푸어스",
+        "에스앤피"
+      ],
+      "news_exclude": [
+        "TIGER",
+        "KODEX",
+        "KBSTAR",
+        "목표주가",
+        "뭉칫돈",
+        "서학개미"
+      ]
+    },
+    {
       "ticker": "AMD",
       "symbol": "AMD",
       "name": "AMD",
       "display": "AMD",
       "currency": "USD",
-      "shares": 3,
+      "shares": 2,
       "weight_pct": 11.25,
       "news_query": "AMD stock Advanced Micro Devices",
       "news_queries": [
@@ -156,8 +156,8 @@
     {
       "ticker": "SPCX",
       "symbol": "SPCX",
-      "name": "SPCX",
-      "display": "SPCX",
+      "name": "스페이스X",
+      "display": "스페이스X",
       "currency": "USD",
       "shares": 5,
       "weight_pct": 7.37,
