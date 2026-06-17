@@ -127,7 +127,9 @@ def fetch_yahoo_quote(asset):
         raise ValueError(f"Yahoo Finance 응답에 데이터가 없습니다: {asset['symbol']}")
 
     result = result_list[0]
-    meta = result["meta"]
+    meta = result.get("meta")
+    if not meta:
+        raise ValueError(f"Yahoo Finance 응답에 meta 데이터가 없습니다: {asset['symbol']}")
 
     price = meta.get("regularMarketPrice")
     previous_close = meta.get("chartPreviousClose") or meta.get("previousClose")
@@ -429,7 +431,10 @@ def translate_batch_to_korean(headlines):
             result = response.json()
             if result.get("stop_reason") == "max_tokens":
                 print(f"TRANSLATE BATCH WARN: 응답이 max_tokens({payload['max_tokens']})에서 잘림 — 번역 누락 가능")
-            text = result["content"][0]["text"].strip()
+            content = result.get("content", [])
+            if not content or "text" not in content[0]:
+                raise ValueError(f"Claude 응답 구조 오류: {result}")
+            text = content[0]["text"].strip()
             for line in text.splitlines():
                 m = re.match(r"^(\d+)[.:\)]\s*(.+)$", line.strip())
                 if m:
@@ -680,7 +685,11 @@ def generate_actions_with_claude(quotes, news):
         session = get_http_session(retries=2)
         response = session.post(url, headers=headers, json=payload, timeout=40)
         response.raise_for_status()
-        text = response.json()["content"][0]["text"].strip()
+        resp_json = response.json()
+        content = resp_json.get("content", [])
+        if not content or "text" not in content[0]:
+            raise ValueError(f"Claude 응답 구조 오류: {resp_json}")
+        text = content[0]["text"].strip()
 
         ticker_set = {q["ticker"] for q in significant}
         actions = {}
