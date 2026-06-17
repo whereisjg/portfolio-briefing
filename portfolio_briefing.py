@@ -404,6 +404,7 @@ def translate_batch_to_korean(headlines):
     if not headlines:
         return {}
 
+    mapping = {}
     if CLAUDE_API_KEY:
         numbered = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headlines))
         prompt = (
@@ -429,7 +430,6 @@ def translate_batch_to_korean(headlines):
             if result.get("stop_reason") == "max_tokens":
                 print(f"TRANSLATE BATCH WARN: 응답이 max_tokens({payload['max_tokens']})에서 잘림 — 번역 누락 가능")
             text = result["content"][0]["text"].strip()
-            mapping = {}
             for line in text.splitlines():
                 m = re.match(r"^(\d+)[.:\)]\s*(.+)$", line.strip())
                 if m:
@@ -437,12 +437,18 @@ def translate_batch_to_korean(headlines):
                     if 0 <= idx < len(headlines):
                         mapping[headlines[idx]] = m.group(2).strip()
             print(f"TRANSLATE BATCH: {len(mapping)}/{len(headlines)} translated")
-            return mapping
         except Exception as exc:
             print(f"TRANSLATE BATCH SKIP (falling back to Google): {exc}")
 
-    # fallback: Google 번역 개별 처리
-    mapping = {}
+    missing = [headline for headline in headlines if headline not in mapping]
+    if missing:
+        mapping.update(translate_with_google(missing))
+    return mapping
+
+
+def translate_with_google(headlines):
+    """Google 번역 fallback. 실패한 항목은 결과에서 제외한다."""
+    translations = {}
     consecutive_fails = 0
     session = get_http_session(retries=1)
     for headline in headlines:
@@ -456,16 +462,16 @@ def translate_batch_to_korean(headlines):
             if not isinstance(data, list) or not data or not isinstance(data[0], list):
                 raise ValueError(f"예상치 못한 응답 형식: {str(data)[:80]}")
             translated = "".join(part[0] for part in data[0] if part and part[0])
-            mapping[headline] = unquote(translated).strip()
+            translations[headline] = unquote(translated).strip()
             consecutive_fails = 0
         except Exception as exc:
             print(f"TRANSLATE SKIP {headline[:30]}: {exc}")
             consecutive_fails += 1
             if consecutive_fails >= 3:
-                remaining = len(headlines) - len(mapping)
+                remaining = len(headlines) - len(translations)
                 print(f"TRANSLATE GOOGLE: 연속 {consecutive_fails}회 실패, 나머지 {remaining}개 건너뜀")
                 break
-    return mapping
+    return translations
 
 
 def collect_raw_news_candidates(asset, limit=2):
@@ -475,20 +481,26 @@ def collect_raw_news_candidates(asset, limit=2):
     candidate_limit = max(limit * 4, 6)
     order = 0
 
-    for raw_title in fetch_yahoo_news(asset["symbol"], candidate_limit):
-        if "|" in raw_title:
-            continue
-        if is_excluded_news(asset, raw_title):
-            continue
-        score = news_relevance_score(asset, raw_title)
-        if score <= 0:
-            continue
-        key = news_dedupe_key(raw_title)
-        if key in seen:
-            continue
-        seen.add(key)
-        candidates.append((raw_title, score, order))
-        order += 1
+    query_terms = [asset["symbol"]]
+    query_terms.extend(asset.get("news_queries") or [])
+
+    for query_text in dict.fromkeys(term for term in query_terms if term):
+        for raw_title in fetch_yahoo_news(query_text, candidate_limit):
+            if "|" in raw_title:
+                continue
+            if is_excluded_news(asset, raw_title):
+                continue
+            score = news_relevance_score(asset, raw_title)
+            if score <= 0:
+                continue
+            key = news_dedupe_key(raw_title)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append((raw_title, score, order))
+            order += 1
+        if len(candidates) >= candidate_limit:
+            break
 
     return candidates
 

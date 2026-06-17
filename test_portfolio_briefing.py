@@ -46,6 +46,32 @@ class NewsFilteringTests(unittest.TestCase):
             ["Defiance AIPO ETF tracks AI power infrastructure - ETF.com"],
         )
 
+    def test_collect_uses_configured_fallback_news_queries(self):
+        asset = {
+            "ticker": "USD",
+            "symbol": "USD",
+            "news_queries": ["ProShares Ultra Semiconductors ETF"],
+            "news_include": ["semiconductor", "ProShares Ultra Semiconductors"],
+            "news_exclude": ["US dollar"],
+        }
+
+        def fake_fetch(query, _limit):
+            if query == "USD":
+                return ["US dollar rises before Fed decision - Reuters"]
+            return ["ProShares Ultra Semiconductors ETF gains on chip rally - MarketWatch"]
+
+        with patch.object(briefing, "fetch_yahoo_news", side_effect=fake_fetch) as fetch_news:
+            candidates = briefing.collect_raw_news_candidates(asset)
+
+        self.assertEqual(
+            [raw_title for raw_title, _, _ in candidates],
+            ["ProShares Ultra Semiconductors ETF gains on chip rally - MarketWatch"],
+        )
+        self.assertEqual(
+            [call.args[0] for call in fetch_news.call_args_list],
+            ["USD", "ProShares Ultra Semiconductors ETF"],
+        )
+
     def test_apply_translations_uses_mapping(self):
         asset = {
             "ticker": "QLD",
@@ -71,6 +97,41 @@ class NewsFilteringTests(unittest.TestCase):
         titles = briefing.apply_translations_and_rank(asset, candidates, translation_map, limit=1)
 
         self.assertEqual(titles, [])
+
+    def test_claude_translation_falls_back_for_unparsed_headlines(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "content": [{"text": "1. 첫 번째 번역"}],
+                    "stop_reason": "end_turn",
+                }
+
+        class FakeSession:
+            def post(self, *args, **kwargs):
+                return FakeResponse()
+
+        headlines = ["First headline", "Second headline"]
+
+        with patch.object(briefing, "CLAUDE_API_KEY", "test-key"):
+            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
+                with patch.object(
+                    briefing,
+                    "translate_with_google",
+                    return_value={"Second headline": "두 번째 번역"},
+                ) as google:
+                    translations = briefing.translate_batch_to_korean(headlines)
+
+        self.assertEqual(
+            translations,
+            {
+                "First headline": "첫 번째 번역",
+                "Second headline": "두 번째 번역",
+            },
+        )
+        google.assert_called_once_with(["Second headline"])
 
 
 class FormattingTests(unittest.TestCase):
