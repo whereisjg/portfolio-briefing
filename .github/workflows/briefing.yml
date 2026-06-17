@@ -1,8 +1,6 @@
 name: Daily Portfolio Briefing
 
 on:
-  schedule:
-    - cron: '0 22 * * 1-5'  # 평일 22:00 UTC = 다음날 07:00 KST (미국 장 마감 후)
   workflow_dispatch:
 
 permissions:
