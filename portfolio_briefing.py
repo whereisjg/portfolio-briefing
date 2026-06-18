@@ -887,9 +887,11 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
                 effect_str = f"  {effect:+,.0f}원"
         else:
             effect_str = ""
+        weight = item.get("weight_pct")
+        weight_str = f"  비중 {float(weight):.1f}%" if weight not in (None, "") else ""
         return (
             f"{movement_emoji(item['chg_pct'])} {item['ticker']:<5} "
-            f"{format_price(item):>9}  {item['chg_pct']:>+6.2f}%{alert}{effect_str}"
+            f"{format_price(item):>9}  {item['chg_pct']:>+6.2f}%{alert}{effect_str}{weight_str}"
         )
 
     compact_rows = [price_row(item) for item in quotes]
