@@ -306,6 +306,36 @@ def fetch_quote(asset):
     return fetch_yahoo_quote(asset)
 
 
+def fetch_usd_to_krw():
+    try:
+        rate_asset = {"ticker": "USDKRW", "symbol": "KRW=X", "currency": "KRW"}
+        q = fetch_yahoo_quote(rate_asset)
+        return q["price"]
+    except Exception as exc:
+        print(f"WARNING: 환율 조회 실패, 비중 계산 건너뜀: {exc}")
+        return None
+
+
+def compute_weights(quotes, usd_to_krw):
+    """현재가·환율 기준으로 각 quote의 weight_pct를 재계산한다."""
+    if usd_to_krw is None:
+        return
+    values = []
+    for q in quotes:
+        shares = q.get("shares")
+        if shares in (None, ""):
+            values.append(None)
+            continue
+        price_krw = q["price"] * usd_to_krw if q["currency"] == "USD" else q["price"]
+        values.append(float(shares) * price_krw)
+    total = sum(v for v in values if v is not None)
+    if not total:
+        return
+    for q, v in zip(quotes, values):
+        if v is not None:
+            q["weight_pct"] = round(v / total * 100, 2)
+
+
 def fetch_prices(assets, require_any=True):
     quotes = []
     errors = []
@@ -321,6 +351,12 @@ def fetch_prices(assets, require_any=True):
 
     if require_any and not quotes:
         raise ValueError("모든 가격 조회에 실패했습니다.")
+
+    has_mixed_currency = len({q["currency"] for q in quotes if q["currency"] != "POINT"}) > 1
+    if has_mixed_currency:
+        usd_to_krw = fetch_usd_to_krw()
+        compute_weights(quotes, usd_to_krw)
+        print(f"환율 USD/KRW={usd_to_krw:.2f}, 비중 재계산 완료")
 
     return quotes, errors
 

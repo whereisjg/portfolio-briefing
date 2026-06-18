@@ -23,7 +23,6 @@
       "display": "SOXL",
       "currency": "USD",
       "shares": 52,
-      "weight_pct": 80.38,
       "news_query": "SOXL Direxion Daily Semiconductor Bull 3x ETF",
       "news_queries": [
         "SOXL Direxion Daily Semiconductor Bull 3x ETF",
@@ -65,7 +64,6 @@
       "display": "TIME나스닥100",
       "currency": "KRW",
       "shares": 64,
-      "weight_pct": 16.66,
       "news_optional": true,
       "news_query": "TIMEFOLIO 미국나스닥100액티브 ETF",
       "news_queries": [
@@ -94,7 +92,6 @@
       "display": "KODEX나스닥커버드콜",
       "currency": "KRW",
       "shares": 63,
-      "weight_pct": 2.96,
       "news_optional": true,
       "news_query": "KODEX 미국나스닥100 데일리 커버드콜 OTM ETF",
       "news_queries": [
