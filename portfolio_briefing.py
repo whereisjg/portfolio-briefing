@@ -882,17 +882,17 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         if shares not in (None, ""):
             effect = item.get("chg_amount", 0) * float(shares)
             if item["currency"] == "USD":
-                effect_str = f"  +${effect:,.0f}" if effect >= 0 else f"  -${abs(effect):,.0f}"
+                effect_str = f"+${effect:,.0f}" if effect >= 0 else f"-${abs(effect):,.0f}"
             else:
-                effect_str = f"  {effect:+,.0f}원"
+                effect_str = f"{effect:+,.0f}원"
         else:
             effect_str = ""
         weight = item.get("weight_pct")
-        weight_str = f"  비중 {float(weight):.1f}%" if weight not in (None, "") else ""
-        return (
-            f"{movement_emoji(item['chg_pct'])} {item['ticker']:<5} "
-            f"{format_price(item):>9}  {item['chg_pct']:>+6.2f}%{alert}{effect_str}{weight_str}"
-        )
+        weight_str = f"비중 {float(weight):.1f}%" if weight not in (None, "") else ""
+        sub = " · ".join(x for x in [effect_str, weight_str] if x)
+        line1 = f"{movement_emoji(item['chg_pct'])} {item['display']}  {format_price(item)}  {item['chg_pct']:+.2f}%{alert}"
+        line2 = f"   {sub}" if sub else ""
+        return "\n".join(x for x in [line1, line2] if x)
 
     compact_rows = [price_row(item) for item in quotes]
 
@@ -921,9 +921,9 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
     telegram_lines.extend([
         f"분위기: {mood} · {count_str}",
         "",
-        "─" * 26,
+        "─" * 20,
         *compact_rows,
-        "─" * 26,
+        "─" * 20,
     ])
 
     if alert_action_lines:
