@@ -27,7 +27,7 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 ## Repository Structure
 
 ```text
-portfolio-briefing-kakao/
+portfolio-briefing/
 ├─ .github/workflows/briefing.yml
 ├─ briefings/briefing_YYYYMMDD.md
 ├─ portfolio.json
@@ -82,7 +82,7 @@ Criteria: `ROE >= 15%`, `PER <= 15`, `PSR < 3`, `PBR <= 1.5`
 Triggers `workflow_dispatch` every morning at 07:00 KST:
 
 ```
-URL:    https://api.github.com/repos/{owner}/portfolio-briefing-kakao/actions/workflows/briefing.yml/dispatches
+URL:    https://api.github.com/repos/{owner}/portfolio-briefing/actions/workflows/briefing.yml/dispatches
 Method: POST
 Headers:
   Authorization: Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}
