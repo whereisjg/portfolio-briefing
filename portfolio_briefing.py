@@ -870,11 +870,13 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
     )
 
     usd_to_krw = next((q["usd_to_krw"] for q in quotes if q.get("usd_to_krw")), None)
-    fx_str = f" | 환율 ₩{usd_to_krw:,.0f}" if usd_to_krw else ""
-    index_summary = " | ".join(
+    index_lines_list = [
         f"{item['display']} {format_price(item)} ({item['chg_pct']:+.2f}%)"
         for item in indexes
-    ) + fx_str
+    ]
+    if usd_to_krw:
+        index_lines_list.append(f"환율 ₩{usd_to_krw:,.0f}")
+    index_summary = "\n".join(index_lines_list)
 
     pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
     neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
