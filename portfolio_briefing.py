@@ -334,6 +334,8 @@ def compute_weights(quotes, usd_to_krw):
     for q, v in zip(quotes, values):
         if v is not None:
             q["weight_pct"] = round(v / total * 100, 2)
+        if q["currency"] == "USD":
+            q["usd_to_krw"] = usd_to_krw
 
 
 def fetch_prices(assets, require_any=True):
@@ -878,11 +880,17 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
 
     def price_row(item):
         alert = "🚨" if abs(item["chg_pct"]) >= CRITICAL_MOVE_PCT else ("⚠️" if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT else "")
+        rate = item.get("usd_to_krw")
+        if item["currency"] == "USD" and rate:
+            price_str = f"₩{item['price'] * rate:,.0f}"
+        else:
+            price_str = format_price(item)
         shares = item.get("shares")
         if shares not in (None, ""):
             effect = item.get("chg_amount", 0) * float(shares)
-            if item["currency"] == "USD":
-                effect_str = f"+${effect:,.0f}" if effect >= 0 else f"-${abs(effect):,.0f}"
+            if item["currency"] == "USD" and rate:
+                effect_krw = effect * rate
+                effect_str = f"{effect_krw:+,.0f}원"
             else:
                 effect_str = f"{effect:+,.0f}원"
         else:
@@ -890,7 +898,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         weight = item.get("weight_pct")
         weight_str = f"비중 {float(weight):.1f}%" if weight not in (None, "") else ""
         sub = " · ".join(x for x in [effect_str, weight_str] if x)
-        line1 = f"{movement_emoji(item['chg_pct'])} {item['display']}  {format_price(item)}  {item['chg_pct']:+.2f}%{alert}"
+        line1 = f"{movement_emoji(item['chg_pct'])} {item['display']}  {price_str}  {item['chg_pct']:+.2f}%{alert}"
         line2 = f"   {sub}" if sub else ""
         return "\n".join(x for x in [line1, line2] if x)
 
