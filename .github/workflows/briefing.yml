@@ -1,11 +1,6 @@
 name: Daily Portfolio Briefing
 
 on:
-  schedule:
-    - cron: '0 22 * * *'   # 오전 07:00 KST
-    - cron: '0 3 * * *'    # 오후 12:00 KST
-    - cron: '0 8 * * *'    # 오후 05:00 KST
-    - cron: '0 13 * * *'   # 오후 10:00 KST
   workflow_dispatch:
 
 permissions:
