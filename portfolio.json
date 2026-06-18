@@ -17,102 +17,34 @@
   ],
   "assets": [
     {
-      "ticker": "QLD",
-      "symbol": "QLD",
-      "name": "QLD",
-      "display": "QLD",
+      "ticker": "SOXL",
+      "symbol": "SOXL",
+      "name": "SOXL",
+      "display": "SOXL",
       "currency": "USD",
-      "shares": 80.930316,
-      "weight_pct": 27.37,
-      "news_query": "ProShares Ultra QQQ QLD ETF",
+      "shares": 52,
+      "weight_pct": 100,
+      "news_query": "SOXL Direxion Daily Semiconductor Bull 3x ETF",
       "news_queries": [
-        "ProShares Ultra QQQ QLD ETF",
-        "QLD ETF Nasdaq 100",
-        "Nasdaq 100 QQQ ETF"
+        "SOXL Direxion Daily Semiconductor Bull 3x ETF",
+        "SOXL ETF semiconductor",
+        "semiconductor chip stocks AI data center"
       ],
       "news_include": [
-        "QLD",
-        "ProShares Ultra QQQ",
-        "Ultra QQQ",
-        "QQQ",
-        "Nasdaq 100",
-        "나스닥"
-      ],
-      "news_exclude": [
-        "UK tech",
-        "영국 기술"
-      ]
-    },
-    {
-      "ticker": "USD",
-      "symbol": "USD",
-      "name": "USD",
-      "display": "USD",
-      "currency": "USD",
-      "shares": 37.337306,
-      "weight_pct": 27.41,
-      "news_optional": true,
-      "news_query": "ProShares Ultra Semiconductors ETF",
-      "news_queries": [
-        "ProShares Ultra Semiconductors ETF",
-        "USD ETF ProShares Ultra Semiconductors",
-        "semiconductor ETF stocks",
-        "SOXL SMH semiconductor stocks"
-      ],
-      "news_include": [
-        "ProShares Ultra Semiconductors",
-        "Ultra Semiconductors",
+        "SOXL",
+        "Direxion Daily Semiconductor",
         "semiconductor",
         "semiconductors",
         "chip",
         "chips",
-        "SOXL",
         "SMH",
         "반도체",
         "엔비디아",
         "Nvidia",
-        "AMD"
-      ],
-      "news_exclude": [
-        "US dollar",
-        "U.S. dollar",
-        "dollar index",
-        "exchange rate",
-        "currency",
-        "forex",
-        "환율",
-        "달러",
-        "외환",
-        "뭉칫돈",
-        "서학개미",
-        "목표주가",
-        "TIGER",
-        "KODEX",
-        "KBSTAR"
-      ]
-    },
-    {
-      "ticker": "UPRO",
-      "symbol": "UPRO",
-      "name": "UPRO",
-      "display": "UPRO",
-      "currency": "USD",
-      "shares": 0.430264,
-      "weight_pct": 0,
-      "news_query": "ProShares UltraPro S&P500 UPRO ETF",
-      "news_queries": [
-        "ProShares UltraPro S&P500 UPRO ETF",
-        "UPRO ETF S&P 500",
-        "S&P 500 ETF"
-      ],
-      "news_include": [
-        "UPRO",
-        "ProShares UltraPro S&P500",
-        "UltraPro S&P500",
-        "S&P 500",
-        "S&P500",
-        "스탠더드앤드푸어스",
-        "에스앤피"
+        "AMD",
+        "TSMC",
+        "Broadcom",
+        "Qualcomm"
       ],
       "news_exclude": [
         "TIGER",
@@ -121,63 +53,6 @@
         "목표주가",
         "뭉칫돈",
         "서학개미"
-      ]
-    },
-    {
-      "ticker": "AMD",
-      "symbol": "AMD",
-      "name": "AMD",
-      "display": "AMD",
-      "currency": "USD",
-      "shares": 2,
-      "weight_pct": 11.25,
-      "news_query": "AMD stock Advanced Micro Devices",
-      "news_queries": [
-        "AMD stock Advanced Micro Devices",
-        "AMD earnings AI chips data center",
-        "Advanced Micro Devices GPU server AI"
-      ],
-      "news_include": [
-        "AMD",
-        "Advanced Micro Devices",
-        "AI chip",
-        "AI chips",
-        "GPU",
-        "data center",
-        "데이터센터",
-        "반도체"
-      ],
-      "news_exclude": [
-        "age-related macular degeneration",
-        "macular degeneration",
-        "황반변성"
-      ]
-    },
-    {
-      "ticker": "SPCX",
-      "symbol": "SPCX",
-      "name": "스페이스X",
-      "display": "스페이스X",
-      "currency": "USD",
-      "shares": 5,
-      "weight_pct": 7.37,
-      "news_query": "SPCX ETF",
-      "news_queries": [
-        "SPCX ETF",
-        "SPCX holdings",
-        "special purpose acquisition company ETF"
-      ],
-      "news_include": [
-        "SPCX",
-        "SPAC",
-        "special purpose acquisition company",
-        "IPO",
-        "merger",
-        "de-SPAC"
-      ],
-      "news_exclude": [
-        "space x",
-        "SpaceX"
       ]
     }
   ]
