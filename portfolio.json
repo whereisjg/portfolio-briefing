@@ -57,6 +57,66 @@
         "macular degeneration",
         "황반변성"
       ]
+    },
+    {
+      "ticker": "TIME나스닥100액티브",
+      "symbol": "426030.KS",
+      "name": "TIMEFOLIO 미국나스닥100액티브",
+      "display": "TIME나스닥100",
+      "currency": "KRW",
+      "shares": 64,
+      "weight_pct": "",
+      "news_optional": true,
+      "news_query": "TIMEFOLIO 미국나스닥100액티브 ETF",
+      "news_queries": [
+        "TIMEFOLIO 미국나스닥100액티브 ETF",
+        "타임폴리오 나스닥100 ETF",
+        "나스닥100 액티브 ETF"
+      ],
+      "news_include": [
+        "TIMEFOLIO",
+        "타임폴리오",
+        "나스닥100",
+        "나스닥 100",
+        "Nasdaq 100",
+        "426030"
+      ],
+      "news_exclude": [
+        "목표주가",
+        "뭉칫돈",
+        "서학개미"
+      ]
+    },
+    {
+      "ticker": "KODEX나스닥100커버드콜",
+      "symbol": "494300.KS",
+      "name": "KODEX 미국나스닥100데일리커버드콜OTM",
+      "display": "KODEX나스닥커버드콜",
+      "currency": "KRW",
+      "shares": 63,
+      "weight_pct": "",
+      "news_optional": true,
+      "news_query": "KODEX 미국나스닥100 데일리 커버드콜 OTM ETF",
+      "news_queries": [
+        "KODEX 미국나스닥100 데일리 커버드콜 OTM ETF",
+        "KODEX 나스닥100 커버드콜 ETF",
+        "나스닥100 커버드콜 ETF 배당"
+      ],
+      "news_include": [
+        "KODEX",
+        "코덱스",
+        "커버드콜",
+        "covered call",
+        "나스닥100",
+        "나스닥 100",
+        "Nasdaq 100",
+        "494300"
+      ],
+      "news_exclude": [
+        "목표주가",
+        "뭉칫돈",
+        "서학개미"
+      ]
     }
   ]
 }
