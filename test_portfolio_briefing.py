@@ -72,6 +72,40 @@ class NewsFilteringTests(unittest.TestCase):
             ["USD", "ProShares Ultra Semiconductors ETF"],
         )
 
+    def test_global_ai_filter_rejects_broad_ai_geopolitics_news(self):
+        asset = {
+            "ticker": "TIME글로벌AI인공지능액티브",
+            "symbol": "456600.KS",
+            "news_include": [
+                "TIME 글로벌AI",
+                "타임폴리오 글로벌 AI",
+                "글로벌AI",
+                "글로벌 AI",
+                "인공지능",
+                "artificial intelligence",
+                "Nvidia",
+                "OpenAI",
+                "Microsoft AI",
+                "AI chip",
+                "AI data center",
+                "456600",
+            ],
+            "news_exclude": ["호르무즈", "이란", "Iran", "Graham"],
+        }
+        raw_titles = [
+            "Lindsey Graham warns Iran over Strait of Hormuz - USA TODAY",
+            "TIME 글로벌AI인공지능액티브 ETF tracks artificial intelligence rally - ETF.com",
+        ]
+
+        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
+            candidates = briefing.collect_raw_news_candidates(asset)
+
+        titles = [raw_title for raw_title, _, _ in candidates]
+        self.assertEqual(
+            titles,
+            ["TIME 글로벌AI인공지능액티브 ETF tracks artificial intelligence rally - ETF.com"],
+        )
+
     def test_apply_translations_uses_mapping(self):
         asset = {
             "ticker": "QLD",

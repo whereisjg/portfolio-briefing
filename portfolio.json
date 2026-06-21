@@ -158,18 +158,27 @@
         "글로벌 AI 인공지능 ETF"
       ],
       "news_include": [
-        "TIME",
-        "타임폴리오",
+        "TIME 글로벌AI",
+        "타임폴리오 글로벌 AI",
         "글로벌AI",
         "글로벌 AI",
         "인공지능",
-        "AI",
+        "artificial intelligence",
+        "Nvidia",
+        "OpenAI",
+        "Microsoft AI",
+        "AI chip",
+        "AI data center",
         "456600"
       ],
       "news_exclude": [
         "목표주가",
         "뭉칫돈",
-        "서학개미"
+        "서학개미",
+        "호르무즈",
+        "이란",
+        "Iran",
+        "Graham"
       ]
     }
   ]
