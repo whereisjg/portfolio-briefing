@@ -166,7 +166,6 @@
         "artificial intelligence",
         "Nvidia",
         "OpenAI",
-        "Microsoft AI",
         "AI chip",
         "AI data center",
         "456600"
@@ -174,11 +173,7 @@
       "news_exclude": [
         "목표주가",
         "뭉칫돈",
-        "서학개미",
-        "호르무즈",
-        "이란",
-        "Iran",
-        "Graham"
+        "서학개미"
       ]
     }
   ]

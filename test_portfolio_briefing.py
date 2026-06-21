@@ -72,7 +72,7 @@ class NewsFilteringTests(unittest.TestCase):
             ["USD", "ProShares Ultra Semiconductors ETF"],
         )
 
-    def test_global_ai_filter_rejects_broad_ai_geopolitics_news(self):
+    def test_global_ai_filter_rejects_broad_ai_only_news(self):
         asset = {
             "ticker": "TIME글로벌AI인공지능액티브",
             "symbol": "456600.KS",
@@ -85,15 +85,14 @@ class NewsFilteringTests(unittest.TestCase):
                 "artificial intelligence",
                 "Nvidia",
                 "OpenAI",
-                "Microsoft AI",
                 "AI chip",
                 "AI data center",
                 "456600",
             ],
-            "news_exclude": ["호르무즈", "이란", "Iran", "Graham"],
+            "news_exclude": [],
         }
         raw_titles = [
-            "Lindsey Graham warns Iran over Strait of Hormuz - USA TODAY",
+            "AI becomes flashpoint in foreign policy debate - USA TODAY",
             "TIME 글로벌AI인공지능액티브 ETF tracks artificial intelligence rally - ETF.com",
         ]
 
