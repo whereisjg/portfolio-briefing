@@ -114,6 +114,34 @@
         "뭉칫돈",
         "서학개미"
       ]
+    },
+    {
+      "ticker": "TIME코리아밸류업액티브",
+      "symbol": "495060.KS",
+      "name": "TIME 코리아밸류업액티브",
+      "display": "TIME코리아밸류업",
+      "currency": "KRW",
+      "shares": null,
+      "news_optional": true,
+      "news_query": "TIME 코리아밸류업액티브 ETF",
+      "news_queries": [
+        "TIME 코리아밸류업액티브 ETF",
+        "타임폴리오 코리아밸류업 액티브 ETF",
+        "코리아 밸류업 ETF"
+      ],
+      "news_include": [
+        "TIME",
+        "타임폴리오",
+        "코리아밸류업",
+        "코리아 밸류업",
+        "밸류업",
+        "495060"
+      ],
+      "news_exclude": [
+        "목표주가",
+        "뭉칫돈",
+        "서학개미"
+      ]
     }
   ]
 }

@@ -9,6 +9,7 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 | `SOXL` | Direxion Daily Semiconductor Bull 3x Shares | US |
 | `426030.KS` | TIMEFOLIO 미국나스닥100액티브 | Korea |
 | `494300.KS` | KODEX 미국나스닥100데일리커버드콜OTM | Korea |
+| `495060.KS` | TIME 코리아밸류업액티브 | Korea |
 
 ## What It Does
 
