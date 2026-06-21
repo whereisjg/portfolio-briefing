@@ -42,7 +42,7 @@ jobs:
           git config user.name "Portfolio Bot"
           git config user.email "bot@portfolio.local"
           git add briefings/*.md 2>/dev/null || true
-          git commit -m "Daily briefing - $(date +%Y-%m-%d)" || true
+          git commit -m "Daily briefing - $(TZ=Asia/Seoul date +%Y-%m-%d)" || true
           git pull --rebase origin main
           git push
       - name: Notify failure

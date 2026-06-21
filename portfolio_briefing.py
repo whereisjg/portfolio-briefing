@@ -358,7 +358,8 @@ def fetch_prices(assets, require_any=True):
     if has_mixed_currency:
         usd_to_krw = fetch_usd_to_krw()
         compute_weights(quotes, usd_to_krw)
-        print(f"환율 USD/KRW={usd_to_krw:.2f}, 비중 재계산 완료")
+        if usd_to_krw is not None:
+            print(f"환율 USD/KRW={usd_to_krw:.2f}, 비중 재계산 완료")
 
     return quotes, errors
 
@@ -896,7 +897,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
                 effect_krw = effect * rate
                 effect_str = f"{effect_krw:+,.0f}원"
             else:
-                effect_str = f"{effect:+,.0f}원"
+                effect_str = format_signed_amount(effect, item["currency"])
         else:
             effect_str = ""
         weight = item.get("weight_pct")

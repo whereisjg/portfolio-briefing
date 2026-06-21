@@ -265,6 +265,37 @@ class QuoteProviderTests(unittest.TestCase):
         self.assertEqual(quote["provider"], "Yahoo")
         fetch_yahoo.assert_called_once_with(asset)
 
+    def test_fetch_prices_keeps_quotes_when_fx_lookup_fails(self):
+        assets = [
+            {"ticker": "SOXL", "symbol": "SOXL", "currency": "USD"},
+            {"ticker": "KODEX", "symbol": "494300.KS", "currency": "KRW"},
+        ]
+        quotes = [
+            {
+                **assets[0],
+                "price": 10.0,
+                "prev_close": 9.0,
+                "chg_amount": 1.0,
+                "chg_pct": 11.11,
+                "provider": "Yahoo",
+            },
+            {
+                **assets[1],
+                "price": 10000.0,
+                "prev_close": 9900.0,
+                "chg_amount": 100.0,
+                "chg_pct": 1.01,
+                "provider": "Yahoo",
+            },
+        ]
+
+        with patch.object(briefing, "fetch_quote", side_effect=quotes):
+            with patch.object(briefing, "fetch_usd_to_krw", return_value=None):
+                fetched, errors = briefing.fetch_prices(assets)
+
+        self.assertEqual(fetched, quotes)
+        self.assertEqual(errors, [])
+
 
 class ContentTests(unittest.TestCase):
     def test_build_content_has_no_account_section(self):
@@ -286,6 +317,27 @@ class ContentTests(unittest.TestCase):
 
         self.assertNotIn("계좌", telegram)
         self.assertNotIn("계좌", markdown)
+
+    def test_telegram_keeps_usd_effect_as_usd_without_fx_rate(self):
+        quotes = [
+            {
+                "ticker": "SOXL",
+                "display": "SOXL",
+                "name": "SOXL",
+                "currency": "USD",
+                "price": 10.0,
+                "prev_close": 9.0,
+                "chg_amount": 1.0,
+                "chg_pct": 11.11,
+                "shares": 2,
+                "provider": "Yahoo",
+            }
+        ]
+
+        telegram, _markdown = briefing.build_content([], quotes, {"SOXL": []}, [])
+
+        self.assertIn("+$2.00", telegram)
+        self.assertNotIn("+2원", telegram)
 
 
 if __name__ == "__main__":

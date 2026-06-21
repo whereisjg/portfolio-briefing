@@ -6,13 +6,9 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 
 | Ticker | Description | Market |
 | --- | --- | --- |
-| `QLD` | ProShares Ultra QQQ | US |
-| `SSO` | ProShares Ultra S&P500 | US |
-| `USD` | ProShares Ultra Semiconductors | US |
-| `AIPO` | Defiance AI & Power Infrastructure ETF | US |
-| `AMD` | Advanced Micro Devices | US |
-| `SPCX` | SPCX ETF | US |
-| `SCHD` | Schwab US Dividend Equity ETF | US |
+| `SOXL` | Direxion Daily Semiconductor Bull 3x Shares | US |
+| `426030.KS` | TIMEFOLIO 미국나스닥100액티브 | Korea |
+| `494300.KS` | KODEX 미국나스닥100데일리커버드콜OTM | Korea |
 
 ## What It Does
 
@@ -95,15 +91,15 @@ Required token permission: `Actions: Read and write` on this repository only.
 ## Local Preview
 
 ```bash
-SEND_TELEGRAM=false python portfolio_briefing.py
+SEND_TELEGRAM=false python3 portfolio_briefing.py
 ```
 
 Verify before pushing:
 
 ```bash
-python -m py_compile portfolio_briefing.py
-python -m unittest
-python -c "import json; json.load(open('portfolio.json', encoding='utf-8')); json.load(open('screener.json', encoding='utf-8'))"
+python3 -m py_compile portfolio_briefing.py
+python3 -m unittest
+python3 -c "import json; json.load(open('portfolio.json', encoding='utf-8')); json.load(open('screener.json', encoding='utf-8'))"
 ```
 
 ## Troubleshooting
