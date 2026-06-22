@@ -105,6 +105,35 @@ class NewsFilteringTests(unittest.TestCase):
             ["TIME 글로벌AI인공지능액티브 ETF tracks artificial intelligence rally - ETF.com"],
         )
 
+    def test_korea_value_up_filter_rejects_broad_time_news(self):
+        asset = {
+            "ticker": "TIME코리아밸류업액티브",
+            "symbol": "495060.KS",
+            "news_include": [
+                "TIME 코리아밸류업",
+                "타임폴리오 코리아밸류업",
+                "코리아밸류업",
+                "코리아 밸류업",
+                "밸류업 ETF",
+                "Korea Value-up",
+                "495060",
+            ],
+            "news_exclude": [],
+        }
+        raw_titles = [
+            "Starmer timeline appears near as rival Burnham heads to UK parliament - Associated Press",
+            "TIME 코리아밸류업액티브 ETF rises with Korea Value-up rally - ETF.com",
+        ]
+
+        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
+            candidates = briefing.collect_raw_news_candidates(asset)
+
+        titles = [raw_title for raw_title, _, _ in candidates]
+        self.assertEqual(
+            titles,
+            ["TIME 코리아밸류업액티브 ETF rises with Korea Value-up rally - ETF.com"],
+        )
+
     def test_apply_translations_uses_mapping(self):
         asset = {
             "ticker": "QLD",
