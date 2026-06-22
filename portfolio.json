@@ -121,7 +121,7 @@
       "name": "TIME 코리아밸류업액티브",
       "display": "TIME코리아밸류업",
       "currency": "KRW",
-      "shares": null,
+      "shares": 19,
       "news_optional": true,
       "news_query": "TIME 코리아밸류업액티브 ETF",
       "news_queries": [
@@ -149,7 +149,7 @@
       "name": "TIME 글로벌AI인공지능액티브",
       "display": "TIME글로벌AI",
       "currency": "KRW",
-      "shares": null,
+      "shares": 1,
       "news_optional": true,
       "news_query": "TIME 글로벌AI인공지능액티브 ETF",
       "news_queries": [
