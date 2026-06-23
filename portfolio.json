@@ -176,6 +176,35 @@
         "뭉칫돈",
         "서학개미"
       ]
+    },
+    {
+      "ticker": "TIME미국배당다우존스액티브",
+      "symbol": "0036D0.KS",
+      "name": "TIME 미국배당다우존스액티브",
+      "display": "TIME미국배당다우존스",
+      "currency": "KRW",
+      "shares": 2,
+      "news_optional": true,
+      "news_query": "TIME 미국배당다우존스액티브 ETF",
+      "news_queries": [
+        "TIME 미국배당다우존스액티브 ETF",
+        "타임폴리오 미국배당다우존스 액티브 ETF",
+        "미국배당다우존스 ETF"
+      ],
+      "news_include": [
+        "TIME 미국배당다우존스",
+        "타임폴리오 미국배당다우존스",
+        "미국배당다우존스",
+        "미국 배당 다우존스",
+        "Dow Jones U.S. Dividend",
+        "SCHD",
+        "0036D0"
+      ],
+      "news_exclude": [
+        "목표주가",
+        "뭉칫돈",
+        "서학개미"
+      ]
     }
   ]
 }

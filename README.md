@@ -11,6 +11,7 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 | `494300.KS` | KODEX 미국나스닥100데일리커버드콜OTM | Korea |
 | `495060.KS` | TIME 코리아밸류업액티브 | Korea |
 | `456600.KS` | TIME 글로벌AI인공지능액티브 | Korea |
+| `0036D0.KS` | TIME 미국배당다우존스액티브 | Korea |
 
 ## What It Does
 
