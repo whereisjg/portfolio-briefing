@@ -100,6 +100,31 @@
         "뭉칫돈",
         "서학개미"
       ]
+    },
+    {
+      "ticker": "SPMO",
+      "symbol": "SPMO",
+      "name": "Invesco S&P 500 Momentum ETF",
+      "display": "SPMO",
+      "currency": "USD",
+      "shares": 0,
+      "news_optional": true,
+      "news_query": "SPMO Invesco S&P 500 Momentum ETF",
+      "news_queries": [
+        "SPMO Invesco S&P 500 Momentum ETF",
+        "S&P 500 Momentum Index ETF",
+        "US stock momentum factor ETF"
+      ],
+      "news_include": [
+        "SPMO",
+        "Invesco S&P 500 Momentum",
+        "S&P 500 Momentum Index",
+        "momentum factor"
+      ],
+      "news_exclude": [
+        "price target",
+        "stock picks"
+      ]
     }
   ]
 }
