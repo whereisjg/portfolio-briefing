@@ -909,6 +909,13 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
 
     compact_rows = [price_row(item) for item in quotes]
 
+    daily_buys = [
+        f"{item['display']} {int(item['daily_buy_krw']):,}원"
+        for item in quotes
+        if float(item.get("daily_buy_krw", 0) or 0) > 0
+    ]
+    daily_buy_summary = f"영업일 적립: {' · '.join(daily_buys)}" if daily_buys else ""
+
     claude_actions = generate_actions_with_claude(quotes, news)
 
     alert_action_lines = []
@@ -933,6 +940,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
 
     telegram_lines.extend([
         f"분위기: {mood} · {count_str}",
+        *([daily_buy_summary] if daily_buy_summary else []),
         "",
         "─" * 20,
         *compact_rows,
@@ -961,6 +969,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         headline_text,
         "",
         f"- 분위기: {mood}",
+        *([f"- {daily_buy_summary}"] if daily_buy_summary else []),
         f"- 가격 출처: {provider_text}",
         "",
         "## ⚠️ 먼저 볼 것",

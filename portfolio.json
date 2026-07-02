@@ -108,6 +108,7 @@
       "display": "SPMO",
       "currency": "USD",
       "shares": 0,
+      "daily_buy_krw": 30000,
       "news_optional": true,
       "news_query": "SPMO Invesco S&P 500 Momentum ETF",
       "news_queries": [
@@ -124,6 +125,33 @@
       "news_exclude": [
         "price target",
         "stock picks"
+      ]
+    },
+    {
+      "ticker": "KODEX미국나스닥100데일리커버드콜OTM",
+      "symbol": "494300.KS",
+      "name": "KODEX 미국나스닥100데일리커버드콜OTM",
+      "display": "KODEX나스닥100커버드콜OTM",
+      "currency": "KRW",
+      "shares": 0,
+      "daily_buy_krw": 30000,
+      "news_optional": true,
+      "news_query": "KODEX 미국나스닥100데일리커버드콜OTM ETF",
+      "news_queries": [
+        "KODEX 미국나스닥100데일리커버드콜OTM ETF",
+        "나스닥100 데일리 커버드콜 OTM ETF",
+        "NASDAQ-100 Daily Covered Call 101 Index"
+      ],
+      "news_include": [
+        "KODEX 미국나스닥100데일리커버드콜OTM",
+        "나스닥100 데일리 커버드콜",
+        "NASDAQ-100 Daily Covered Call 101",
+        "494300"
+      ],
+      "news_exclude": [
+        "목표주가",
+        "뭉칫돈",
+        "서학개미"
       ]
     }
   ]

@@ -360,6 +360,28 @@ class QuoteProviderTests(unittest.TestCase):
 
 
 class ContentTests(unittest.TestCase):
+    def test_build_content_shows_daily_buy_plan(self):
+        quotes = [
+            {
+                "ticker": "SPMO",
+                "display": "SPMO",
+                "name": "SPMO",
+                "currency": "USD",
+                "price": 100.0,
+                "prev_close": 99.0,
+                "chg_amount": 1.0,
+                "chg_pct": 1.01,
+                "shares": 0,
+                "daily_buy_krw": 30000,
+                "provider": "Yahoo",
+            }
+        ]
+
+        telegram, markdown = briefing.build_content([], quotes, {"SPMO": []}, [])
+
+        self.assertIn("영업일 적립: SPMO 30,000원", telegram)
+        self.assertIn("영업일 적립: SPMO 30,000원", markdown)
+
     def test_build_content_has_no_account_section(self):
         quotes = [
             {
