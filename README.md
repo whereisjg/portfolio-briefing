@@ -7,11 +7,8 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 | Ticker | Description | Market |
 | --- | --- | --- |
 | `0015B0.KS` | KoAct 미국나스닥성장기업액티브 | Korea |
-| `0036D0.KS` | TIME 미국배당다우존스액티브 | Korea |
-| `0195S0.KS` | TIGER SK하이닉스단일종목레버리지 | Korea |
-| `456600.KS` | TIME 글로벌AI인공지능액티브 | Korea |
+| `0174B0.KS` | KoAct 글로벌AI메모리반도체액티브 | Korea |
 | `475070.KS` | KoAct 글로벌친환경전력인프라액티브 | Korea |
-| `495060.KS` | TIME 코리아밸류업액티브 | Korea |
 
 ## What It Does
 

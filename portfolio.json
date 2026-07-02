@@ -22,7 +22,7 @@
       "name": "KoAct 미국나스닥성장기업액티브",
       "display": "KoAct나스닥성장",
       "currency": "KRW",
-      "shares": 456,
+      "shares": 663,
       "news_optional": true,
       "news_query": "KoAct 미국나스닥성장기업액티브 ETF",
       "news_queries": [
@@ -44,88 +44,28 @@
       ]
     },
     {
-      "ticker": "TIME미국배당다우존스액티브",
-      "symbol": "0036D0.KS",
-      "name": "TIME 미국배당다우존스액티브",
-      "display": "TIME미국배당다우존스",
+      "ticker": "KoAct글로벌AI메모리반도체액티브",
+      "symbol": "0174B0.KS",
+      "name": "KoAct 글로벌AI메모리반도체액티브",
+      "display": "KoAct AI메모리반도체",
       "currency": "KRW",
-      "shares": 537,
+      "shares": 3,
       "news_optional": true,
-      "news_query": "TIME 미국배당다우존스액티브 ETF",
+      "news_query": "KoAct 글로벌AI메모리반도체액티브 ETF",
       "news_queries": [
-        "TIME 미국배당다우존스액티브 ETF",
-        "타임폴리오 미국배당다우존스 액티브 ETF",
-        "미국배당다우존스 ETF"
+        "KoAct 글로벌AI메모리반도체액티브 ETF",
+        "삼성액티브 글로벌 AI 메모리 반도체 ETF",
+        "글로벌 AI 메모리 반도체 ETF"
       ],
       "news_include": [
-        "TIME 미국배당다우존스",
-        "타임폴리오 미국배당다우존스",
-        "미국배당다우존스",
-        "미국 배당 다우존스",
-        "Dow Jones U.S. Dividend",
-        "SCHD",
-        "0036D0"
-      ],
-      "news_exclude": [
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
-      ]
-    },
-    {
-      "ticker": "TIGERSK하이닉스단일종목레버리지",
-      "symbol": "0195S0.KS",
-      "name": "TIGER SK하이닉스단일종목레버리지",
-      "display": "TIGERSK하이닉스레버리지",
-      "currency": "KRW",
-      "shares": 150,
-      "news_optional": true,
-      "news_query": "TIGER SK하이닉스단일종목레버리지 ETF",
-      "news_queries": [
-        "TIGER SK하이닉스단일종목레버리지 ETF",
-        "SK하이닉스 단일종목 레버리지 ETF",
-        "SK Hynix leverage ETF"
-      ],
-      "news_include": [
-        "TIGER SK하이닉스단일종목레버리지",
-        "SK하이닉스",
-        "SK Hynix",
-        "하이닉스",
+        "KoAct 글로벌AI메모리반도체",
+        "글로벌AI메모리반도체",
+        "AI 메모리 반도체",
+        "AI memory semiconductor",
         "HBM",
-        "0195S0"
-      ],
-      "news_exclude": [
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
-      ]
-    },
-    {
-      "ticker": "TIME글로벌AI인공지능액티브",
-      "symbol": "456600.KS",
-      "name": "TIME 글로벌AI인공지능액티브",
-      "display": "TIME글로벌AI",
-      "currency": "KRW",
-      "shares": 1,
-      "news_optional": true,
-      "news_query": "TIME 글로벌AI인공지능액티브 ETF",
-      "news_queries": [
-        "TIME 글로벌AI인공지능액티브 ETF",
-        "타임폴리오 글로벌 AI 인공지능 액티브 ETF",
-        "글로벌 AI 인공지능 ETF"
-      ],
-      "news_include": [
-        "TIME 글로벌AI",
-        "타임폴리오 글로벌 AI",
-        "글로벌AI",
-        "글로벌 AI",
-        "인공지능",
-        "artificial intelligence",
-        "Nvidia",
-        "OpenAI",
-        "AI chip",
-        "AI data center",
-        "456600"
+        "DRAM",
+        "NAND",
+        "0174B0"
       ],
       "news_exclude": [
         "목표주가",
@@ -139,7 +79,7 @@
       "name": "KoAct 글로벌친환경전력인프라액티브",
       "display": "KoAct전력인프라",
       "currency": "KRW",
-      "shares": 1,
+      "shares": 183,
       "news_optional": true,
       "news_query": "KoAct 글로벌친환경전력인프라액티브 ETF",
       "news_queries": [
@@ -154,35 +94,6 @@
         "power infrastructure",
         "AI data center power",
         "475070"
-      ],
-      "news_exclude": [
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
-      ]
-    },
-    {
-      "ticker": "TIME코리아밸류업액티브",
-      "symbol": "495060.KS",
-      "name": "TIME 코리아밸류업액티브",
-      "display": "TIME코리아밸류업",
-      "currency": "KRW",
-      "shares": 19,
-      "news_optional": true,
-      "news_query": "TIME 코리아밸류업액티브 ETF",
-      "news_queries": [
-        "TIME 코리아밸류업액티브 ETF",
-        "타임폴리오 코리아밸류업 액티브 ETF",
-        "코리아 밸류업 ETF"
-      ],
-      "news_include": [
-        "TIME 코리아밸류업",
-        "타임폴리오 코리아밸류업",
-        "코리아밸류업",
-        "코리아 밸류업",
-        "밸류업 ETF",
-        "Korea Value-up",
-        "495060"
       ],
       "news_exclude": [
         "목표주가",
