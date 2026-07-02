@@ -838,8 +838,9 @@ def build_alert_lines(quotes, errors, news):
 def build_content(indexes, quotes, news, errors, screen_result=None):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
-    headline, mood, surges, drops = market_summary(quotes)
-    headline_text = focused_headline(quotes, headline)
+    held_quotes = [item for item in quotes if float(item.get("shares", 0) or 0) > 0]
+    headline, mood, surges, drops = market_summary(held_quotes)
+    headline_text = focused_headline(held_quotes, headline)
     providers = sorted({item.get("provider", "Unknown") for item in indexes + quotes})
     provider_text = ", ".join(providers)
 
@@ -853,13 +854,13 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
             f"{format_price(item)} ({format_change_amount(item)}, {item['chg_pct']:+.2f}%"
             f"{format_weight(item)}{format_position_effect(item)})"
         )
-        for item in quotes
+        for item in held_quotes
     ]
-    alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors, news)]
+    alert_lines = [f"  ▸ {line}" for line in build_alert_lines(held_quotes, errors, news)]
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
     news_sections = []
-    for item in quotes:
+    for item in held_quotes:
         titles = news.get(item["ticker"], [])
         if not titles:
             continue
@@ -879,8 +880,8 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         index_lines_list.append(f"환율 ₩{usd_to_krw:,.0f}")
     index_summary = "\n".join(index_lines_list)
 
-    pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
-    neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
+    pos_count = sum(1 for q in held_quotes if q["chg_pct"] > 0)
+    neg_count = sum(1 for q in held_quotes if q["chg_pct"] < 0)
     count_str = f"🔴{pos_count} 🔵{neg_count}"
 
     def price_row(item):
@@ -907,7 +908,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         line2 = f"   {sub}" if sub else ""
         return "\n".join(x for x in [line1, line2] if x)
 
-    compact_rows = [price_row(item) for item in quotes]
+    compact_rows = [price_row(item) for item in held_quotes]
 
     daily_buys = [
         f"{item['display']} {int(item['daily_buy_krw']):,}원"
@@ -916,10 +917,10 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
     ]
     daily_buy_summary = f"영업일 적립: {' · '.join(daily_buys)}" if daily_buys else ""
 
-    claude_actions = generate_actions_with_claude(quotes, news)
+    claude_actions = generate_actions_with_claude(held_quotes, news)
 
     alert_action_lines = []
-    for item in quotes:
+    for item in held_quotes:
         if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT:
             icon = "🚨" if abs(item["chg_pct"]) >= CRITICAL_MOVE_PCT else "⚠️"
             if item["ticker"] in claude_actions:
@@ -929,7 +930,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
             alert_action_lines.append(f"{icon} {item['ticker']} {item['chg_pct']:+.2f}% → {action_text}")
 
     flat_news = []
-    for item in quotes:
+    for item in held_quotes:
         for title in news.get(item["ticker"], [])[:1]:
             flat_news.append(f"📰 {item['ticker']}: {clean_news_headline(title)}")
 
@@ -974,7 +975,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         "",
         "## ⚠️ 먼저 볼 것",
         "",
-        *[f"- {line}" for line in build_alert_lines(quotes, errors, news)],
+        *[f"- {line}" for line in build_alert_lines(held_quotes, errors, news)],
         "",
         "## 💰 가격 요약",
         "",
@@ -997,7 +998,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         ]
     )
 
-    for item in quotes:
+    for item in held_quotes:
         weight = f"{float(item['weight_pct']):.1f}%" if item.get("weight_pct") not in (None, "") else "-"
         shares = item.get("shares")
         if shares in (None, ""):
@@ -1021,7 +1022,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
                 f"- {item['ticker']}: {claude_actions[item['ticker']].split(': ', 1)[-1]}"
                 if item["ticker"] in claude_actions
                 else f"- {action_for(item)}"
-                for item in quotes
+                for item in held_quotes
             ],
             "",
             "## 📊 변동성 체크",

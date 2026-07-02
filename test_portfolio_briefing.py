@@ -381,6 +381,9 @@ class ContentTests(unittest.TestCase):
 
         self.assertIn("영업일 적립: SPMO 30,000원", telegram)
         self.assertIn("영업일 적립: SPMO 30,000원", markdown)
+        self.assertNotIn("🔴 SPMO", telegram)
+        self.assertNotIn("| SPMO |", markdown)
+        self.assertNotIn("SPMO:", markdown)
 
     def test_build_content_has_no_account_section(self):
         quotes = [
