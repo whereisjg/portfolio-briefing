@@ -10,7 +10,7 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 | `0174B0.KS` | KoAct 글로벌AI메모리반도체액티브 | Korea |
 | `475070.KS` | KoAct 글로벌친환경전력인프라액티브 | Korea |
 | `SPMO` | Invesco S&P 500 Momentum ETF | US |
-| `494300.KS` | KODEX 미국나스닥100데일리커버드콜OTM | Korea |
+| `SOXQ` | Invesco PHLX Semiconductor ETF | US |
 
 ## What It Does
 
