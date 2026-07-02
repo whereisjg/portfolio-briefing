@@ -108,7 +108,6 @@
       "display": "SPMO",
       "currency": "USD",
       "shares": 0,
-      "daily_buy_krw": 30000,
       "news_optional": true,
       "news_query": "SPMO Invesco S&P 500 Momentum ETF",
       "news_queries": [
@@ -134,7 +133,6 @@
       "display": "SOXQ",
       "currency": "USD",
       "shares": 0,
-      "daily_buy_krw": 30000,
       "news_optional": true,
       "news_query": "SOXQ Invesco PHLX Semiconductor ETF",
       "news_queries": [
