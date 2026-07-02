@@ -102,53 +102,29 @@
       ]
     },
     {
-      "ticker": "SPMO",
-      "symbol": "SPMO",
-      "name": "Invesco S&P 500 Momentum ETF",
-      "display": "SPMO",
-      "currency": "USD",
+      "ticker": "KIWOOM미국S&P500모멘텀",
+      "symbol": "0137V0.KS",
+      "name": "KIWOOM 미국S&P500모멘텀",
+      "display": "KIWOOM S&P500모멘텀",
+      "currency": "KRW",
       "shares": 0,
       "news_optional": true,
-      "news_query": "SPMO Invesco S&P 500 Momentum ETF",
+      "news_query": "KIWOOM 미국S&P500모멘텀 ETF",
       "news_queries": [
-        "SPMO Invesco S&P 500 Momentum ETF",
-        "S&P 500 Momentum Index ETF",
-        "US stock momentum factor ETF"
+        "KIWOOM 미국S&P500모멘텀 ETF",
+        "키움 미국 S&P500 모멘텀 ETF",
+        "S&P 500 Momentum Index ETF"
       ],
       "news_include": [
-        "SPMO",
-        "Invesco S&P 500 Momentum",
+        "KIWOOM 미국S&P500모멘텀",
+        "키움 미국 S&P500 모멘텀",
         "S&P 500 Momentum Index",
-        "momentum factor"
+        "0137V0"
       ],
       "news_exclude": [
-        "price target",
-        "stock picks"
-      ]
-    },
-    {
-      "ticker": "SOXQ",
-      "symbol": "SOXQ",
-      "name": "Invesco PHLX Semiconductor ETF",
-      "display": "SOXQ",
-      "currency": "USD",
-      "shares": 0,
-      "news_optional": true,
-      "news_query": "SOXQ Invesco PHLX Semiconductor ETF",
-      "news_queries": [
-        "SOXQ Invesco PHLX Semiconductor ETF",
-        "PHLX Semiconductor Sector Index ETF",
-        "US semiconductor ETF"
-      ],
-      "news_include": [
-        "SOXQ",
-        "Invesco PHLX Semiconductor",
-        "PHLX Semiconductor Sector Index",
-        "semiconductor ETF"
-      ],
-      "news_exclude": [
-        "price target",
-        "stock picks"
+        "목표주가",
+        "뭉칫돈",
+        "서학개미"
       ]
     }
   ]
