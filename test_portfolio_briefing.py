@@ -358,6 +358,39 @@ class QuoteProviderTests(unittest.TestCase):
         self.assertEqual(fetched, quotes)
         self.assertEqual(errors, [])
 
+    def test_fetch_prices_computes_weights_for_krw_only_assets(self):
+        assets = [
+            {"ticker": "AAA", "symbol": "AAA.KS", "currency": "KRW", "shares": 3},
+            {"ticker": "BBB", "symbol": "BBB.KS", "currency": "KRW", "shares": 2},
+        ]
+        quotes = [
+            {
+                **assets[0],
+                "price": 1000.0,
+                "prev_close": 900.0,
+                "chg_amount": 100.0,
+                "chg_pct": 11.11,
+                "provider": "Yahoo",
+            },
+            {
+                **assets[1],
+                "price": 1000.0,
+                "prev_close": 990.0,
+                "chg_amount": 10.0,
+                "chg_pct": 1.01,
+                "provider": "Yahoo",
+            },
+        ]
+
+        with patch.object(briefing, "fetch_quote", side_effect=quotes):
+            with patch.object(briefing, "fetch_usd_to_krw") as fx:
+                fetched, errors = briefing.fetch_prices(assets)
+
+        fx.assert_not_called()
+        self.assertEqual(errors, [])
+        self.assertEqual(fetched[0]["weight_pct"], 60.0)
+        self.assertEqual(fetched[1]["weight_pct"], 40.0)
+
 
 class ContentTests(unittest.TestCase):
     def test_build_content_shows_zero_share_tracking_asset_without_position_values(self):

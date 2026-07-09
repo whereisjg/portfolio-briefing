@@ -318,7 +318,8 @@ def fetch_usd_to_krw():
 
 def compute_weights(quotes, usd_to_krw):
     """현재가·환율 기준으로 각 quote의 weight_pct를 재계산한다."""
-    if usd_to_krw is None:
+    needs_fx = any(q["currency"] == "USD" for q in quotes)
+    if needs_fx and usd_to_krw is None:
         return
     values = []
     for q in quotes:
@@ -354,12 +355,14 @@ def fetch_prices(assets, require_any=True):
     if require_any and not quotes:
         raise ValueError("모든 가격 조회에 실패했습니다.")
 
-    has_mixed_currency = len({q["currency"] for q in quotes if q["currency"] != "POINT"}) > 1
-    if has_mixed_currency:
-        usd_to_krw = fetch_usd_to_krw()
-        compute_weights(quotes, usd_to_krw)
+    has_usd = any(q["currency"] == "USD" for q in quotes)
+    usd_to_krw = fetch_usd_to_krw() if has_usd else None
+    compute_weights(quotes, usd_to_krw)
+    if has_usd:
         if usd_to_krw is not None:
             print(f"환율 USD/KRW={usd_to_krw:.2f}, 비중 재계산 완료")
+    else:
+        print("KRW 자산 비중 재계산 완료")
 
     return quotes, errors
 
