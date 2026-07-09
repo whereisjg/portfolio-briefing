@@ -44,63 +44,6 @@
       ]
     },
     {
-      "ticker": "KoAct글로벌AI메모리반도체액티브",
-      "symbol": "0174B0.KS",
-      "name": "KoAct 글로벌AI메모리반도체액티브",
-      "display": "KoAct AI메모리반도체",
-      "currency": "KRW",
-      "shares": 3,
-      "news_optional": true,
-      "news_query": "KoAct 글로벌AI메모리반도체액티브 ETF",
-      "news_queries": [
-        "KoAct 글로벌AI메모리반도체액티브 ETF",
-        "삼성액티브 글로벌 AI 메모리 반도체 ETF",
-        "글로벌 AI 메모리 반도체 ETF"
-      ],
-      "news_include": [
-        "KoAct 글로벌AI메모리반도체",
-        "글로벌AI메모리반도체",
-        "AI 메모리 반도체",
-        "AI memory semiconductor",
-        "HBM",
-        "DRAM",
-        "NAND",
-        "0174B0"
-      ],
-      "news_exclude": [
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
-      ]
-    },
-    {
-      "ticker": "TIME미국배당다우존스액티브",
-      "symbol": "0036D0.KS",
-      "name": "TIME 미국배당다우존스액티브",
-      "display": "TIME미국배당다우존스",
-      "currency": "KRW",
-      "shares": 3,
-      "news_optional": true,
-      "news_query": "TIME 미국배당다우존스액티브 ETF",
-      "news_queries": [
-        "TIME 미국배당다우존스액티브 ETF",
-        "TIMEFOLIO 미국배당다우존스액티브 ETF",
-        "미국배당다우존스 액티브 ETF"
-      ],
-      "news_include": [
-        "TIME 미국배당다우존스",
-        "TIMEFOLIO 미국배당다우존스",
-        "미국배당다우존스",
-        "Dow Jones U.S. Dividend",
-        "0036D0"
-      ],
-      "news_exclude": [
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
-      ]
-    },
-    {
       "ticker": "RISE미국테크100데일리고정커버드콜",
       "symbol": "491620.KS",
       "name": "RISE 미국테크100데일리고정커버드콜",

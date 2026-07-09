@@ -7,8 +7,6 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 | Ticker | Description | Market |
 | --- | --- | --- |
 | `0015B0.KS` | KoAct 미국나스닥성장기업액티브 | Korea |
-| `0036D0.KS` | TIME 미국배당다우존스액티브 | Korea |
-| `0174B0.KS` | KoAct 글로벌AI메모리반도체액티브 | Korea |
 | `491620.KS` | RISE 미국테크100데일리고정커버드콜 | Korea |
 
 ## What It Does
