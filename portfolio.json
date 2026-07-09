@@ -74,26 +74,25 @@
       ]
     },
     {
-      "ticker": "KoAct글로벌친환경전력인프라액티브",
-      "symbol": "475070.KS",
-      "name": "KoAct 글로벌친환경전력인프라액티브",
-      "display": "KoAct전력인프라",
+      "ticker": "TIME미국배당다우존스액티브",
+      "symbol": "0036D0.KS",
+      "name": "TIME 미국배당다우존스액티브",
+      "display": "TIME미국배당다우존스",
       "currency": "KRW",
-      "shares": 183,
+      "shares": 3,
       "news_optional": true,
-      "news_query": "KoAct 글로벌친환경전력인프라액티브 ETF",
+      "news_query": "TIME 미국배당다우존스액티브 ETF",
       "news_queries": [
-        "KoAct 글로벌친환경전력인프라액티브 ETF",
-        "삼성액티브 글로벌친환경전력인프라 ETF",
-        "글로벌 전력 인프라 ETF"
+        "TIME 미국배당다우존스액티브 ETF",
+        "TIMEFOLIO 미국배당다우존스액티브 ETF",
+        "미국배당다우존스 액티브 ETF"
       ],
       "news_include": [
-        "KoAct 글로벌친환경전력인프라",
-        "글로벌친환경전력인프라",
-        "전력 인프라",
-        "power infrastructure",
-        "AI data center power",
-        "475070"
+        "TIME 미국배당다우존스",
+        "TIMEFOLIO 미국배당다우존스",
+        "미국배당다우존스",
+        "Dow Jones U.S. Dividend",
+        "0036D0"
       ],
       "news_exclude": [
         "목표주가",
@@ -102,24 +101,24 @@
       ]
     },
     {
-      "ticker": "KIWOOM미국S&P500모멘텀",
-      "symbol": "0137V0.KS",
-      "name": "KIWOOM 미국S&P500모멘텀",
-      "display": "KIWOOM S&P500모멘텀",
+      "ticker": "RISE미국테크100데일리고정커버드콜",
+      "symbol": "491620.KS",
+      "name": "RISE 미국테크100데일리고정커버드콜",
+      "display": "RISE테크100커버드콜",
       "currency": "KRW",
-      "shares": 0,
+      "shares": 653,
       "news_optional": true,
-      "news_query": "KIWOOM 미국S&P500모멘텀 ETF",
+      "news_query": "RISE 미국테크100데일리고정커버드콜 ETF",
       "news_queries": [
-        "KIWOOM 미국S&P500모멘텀 ETF",
-        "키움 미국 S&P500 모멘텀 ETF",
-        "S&P 500 Momentum Index ETF"
+        "RISE 미국테크100데일리고정커버드콜 ETF",
+        "KB RISE 미국테크100데일리고정커버드콜 ETF",
+        "미국테크100 데일리고정커버드콜 ETF"
       ],
       "news_include": [
-        "KIWOOM 미국S&P500모멘텀",
-        "키움 미국 S&P500 모멘텀",
-        "S&P 500 Momentum Index",
-        "0137V0"
+        "RISE 미국테크100데일리고정커버드콜",
+        "미국테크100데일리고정커버드콜",
+        "KEDI 미국 테크100",
+        "491620"
       ],
       "news_exclude": [
         "목표주가",
