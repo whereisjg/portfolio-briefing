@@ -30,6 +30,7 @@ KST = pytz.timezone("Asia/Seoul")
 TELEGRAM_BOT_TOKEN = env_value("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = env_value("TELEGRAM_CHAT_ID")
 SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
+TELEGRAM_MESSAGE_FILE = env_value("TELEGRAM_MESSAGE_FILE")
 CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
 
 PORTFOLIO_FILE = "portfolio.json"
@@ -1144,7 +1145,11 @@ def main():
         next_step += 1
         print(f"[{next_step}/{total_steps}] Sending Telegram...")
         print(telegram_msg)
-        if not send_telegram(telegram_msg):
+        if TELEGRAM_MESSAGE_FILE:
+            with open(TELEGRAM_MESSAGE_FILE, "w", encoding="utf-8") as file:
+                file.write(telegram_msg)
+            print(f"Telegram message saved: {TELEGRAM_MESSAGE_FILE}")
+        elif not send_telegram(telegram_msg):
             raise RuntimeError("Telegram message was not sent.")
 
         print("Done.")

@@ -29,9 +29,8 @@ jobs:
           python -m unittest
       - name: Run briefing
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          TELEGRAM_MESSAGE_FILE: /tmp/telegram-message.txt
         run: python portfolio_briefing.py
       - name: Commit and push
         env:
@@ -40,9 +39,17 @@ jobs:
           git config user.name "Portfolio Bot"
           git config user.email "bot@portfolio.local"
           git add briefings/*.md 2>/dev/null || true
-          git commit -m "Daily briefing - $(TZ=Asia/Seoul date +%Y-%m-%d)" || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Daily briefing - $(TZ=Asia/Seoul date +%Y-%m-%d)"
+          fi
           git pull --rebase origin main
           git push
+      - name: Send Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -c "import portfolio_briefing as b; raise SystemExit(0 if b.send_telegram(open('/tmp/telegram-message.txt', encoding='utf-8').read()) else 1)"
       - name: Notify failure
         if: failure()
         env:
