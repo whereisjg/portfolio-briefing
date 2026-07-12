@@ -46,7 +46,8 @@ Each asset needs:
   "display": "QLD",
   "currency": "USD",
   "shares": null,
-  "weight_pct": null
+  "weight_pct": null,
+  "target_weight_pct": null
 }
 ```
 
@@ -54,6 +55,7 @@ Use Yahoo Finance symbols. Optional fields:
 
 - `shares`: holding quantity — shows estimated daily P/L in the briefing
 - `weight_pct`: portfolio weight — shows asset weight in the briefing
+- `target_weight_pct`: target weight — shows new-buy priority for rebalancing
 - `news_include`: terms that make a news title relevant to the asset
 - `news_exclude`: terms to exclude from news results
 - `news_optional`: set to `true` when missing daily news should not be treated as an alert

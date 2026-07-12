@@ -839,6 +839,25 @@ def build_alert_lines(quotes, errors, news):
     return alerts[:6] if alerts else ["특이사항 없음"]
 
 
+def build_rebalancing_lines(quotes):
+    """목표 비중과 현재 비중의 차이로 신규 매수 우선순위를 만든다."""
+    rows = []
+    for item in quotes:
+        target = item.get("target_weight_pct")
+        current = item.get("weight_pct")
+        if target in (None, "") or current in (None, ""):
+            continue
+        gap = float(current) - float(target)
+        if gap <= -1:
+            action = "신규 매수 우선"
+        elif gap >= 1:
+            action = "신규 매수 보류"
+        else:
+            action = "목표 범위"
+        rows.append((item["display"], float(target), float(current), action))
+    return rows
+
+
 def build_content(indexes, quotes, news, errors, screen_result=None):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
@@ -873,6 +892,7 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         screen_result.get("candidates", []),
         screen_result.get("errors", []),
     )
+    rebalancing_rows = build_rebalancing_lines(quotes)
 
     usd_to_krw = next((q["usd_to_krw"] for q in quotes if q.get("usd_to_krw")), None)
     index_lines_list = [
@@ -948,6 +968,13 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
 
     if flat_news:
         telegram_lines.extend(["", *flat_news])
+
+    if rebalancing_rows:
+        telegram_lines.extend(["", "📊 리밸런싱"])
+        telegram_lines.extend(
+            f"{display}  목표 {target:.0f}% / 현재 {current:.1f}%  → {action}"
+            for display, target, current, action in rebalancing_rows
+        )
 
     if errors:
         telegram_lines.extend(["", "⚠️ 오류", *[f"  • {e}" for e in errors]])
@@ -1026,6 +1053,13 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
             f"- 전체 분위기: {mood}",
         ]
     )
+
+    if rebalancing_rows:
+        md_lines.extend(["", "## 📊 리밸런싱", ""])
+        md_lines.extend(
+            f"- {display}: 목표 {target:.0f}% / 현재 {current:.1f}% → {action}"
+            for display, target, current, action in rebalancing_rows
+        )
 
     if news_sections:
         md_lines.extend(["", "## 📰 참고 뉴스", ""])

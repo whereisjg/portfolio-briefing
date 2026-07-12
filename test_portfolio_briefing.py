@@ -393,6 +393,44 @@ class QuoteProviderTests(unittest.TestCase):
 
 
 class ContentTests(unittest.TestCase):
+    def test_build_content_shows_rebalancing_buy_priorities(self):
+        quotes = [
+            {
+                "ticker": "GROWTH",
+                "display": "성장",
+                "name": "성장",
+                "currency": "KRW",
+                "price": 1000.0,
+                "prev_close": 990.0,
+                "chg_amount": 10.0,
+                "chg_pct": 1.01,
+                "shares": 1,
+                "weight_pct": 66.6,
+                "target_weight_pct": 70,
+                "provider": "Yahoo",
+            },
+            {
+                "ticker": "INCOME",
+                "display": "인컴",
+                "name": "인컴",
+                "currency": "KRW",
+                "price": 1000.0,
+                "prev_close": 990.0,
+                "chg_amount": 10.0,
+                "chg_pct": 1.01,
+                "shares": 1,
+                "weight_pct": 33.4,
+                "target_weight_pct": 30,
+                "provider": "Yahoo",
+            },
+        ]
+
+        telegram, markdown = briefing.build_content([], quotes, {"GROWTH": [], "INCOME": []}, [])
+
+        self.assertIn("성장  목표 70% / 현재 66.6%  → 신규 매수 우선", telegram)
+        self.assertIn("인컴  목표 30% / 현재 33.4%  → 신규 매수 보류", telegram)
+        self.assertIn("## 📊 리밸런싱", markdown)
+
     def test_build_content_shows_zero_share_tracking_asset_without_position_values(self):
         quotes = [
             {
