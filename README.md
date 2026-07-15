@@ -10,6 +10,15 @@ GitHub Actions, KIS Open API, Yahoo Finance, Telegram을 사용한 일일 포트
 - 현재는 일반계좌용 `KIS_TEST_*` Secret을 사용합니다. ISA 이전이 완료되면 ISA Secret으로 전환합니다.
 - 현재 구현은 **조회와 브리핑 전용**입니다. 주문·정정·취소 API는 호출하지 않습니다.
 
+## 목표 비중
+
+| ETF | 목표 비중 |
+| --- | ---: |
+| KoAct 미국나스닥성장기업액티브 | 60% |
+| TIGER 미국나스닥100타겟데일리커버드콜 | 15% |
+| KODEX 미국S&P500데일리커버드콜OTM | 15% |
+| KODEX 미국머니마켓액티브 | 10% |
+
 ## What It Does
 
 - KIS 잔고 기반 보유 종목·평단가·평가손익·예수금
