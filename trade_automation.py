@@ -27,6 +27,9 @@ def load_config(path=CONFIG_FILE):
         raise ValueError("현재 자동매매는 dry-run만 허용합니다.")
     if config.get("live_orders_enabled", False):
         raise ValueError("실주문 활성화는 아직 지원하지 않습니다.")
+    daily_buy_limit_pct = float(config.get("daily_buy_limit_pct", 0))
+    if not 0 < daily_buy_limit_pct <= 100:
+        raise ValueError("daily_buy_limit_pct는 0 초과 100 이하이어야 합니다.")
     return config
 
 
@@ -193,7 +196,8 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None):
         if prices.get(code, 0) > 0
     }
     buyable_cash = cash if orderable_cash is None else min(cash, max(orderable_cash, 0))
-    budget = min(buyable_cash, float(config["daily_buy_limit_krw"]), sum(deficits.values()))
+    daily_buy_limit = total * float(config["daily_buy_limit_pct"]) / 100
+    budget = min(buyable_cash, daily_buy_limit, sum(deficits.values()))
     buys = []
     if budget > 0 and deficits:
         total_deficit = sum(deficits.values())
@@ -229,6 +233,7 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None):
         "total_value": total,
         "cash": cash,
         "orderable_cash": buyable_cash,
+        "daily_buy_limit": daily_buy_limit,
         "sells": sells,
         "buys": buys,
         "unallocated_cash": buyable_cash - sum(order["value"] for order in buys),
@@ -241,6 +246,7 @@ def format_plan(plan):
         f"총 자산(예수금 포함): {plan['total_value']:,.0f}원",
         f"주문 전 예수금: {plan['cash']:,.0f}원",
         f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
+        f"일일 매수 limit: {plan.get('daily_buy_limit', 0):,.0f}원",
     ]
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         lines.append(label + ":")
