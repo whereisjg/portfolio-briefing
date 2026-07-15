@@ -17,8 +17,8 @@ jobs:
       - run: pip install requests
       - name: Query KIS balance (read only)
         env:
-          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
-          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          KIS_APP_KEY: ${{ secrets.KIS_TEST_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
           KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
           KIS_PRODUCT_CODE: ${{ secrets.KIS_TEST_PRODUCT_CODE }}
         run: python kis_balance_check.py
