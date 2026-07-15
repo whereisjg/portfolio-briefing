@@ -112,7 +112,7 @@ KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
 
 [`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. 현재 `live_orders_enabled: false`, `mode: dry-run`이므로 실주문은 불가능합니다.
 
-- 매일 10:20 KST 기준으로 잔고·예수금·가격을 조회합니다.
+- 매일 10:00 KST 기준으로 잔고·예수금·가격을 조회합니다.
 - 목표 비중은 네 ETF 각각 25%입니다.
 - 매수는 보유 예수금 범위에서만, 하루 총 100만원까지 계산합니다. 1주를 살 수 없는 잔액은 다음 영업일로 이월합니다.
 - 매도는 한 ETF가 30% 이상일 때 27%까지 계산하며, 종목별 하루 100만원을 넘기지 않습니다.
@@ -123,7 +123,7 @@ KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
 
 ## cron-job.org Setup
 
-Triggers `workflow_dispatch` every business day at 10:20 KST:
+Triggers `workflow_dispatch` every business day at 10:00 KST:
 
 ```
 URL:    https://api.github.com/repos/{owner}/portfolio-briefing/actions/workflows/briefing.yml/dispatches
