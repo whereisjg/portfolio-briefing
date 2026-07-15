@@ -1,0 +1,24 @@
+{
+  "live_orders_enabled": false,
+  "mode": "dry-run",
+  "execution_time_kst": "10:20",
+  "daily_buy_limit_krw": 1000000,
+  "daily_sell_limit_per_asset_krw": 1000000,
+  "sell_trigger_weight_pct": 30,
+  "sell_target_weight_pct": 27,
+  "target_weights": {
+    "0015B0": 25,
+    "486290": 25,
+    "0005A0": 25,
+    "0048J0": 25
+  },
+  "order_policy": {
+    "type": "limit",
+    "buy_price": "best_ask",
+    "sell_price": "best_bid",
+    "first_order_check_minutes": 5,
+    "retry_once": true,
+    "max_buy_price_increase_pct": 0.3,
+    "final_cancel_minutes": 11
+  }
+}

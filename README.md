@@ -8,7 +8,7 @@ GitHub Actions, KIS Open API, Yahoo Finance, Telegram을 사용한 일일 포트
 - 실제 보유 종목의 비중, 시장 등락, 관련 뉴스, 리밸런싱 우선순위를 Telegram으로 보냅니다.
 - 결과는 `briefings/briefing_YYYYMMDD.md`에 저장하고 GitHub에 기록합니다.
 - 현재는 일반계좌용 `KIS_TEST_*` Secret을 사용합니다. ISA 이전이 완료되면 ISA Secret으로 전환합니다.
-- 현재 구현은 **조회와 브리핑 전용**입니다. 주문·정정·취소 API는 호출하지 않습니다.
+- 자동매매 규칙은 `dry-run`으로 계산·검증합니다. 현재는 주문·정정·취소 API를 호출하지 않습니다.
 
 ## 목표 비중
 
@@ -32,10 +32,13 @@ GitHub Actions, KIS Open API, Yahoo Finance, Telegram을 사용한 일일 포트
 ```text
 portfolio-briefing/
 ├─ .github/workflows/briefing.yml
+├─ .github/workflows/trading-dry-run.yml
 ├─ briefings/briefing_YYYYMMDD.md
 ├─ portfolio.json
+├─ trading_config.json
 ├─ screener.json
 ├─ portfolio_briefing.py
+├─ trade_automation.py
 ├─ test_portfolio_briefing.py
 └─ README.md
 ```
@@ -106,6 +109,19 @@ KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
 
 전환 후 `KIS Balance Check` workflow를 먼저 실행해 보유 종목과 예수금이 정상 조회되는지 확인합니다.
 
+## 자동매매 규칙
+
+[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. 현재 `live_orders_enabled: false`, `mode: dry-run`이므로 실주문은 불가능합니다.
+
+- 매일 10:20 KST 기준으로 잔고·예수금·가격을 조회합니다.
+- 목표 비중은 네 ETF 각각 25%입니다.
+- 매수는 보유 예수금 범위에서만, 하루 총 100만원까지 계산합니다. 1주를 살 수 없는 잔액은 다음 영업일로 이월합니다.
+- 매도는 한 ETF가 30% 이상일 때 27%까지 계산하며, 종목별 하루 100만원을 넘기지 않습니다.
+- 미래 실주문은 최우선 매수호가·최우선 매도호가의 지정가만 허용합니다. 5분 뒤 미체결분을 확인하고 취소한 뒤, 매수 가격이 최초 주문가보다 0.3% 이내일 때만 한 번 재시도합니다. 이후 잔량은 취소하고 다음 영업일로 넘깁니다.
+- 중복 주문 방지, 체결·미체결 조회, 정정·취소는 실주문 활성화 단계에서 KIS 주문번호와 취소가능수량을 기준으로 구현합니다.
+
+`Trading Dry Run` workflow는 평일 10:20 KST와 수동 실행 때 현재 일반계좌 Secret으로 주문 계획만 출력합니다. ISA 이전이 완료된 뒤 잔고조회와 dry-run 결과를 확인한 후에만 별도의 실주문 활성화 작업을 진행합니다.
+
 ## cron-job.org Setup
 
 Triggers `workflow_dispatch` every morning at 07:00 KST:
@@ -131,8 +147,9 @@ Verify before pushing:
 
 ```bash
 python3 -m py_compile portfolio_briefing.py
+python3 -m py_compile trade_automation.py
 python3 -m unittest
-python3 -c "import json; json.load(open('portfolio.json', encoding='utf-8')); json.load(open('screener.json', encoding='utf-8'))"
+python3 -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'screener.json', 'trading_config.json')]"
 ```
 
 ## Troubleshooting

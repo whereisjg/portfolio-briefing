@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import mock_open, patch
 
 import portfolio_briefing as briefing
+import trade_automation as trading
 
 
 class NewsFilteringTests(unittest.TestCase):
@@ -431,6 +432,52 @@ class KisBalanceTests(unittest.TestCase):
         self.assertEqual(assets[0]["ticker"], "123456")
         self.assertEqual(assets[0]["display"], "테스트 ETF")
         self.assertTrue(assets[0]["news_optional"])
+
+
+class TradingPlanTests(unittest.TestCase):
+    def setUp(self):
+        self.config = {
+            "mode": "dry-run",
+            "daily_buy_limit_krw": 1000000,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "sell_trigger_weight_pct": 30,
+            "sell_target_weight_pct": 27,
+            "target_weights": {"A": 25, "B": 25, "C": 25, "D": 25},
+        }
+        self.prices = {"A": 10000, "B": 10000, "C": 10000, "D": 10000}
+
+    def test_buy_plan_splits_equal_initial_cash_with_daily_limit(self):
+        positions = {code: {"quantity": 0, "price": 0} for code in self.prices}
+
+        plan = trading.plan_orders(self.config, positions, self.prices, 22000000)
+
+        self.assertEqual(sum(order["value"] for order in plan["buys"]), 1000000)
+        self.assertEqual({order["code"]: order["value"] for order in plan["buys"]}, {
+            "A": 250000,
+            "B": 250000,
+            "C": 250000,
+            "D": 250000,
+        })
+
+    def test_sell_plan_triggers_at_thirty_percent_and_targets_twenty_seven(self):
+        positions = {
+            "A": {"quantity": 660, "price": 10000},
+            "B": {"quantity": 513, "price": 10000},
+            "C": {"quantity": 513, "price": 10000},
+            "D": {"quantity": 514, "price": 10000},
+        }
+
+        plan = trading.plan_orders(self.config, positions, self.prices, 0)
+
+        self.assertEqual(plan["sells"], [{"code": "A", "quantity": 66, "price": 10000, "value": 660000}])
+
+    def test_buy_plan_does_not_exceed_available_cash(self):
+        positions = {code: {"quantity": 0, "price": 0} for code in self.prices}
+
+        plan = trading.plan_orders(self.config, positions, self.prices, 35000)
+
+        self.assertEqual(sum(order["value"] for order in plan["buys"]), 30000)
+        self.assertEqual(plan["unallocated_cash"], 5000)
 
 
 class ContentTests(unittest.TestCase):
