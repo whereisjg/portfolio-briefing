@@ -617,44 +617,65 @@ def apply_translations_and_rank(asset, candidates, translation_map, limit=2):
     return [title for _, _, title in ranked[:limit]]
 
 
-def fetch_news(assets):
+def fetch_kis_news(asset, access_token, limit=2):
+    """KIS에 해당 ETF 코드로 연결된 국내 뉴스 제목만 반환한다."""
+    code = str(asset.get("symbol", "")).split(".")[0]
+    if not code:
+        return []
+    app_key = kis_required("KIS_APP_KEY")
+    app_secret = kis_required("KIS_APP_SECRET")
+    response = get_http_session(retries=1).get(
+        f"{env_value('KIS_API_BASE_URL', 'https://openapi.koreainvestment.com:9443')}/uapi/domestic-stock/v1/quotations/news-title",
+        headers={
+            "authorization": f"Bearer {access_token}",
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": "FHKST01011800",
+            "custtype": "P",
+        },
+        params={
+            "FID_NEWS_OFER_ENTP_CODE": "",
+            "FID_COND_MRKT_CLS_CODE": "",
+            "FID_INPUT_ISCD": code,
+            "FID_TITL_CNTT": "",
+            "FID_INPUT_DATE_1": "",
+            "FID_INPUT_HOUR_1": "",
+            "FID_RANK_SORT_CLS_CODE": "",
+            "FID_INPUT_SRNO": "",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 뉴스조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
+    titles = []
+    for item in payload.get("output") or []:
+        title = str(item.get("hts_pbnt_titl_cntt", "")).strip()
+        if not title:
+            continue
+        source = str(item.get("dorg", "")).strip()
+        titles.append(f"{title} - {source}" if source else title)
+        if len(titles) >= limit:
+            break
+    return titles
+
+
+def fetch_news(assets, access_token=None):
     news = {}
     errors = []
-
-    # Phase 1: 모든 종목 raw 후보 수집 (번역 없이)
-    raw_candidates = {}
-    seen_headlines: dict = {}  # headline → None, 삽입 순서 보존 + 중복 제거
-
-    for asset in assets:
-        try:
-            candidates = collect_raw_news_candidates(asset)
-            raw_candidates[asset["ticker"]] = candidates
-            for raw_title, _, _ in candidates:
-                headline, _ = split_news_source(raw_title)
-                if not has_korean(headline):
-                    seen_headlines.setdefault(headline, None)
-        except Exception as exc:
-            raw_candidates[asset["ticker"]] = []
-            errors.append(f"{asset['ticker']} 뉴스: {exc}")
-            print(f"ERROR NEWS {asset['ticker']}: {exc}")
-
-    # Phase 2: 배치 번역 (전체 종목 통합 1회 API 호출)
-    translation_map = translate_batch_to_korean(list(seen_headlines))
-
-    # Phase 3: 번역 적용 및 ranking
     for asset in assets:
         ticker = asset["ticker"]
+        if not access_token:
+            news[ticker] = []
+            continue
         try:
-            titles = apply_translations_and_rank(
-                asset, raw_candidates.get(ticker, []), translation_map
-            )
-            news[ticker] = titles
-            print(f"NEWS {ticker}: {len(titles)} titles")
+            news[ticker] = fetch_kis_news(asset, access_token)
+            print(f"NEWS {ticker}: {len(news[ticker])} titles")
         except Exception as exc:
             news[ticker] = []
-            errors.append(f"{ticker} 뉴스 후처리: {exc}")
-            print(f"ERROR NEWS {ticker}: {exc}")
-
+            errors.append(f"{ticker} KIS 뉴스: {exc}")
+            print(f"ERROR NEWS {asset['ticker']}: {exc}")
     return news, errors
 
 
@@ -1199,7 +1220,7 @@ def main():
 
         next_step = 2
         print(f"[{next_step}/{total_steps}] Fetching news titles...")
-        news, news_errors = fetch_news(assets_config)
+        news, news_errors = fetch_news(assets_config, access_token if kis_enabled() else None)
         errors = index_errors + quote_errors + news_errors
 
         next_step += 1

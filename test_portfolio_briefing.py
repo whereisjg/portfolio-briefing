@@ -313,6 +313,30 @@ class QuoteProviderTests(unittest.TestCase):
 
 
 class KisBalanceTests(unittest.TestCase):
+    def test_fetch_kis_news_returns_titles(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "rt_cd": "0",
+                    "output": [
+                        {"hts_pbnt_titl_cntt": "ETF 관련 공시", "dorg": "한국경제"},
+                        {"hts_pbnt_titl_cntt": "두 번째 뉴스", "dorg": ""},
+                    ],
+                }
+
+        class FakeSession:
+            def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        with patch.dict(briefing.os.environ, {"KIS_APP_KEY": "key", "KIS_APP_SECRET": "secret"}):
+            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
+                titles = briefing.fetch_kis_news({"symbol": "486290.KS"}, "token")
+
+        self.assertEqual(titles, ["ETF 관련 공시 - 한국경제", "두 번째 뉴스"])
+
     def test_assets_from_kis_balance_uses_actual_account_values(self):
         configured_assets = [{
             "ticker": "NASDAQ",

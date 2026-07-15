@@ -1,6 +1,6 @@
 # Portfolio Briefing
 
-GitHub Actions, KIS Open API, Yahoo Finance News, Telegram을 사용한 일일 포트폴리오 브리핑입니다.
+GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브리핑입니다.
 
 ## 현재 동작
 
@@ -22,7 +22,7 @@ GitHub Actions, KIS Open API, Yahoo Finance News, Telegram을 사용한 일일 �
 ## What It Does
 
 - KIS 기반 보유 종목·평단가·평가손익·예수금·나스닥100·S&P500
-- Yahoo Finance News 기반 관련 뉴스와 한국어 번역
+- KIS ETF 코드 기반 관련 뉴스 제목
 - 목표 비중 대비 리밸런싱 우선순위
 - Telegram 전송 및 Markdown 이력 저장
 
