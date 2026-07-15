@@ -36,7 +36,7 @@ def load_balance_snapshot():
         return None
     with open(path, encoding="utf-8") as file:
         snapshot = json.load(file)
-    return snapshot.get("holdings", []), snapshot.get("summary", {})
+    return snapshot.get("holdings", []), snapshot.get("summary", {}), snapshot.get("access_token")
 
 
 def code_from_asset(asset):
@@ -51,22 +51,23 @@ def cash_from_balance(summary):
     return 0.0
 
 
-def get_kis_context():
+def get_kis_context(access_token=None):
     app_key = briefing.kis_required("KIS_APP_KEY")
     app_secret = briefing.kis_required("KIS_APP_SECRET")
     account_no = briefing.kis_required("KIS_ACCOUNT_NO")
     product_code = briefing.kis_required("KIS_PRODUCT_CODE")
     base_url = briefing.env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
     session = briefing.get_http_session(retries=1)
-    token_response = session.post(
-        f"{base_url}/oauth2/tokenP",
-        json={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
-        timeout=20,
-    )
-    token_response.raise_for_status()
-    access_token = token_response.json().get("access_token")
     if not access_token:
-        raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
+        token_response = session.post(
+            f"{base_url}/oauth2/tokenP",
+            json={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
+            timeout=20,
+        )
+        token_response.raise_for_status()
+        access_token = token_response.json().get("access_token")
+        if not access_token:
+            raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
 
     return {
         "account_no": account_no,
@@ -263,11 +264,11 @@ def main():
     _indexes, assets = briefing.load_portfolio()
     snapshot = load_balance_snapshot()
     if snapshot is None:
-        holdings, summary = briefing.fetch_kis_balance()
+        holdings, summary, access_token = briefing.fetch_kis_balance()
     else:
-        holdings, summary = snapshot
+        holdings, summary, access_token = snapshot
     positions = positions_from_holdings(holdings, config["target_weights"])
-    kis_context = get_kis_context()
+    kis_context = get_kis_context(access_token)
     kis_prices = fetch_kis_prices(config["target_weights"], kis_context)
     prices = target_prices(assets, positions, kis_prices)
     cash = cash_from_balance(summary)

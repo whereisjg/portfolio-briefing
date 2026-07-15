@@ -369,15 +369,19 @@ def fetch_kis_balance():
     if payload.get("rt_cd") != "0":
         raise ValueError(f"KIS 잔고조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
 
-    return payload.get("output", []), (payload.get("output2") or [{}])[0]
+    return payload.get("output", []), (payload.get("output2") or [{}])[0], access_token
 
 
-def save_kis_balance_snapshot(holdings, summary):
+def save_kis_balance_snapshot(holdings, summary, access_token):
     """Share one KIS balance response with later workflow steps."""
     if not KIS_BALANCE_SNAPSHOT_FILE:
         return
     with open(KIS_BALANCE_SNAPSHOT_FILE, "w", encoding="utf-8") as file:
-        json.dump({"holdings": holdings, "summary": summary}, file, ensure_ascii=False)
+        json.dump(
+            {"holdings": holdings, "summary": summary, "access_token": access_token},
+            file,
+            ensure_ascii=False,
+        )
     print(f"KIS balance snapshot saved: {KIS_BALANCE_SNAPSHOT_FILE}")
 
 
@@ -1301,8 +1305,8 @@ def main():
         account_summary = None
         if kis_enabled():
             print(f"[2/{total_steps}] Fetching KIS balance...")
-            holdings, account_summary = fetch_kis_balance()
-            save_kis_balance_snapshot(holdings, account_summary)
+            holdings, account_summary, access_token = fetch_kis_balance()
+            save_kis_balance_snapshot(holdings, account_summary, access_token)
             assets_config = assets_from_kis_balance(assets_config, holdings)
             quotes = assets_config
             quote_errors = []

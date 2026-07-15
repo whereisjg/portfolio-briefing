@@ -503,13 +503,17 @@ class TradingPlanTests(unittest.TestCase):
 
     def test_load_balance_snapshot_reuses_briefing_response(self):
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as file:
-            json.dump({"holdings": [{"pdno": "A"}], "summary": {"dnca_tot_amt": "100"}}, file)
+            json.dump(
+                {"holdings": [{"pdno": "A"}], "summary": {"dnca_tot_amt": "100"}, "access_token": "token"},
+                file,
+            )
             file.flush()
             with patch.dict(trading.os.environ, {"KIS_BALANCE_SNAPSHOT_FILE": file.name}):
-                holdings, summary = trading.load_balance_snapshot()
+                holdings, summary, access_token = trading.load_balance_snapshot()
 
         self.assertEqual(holdings, [{"pdno": "A"}])
         self.assertEqual(summary["dnca_tot_amt"], "100")
+        self.assertEqual(access_token, "token")
 
 
 class ContentTests(unittest.TestCase):
