@@ -51,12 +51,7 @@ def cash_from_balance(summary):
     return 0.0
 
 
-def fetch_kis_orderable_cash(prices):
-    """Read the cash amount that can actually be used for a limit buy order."""
-    code, price = next(((code, price) for code, price in prices.items() if price > 0), (None, None))
-    if code is None:
-        return 0.0
-
+def get_kis_context():
     app_key = briefing.kis_required("KIS_APP_KEY")
     app_secret = briefing.kis_required("KIS_APP_SECRET")
     account_no = briefing.kis_required("KIS_ACCOUNT_NO")
@@ -73,18 +68,55 @@ def fetch_kis_orderable_cash(prices):
     if not access_token:
         raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
 
-    response = session.get(
-        f"{base_url}/uapi/domestic-stock/v1/trading/inquire-psbl-order",
-        headers={
+    return {
+        "account_no": account_no,
+        "product_code": product_code,
+        "base_url": base_url,
+        "session": session,
+        "headers": {
             "authorization": f"Bearer {access_token}",
             "appkey": app_key,
             "appsecret": app_secret,
-            "tr_id": "TTTC8908R",
             "custtype": "P",
         },
+    }
+
+
+def fetch_kis_prices(codes, context):
+    prices = {}
+    for code in codes:
+        response = context["session"].get(
+            f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-price",
+            headers={**context["headers"], "tr_id": "FHKST01010100"},
+            params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("rt_cd") != "0":
+            raise ValueError(f"KIS 현재가조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
+        price = briefing.as_float((payload.get("output") or {}).get("stck_prpr"), None)
+        if price is None or price <= 0:
+            raise ValueError(f"KIS 현재가가 없습니다: {code}")
+        prices[code] = price
+    return prices
+
+
+def fetch_kis_orderable_cash(prices, context):
+    """Read the cash amount that can actually be used for a limit buy order."""
+    code, price = next(((code, price) for code, price in prices.items() if price > 0), (None, None))
+    if code is None:
+        return 0.0
+
+    response = context["session"].get(
+        f"{context['base_url']}/uapi/domestic-stock/v1/trading/inquire-psbl-order",
+        headers={
+            **context["headers"],
+            "tr_id": "TTTC8908R",
+        },
         params={
-            "CANO": account_no,
-            "ACNT_PRDT_CD": product_code,
+            "CANO": context["account_no"],
+            "ACNT_PRDT_CD": context["product_code"],
             "PDNO": code,
             "ORD_UNPR": str(round(price)),
             "ORD_DVSN": "00",
@@ -116,8 +148,12 @@ def positions_from_holdings(holdings, target_codes):
     return positions
 
 
-def target_prices(configured_assets, positions):
-    prices = {code: position["price"] for code, position in positions.items() if position["price"] > 0}
+def target_prices(configured_assets, positions, kis_prices=None):
+    prices = {
+        code: (kis_prices or {}).get(code, position["price"])
+        for code, position in positions.items()
+        if (kis_prices or {}).get(code, position["price"]) > 0
+    }
     for asset in configured_assets:
         code = code_from_asset(asset)
         if code not in positions or code in prices:
@@ -231,9 +267,11 @@ def main():
     else:
         holdings, summary = snapshot
     positions = positions_from_holdings(holdings, config["target_weights"])
-    prices = target_prices(assets, positions)
+    kis_context = get_kis_context()
+    kis_prices = fetch_kis_prices(config["target_weights"], kis_context)
+    prices = target_prices(assets, positions, kis_prices)
     cash = cash_from_balance(summary)
-    orderable_cash = fetch_kis_orderable_cash(prices)
+    orderable_cash = fetch_kis_orderable_cash(prices, kis_context)
     plan = plan_orders(config, positions, prices, cash, orderable_cash)
     print(format_plan(plan))
 
