@@ -14,10 +14,10 @@ GitHub Actions, KIS Open API, Yahoo Finance, Telegram을 사용한 일일 포트
 
 | ETF | 목표 비중 |
 | --- | ---: |
-| KoAct 미국나스닥성장기업액티브 | 60% |
-| TIGER 미국나스닥100타겟데일리커버드콜 | 15% |
-| KODEX 미국S&P500데일리커버드콜OTM | 15% |
-| KODEX 미국머니마켓액티브 | 10% |
+| KoAct 미국나스닥성장기업액티브 | 25% |
+| TIGER 미국나스닥100타겟데일리커버드콜 | 25% |
+| KODEX 미국S&P500데일리커버드콜OTM | 25% |
+| KODEX 미국머니마켓액티브 | 25% |
 
 ## What It Does
 
