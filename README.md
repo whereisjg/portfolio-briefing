@@ -42,9 +42,9 @@ portfolio-briefing/
 
 ## 종목 설정
 
-[`portfolio.json`](portfolio.json)은 실제 보유 수량을 적는 파일이 아니라 뉴스 검색어와 목표 비중을 관리하는 설정입니다. 실제 보유 종목과 수량은 KIS 잔고조회 결과가 항상 우선합니다.
+[`portfolio.json`](portfolio.json)은 실제 보유 수량을 적는 파일이 아니라 ETF 식별 정보와 목표 비중을 관리하는 설정입니다. 실제 보유 종목과 수량은 KIS 잔고조회 결과가 항상 우선합니다.
 
-새 종목을 미리 등록하면 해당 종목을 보유했을 때 더 정확한 뉴스와 목표 비중을 적용합니다. 등록하지 않은 KIS 보유 종목도 브리핑에는 표시되지만, 뉴스는 선택적으로만 조회합니다.
+새 종목을 미리 등록하면 해당 종목을 보유했을 때 KIS 뉴스와 목표 비중을 적용합니다. 등록하지 않은 KIS 보유 종목도 브리핑에는 표시되지만, 뉴스는 선택적으로만 조회합니다.
 
 Each asset needs:
 
@@ -61,12 +61,10 @@ Each asset needs:
 }
 ```
 
-국내 ETF는 Yahoo Finance 심볼을 사용합니다. 선택 항목:
+국내 ETF는 앞부분에 KIS 종목코드를 둔 심볼을 사용합니다. 선택 항목:
 
 - `shares`: KIS 연동이 꺼졌을 때만 사용하는 수동 수량
 - `target_weight_pct`: 목표 비중과 신규 매수 우선순위
-- `news_include`: 관련 뉴스 판별 키워드
-- `news_exclude`: 제외할 뉴스 키워드
 - `news_optional`: 뉴스가 없어도 경고하지 않음
 
 ## GitHub Secrets
@@ -149,6 +147,6 @@ python3 -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('
 
 **Workflow cannot push the briefing file** — confirm `permissions: contents: write` is set in `briefing.yml`.
 
-**Price data errors** — Yahoo Finance does not have a stable public API. Retry the workflow or check the ticker symbol.
+**KIS 조회 오류** — KIS Secret과 계좌 상태를 확인한 뒤 workflow를 다시 실행합니다.
 
 **Workflow push fails with "non-fast-forward"** — run `git pull --rebase origin main` locally before pushing, or re-trigger the workflow.
