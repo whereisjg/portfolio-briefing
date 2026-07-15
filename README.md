@@ -1,24 +1,22 @@
 # Portfolio Briefing
 
-Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Telegram.
+GitHub Actions, KIS Open API, Yahoo Finance, Telegram을 사용한 일일 포트폴리오 브리핑입니다.
 
-## Portfolio
+## 현재 동작
 
-| Ticker | Description | Market |
-| --- | --- | --- |
-| `0015B0.KS` | KoAct 미국나스닥성장기업액티브 | Korea |
-| `491620.KS` | RISE 미국테크100데일리고정커버드콜 | Korea |
+- 매일 KIS 계좌의 실제 보유 종목·수량·평단가·평가손익·예수금을 조회합니다.
+- 실제 보유 종목의 비중, 시장 등락, 관련 뉴스, 리밸런싱 우선순위를 Telegram으로 보냅니다.
+- 결과는 `briefings/briefing_YYYYMMDD.md`에 저장하고 GitHub에 기록합니다.
+- 현재는 일반계좌용 `KIS_TEST_*` Secret을 사용합니다. ISA 이전이 완료되면 ISA Secret으로 전환합니다.
+- 현재 구현은 **조회와 브리핑 전용**입니다. 주문·정정·취소 API는 호출하지 않습니다.
 
 ## What It Does
 
-- Fetches KIS account holdings, average purchase prices, evaluation P/L, and cash when enabled
-- Fetches market prices from Yahoo Finance when KIS balance mode is disabled
-- Screens configured stocks for ROE/PER/PSR/PBR value criteria
-- Adds news titles from the last 36 hours using Yahoo Finance News API
-- Translates English headlines to Korean (Claude Haiku if key set, otherwise Google Translate)
-- Generates a concise Korean briefing with rule-based guidance
-- Sends the result to Telegram
-- Saves and commits each briefing under `briefings/`
+- KIS 잔고 기반 보유 종목·평단가·평가손익·예수금
+- Yahoo Finance 기반 주요 지수와 보유 종목 등락
+- Yahoo Finance News 기반 관련 뉴스와 한국어 번역
+- 목표 비중 대비 리밸런싱 우선순위
+- Telegram 전송 및 Markdown 이력 저장
 
 ## Repository Structure
 
@@ -33,9 +31,11 @@ portfolio-briefing/
 └─ README.md
 ```
 
-## Editing The Portfolio
+## 종목 설정
 
-Add or remove tracked symbols in [portfolio.json](portfolio.json).
+[`portfolio.json`](portfolio.json)은 실제 보유 수량을 적는 파일이 아니라 뉴스 검색어와 목표 비중을 관리하는 설정입니다. 실제 보유 종목과 수량은 KIS 잔고조회 결과가 항상 우선합니다.
+
+새 종목을 미리 등록하면 해당 종목을 보유했을 때 더 정확한 뉴스와 목표 비중을 적용합니다. 등록하지 않은 KIS 보유 종목도 브리핑에는 표시되지만, 뉴스는 선택적으로만 조회합니다.
 
 Each asset needs:
 
@@ -52,14 +52,13 @@ Each asset needs:
 }
 ```
 
-Use Yahoo Finance symbols. Optional fields:
+국내 ETF는 Yahoo Finance 심볼을 사용합니다. 선택 항목:
 
-- `shares`: holding quantity — shows estimated daily P/L in the briefing
-- `weight_pct`: portfolio weight — shows asset weight in the briefing
-- `target_weight_pct`: target weight — shows new-buy priority for rebalancing
-- `news_include`: terms that make a news title relevant to the asset
-- `news_exclude`: terms to exclude from news results
-- `news_optional`: set to `true` when missing daily news should not be treated as an alert
+- `shares`: KIS 연동이 꺼졌을 때만 사용하는 수동 수량
+- `target_weight_pct`: 목표 비중과 신규 매수 우선순위
+- `news_include`: 관련 뉴스 판별 키워드
+- `news_exclude`: 제외할 뉴스 키워드
+- `news_optional`: 뉴스가 없어도 경고하지 않음
 
 ## Daily Value Screener
 
@@ -78,10 +77,25 @@ Criteria: `ROE >= 15%`, `PER <= 15`, `PSR < 3`, `PBR <= 1.5`
 | `KIS_APP_SECRET` | KIS API App Secret for the briefing account |
 | `KIS_ACCOUNT_NO` | KIS account number, first 8 digits |
 | `KIS_PRODUCT_CODE` | KIS account product code, last 2 digits |
+| `KIS_TEST_APP_KEY` | 현재 일반계좌 테스트용 App Key |
+| `KIS_TEST_APP_SECRET` | 현재 일반계좌 테스트용 App Secret |
+| `KIS_TEST_ACCOUNT_NO` | 현재 일반계좌 번호 앞 8자리 |
+| `KIS_TEST_PRODUCT_CODE` | 현재 일반계좌 상품코드 뒤 2자리 |
 
-The daily workflow currently uses the separately registered `KIS_TEST_*` Secrets
-for the general-account integration test. After ISA transfer completes, switch its
-four KIS environment mappings in `briefing.yml` to the ISA Secrets.
+Secret 값은 채팅, 코드, `portfolio.json`에 넣지 않습니다.
+
+## ISA 전환
+
+ISA 이전이 완료되고 KIS API에서 잔고조회가 성공하면 `.github/workflows/briefing.yml`의 `Run briefing` 단계에서 아래 네 환경변수를 ISA용 Secret으로 바꿉니다.
+
+```yaml
+KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+KIS_ACCOUNT_NO: ${{ secrets.KIS_ACCOUNT_NO }}
+KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
+```
+
+전환 후 `KIS Balance Check` workflow를 먼저 실행해 보유 종목과 예수금이 정상 조회되는지 확인합니다.
 
 ## cron-job.org Setup
 
