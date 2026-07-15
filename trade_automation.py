@@ -51,6 +51,58 @@ def cash_from_balance(summary):
     return 0.0
 
 
+def fetch_kis_orderable_cash(prices):
+    """Read the cash amount that can actually be used for a limit buy order."""
+    code, price = next(((code, price) for code, price in prices.items() if price > 0), (None, None))
+    if code is None:
+        return 0.0
+
+    app_key = briefing.kis_required("KIS_APP_KEY")
+    app_secret = briefing.kis_required("KIS_APP_SECRET")
+    account_no = briefing.kis_required("KIS_ACCOUNT_NO")
+    product_code = briefing.kis_required("KIS_PRODUCT_CODE")
+    base_url = briefing.env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
+    session = briefing.get_http_session(retries=1)
+    token_response = session.post(
+        f"{base_url}/oauth2/tokenP",
+        json={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
+        timeout=20,
+    )
+    token_response.raise_for_status()
+    access_token = token_response.json().get("access_token")
+    if not access_token:
+        raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
+
+    response = session.get(
+        f"{base_url}/uapi/domestic-stock/v1/trading/inquire-psbl-order",
+        headers={
+            "authorization": f"Bearer {access_token}",
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": "TTTC8908R",
+            "custtype": "P",
+        },
+        params={
+            "CANO": account_no,
+            "ACNT_PRDT_CD": product_code,
+            "PDNO": code,
+            "ORD_UNPR": str(round(price)),
+            "ORD_DVSN": "00",
+            "CMA_EVLU_AMT_ICLD_YN": "N",
+            "OVRS_ICLD_YN": "N",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 주문가능조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
+    amount = briefing.as_float((payload.get("output") or {}).get("nrcvb_buy_amt"), None)
+    if amount is None:
+        raise ValueError("KIS 주문가능금액이 없습니다.")
+    return max(amount, 0)
+
+
 def positions_from_holdings(holdings, target_codes):
     positions = {code: {"quantity": 0.0, "price": 0.0} for code in target_codes}
     for holding in holdings:
@@ -75,7 +127,7 @@ def target_prices(configured_assets, positions):
     return prices
 
 
-def plan_orders(config, positions, prices, cash):
+def plan_orders(config, positions, prices, cash, orderable_cash=None):
     """Return sell-first and cash-funded buy plans without placing an order."""
     targets = {code: float(weight) / 100 for code, weight in config["target_weights"].items()}
     values = {
@@ -89,7 +141,7 @@ def plan_orders(config, positions, prices, cash):
     sells = []
     for code, target_weight in targets.items():
         current_weight = values[code] / total
-        if current_weight < config["sell_trigger_weight_pct"] / 100:
+        if current_weight <= config["sell_trigger_weight_pct"] / 100:
             continue
         price = prices.get(code, 0)
         if price <= 0:
@@ -107,7 +159,8 @@ def plan_orders(config, positions, prices, cash):
         for code, target_weight in targets.items()
         if prices.get(code, 0) > 0
     }
-    budget = min(cash, float(config["daily_buy_limit_krw"]), sum(deficits.values()))
+    buyable_cash = cash if orderable_cash is None else min(cash, max(orderable_cash, 0))
+    budget = min(buyable_cash, float(config["daily_buy_limit_krw"]), sum(deficits.values()))
     buys = []
     if budget > 0 and deficits:
         total_deficit = sum(deficits.values())
@@ -142,9 +195,10 @@ def plan_orders(config, positions, prices, cash):
     return {
         "total_value": total,
         "cash": cash,
+        "orderable_cash": buyable_cash,
         "sells": sells,
         "buys": buys,
-        "unallocated_cash": cash - sum(order["value"] for order in buys),
+        "unallocated_cash": buyable_cash - sum(order["value"] for order in buys),
     }
 
 
@@ -153,6 +207,7 @@ def format_plan(plan):
         "자동매매 dry-run",
         f"총 자산(예수금 포함): {plan['total_value']:,.0f}원",
         f"주문 전 예수금: {plan['cash']:,.0f}원",
+        f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
     ]
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         lines.append(label + ":")
@@ -162,7 +217,7 @@ def format_plan(plan):
             lines.append(
                 f"  {order['code']} {order['quantity']}주 / 기준가 {order['price']:,.0f}원 / {order['value']:,.0f}원"
             )
-    lines.append(f"주문 후 남는 예수금(추정): {plan['unallocated_cash']:,.0f}원")
+    lines.append(f"주문 후 남는 주문가능금액(추정): {plan['unallocated_cash']:,.0f}원")
     lines.append("실제 주문은 전송하지 않았습니다.")
     return "\n".join(lines)
 
@@ -177,7 +232,9 @@ def main():
         holdings, summary = snapshot
     positions = positions_from_holdings(holdings, config["target_weights"])
     prices = target_prices(assets, positions)
-    plan = plan_orders(config, positions, prices, cash_from_balance(summary))
+    cash = cash_from_balance(summary)
+    orderable_cash = fetch_kis_orderable_cash(prices)
+    plan = plan_orders(config, positions, prices, cash, orderable_cash)
     print(format_plan(plan))
 
 

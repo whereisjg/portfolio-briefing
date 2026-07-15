@@ -461,17 +461,29 @@ class TradingPlanTests(unittest.TestCase):
             "D": 250000,
         })
 
-    def test_sell_plan_triggers_at_thirty_percent_and_targets_twenty_seven(self):
+    def test_sell_plan_triggers_above_thirty_percent_and_targets_twenty_seven(self):
         positions = {
-            "A": {"quantity": 660, "price": 10000},
-            "B": {"quantity": 513, "price": 10000},
-            "C": {"quantity": 513, "price": 10000},
-            "D": {"quantity": 514, "price": 10000},
+            "A": {"quantity": 682, "price": 10000},
+            "B": {"quantity": 506, "price": 10000},
+            "C": {"quantity": 506, "price": 10000},
+            "D": {"quantity": 506, "price": 10000},
         }
 
         plan = trading.plan_orders(self.config, positions, self.prices, 0)
 
-        self.assertEqual(plan["sells"], [{"code": "A", "quantity": 66, "price": 10000, "value": 660000}])
+        self.assertEqual(plan["sells"], [{"code": "A", "quantity": 88, "price": 10000, "value": 880000}])
+
+    def test_sell_plan_does_not_trigger_at_exactly_thirty_percent(self):
+        positions = {
+            "A": {"quantity": 600, "price": 10000},
+            "B": {"quantity": 467, "price": 10000},
+            "C": {"quantity": 467, "price": 10000},
+            "D": {"quantity": 466, "price": 10000},
+        }
+
+        plan = trading.plan_orders(self.config, positions, self.prices, 0)
+
+        self.assertEqual(plan["sells"], [])
 
     def test_buy_plan_does_not_exceed_available_cash(self):
         positions = {code: {"quantity": 0, "price": 0} for code in self.prices}
@@ -480,6 +492,14 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(sum(order["value"] for order in plan["buys"]), 30000)
         self.assertEqual(plan["unallocated_cash"], 5000)
+
+    def test_buy_plan_respects_kis_orderable_cash(self):
+        positions = {code: {"quantity": 0, "price": 0} for code in self.prices}
+
+        plan = trading.plan_orders(self.config, positions, self.prices, 100000, orderable_cash=25000)
+
+        self.assertEqual(sum(order["value"] for order in plan["buys"]), 20000)
+        self.assertEqual(plan["orderable_cash"], 25000)
 
     def test_load_balance_snapshot_reuses_briefing_response(self):
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as file:

@@ -39,12 +39,22 @@ jobs:
         run: python portfolio_briefing.py
       - name: Build trading plan from briefing balance (no orders)
         env:
+          KIS_APP_KEY: ${{ secrets.KIS_TEST_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
+          KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
+          KIS_PRODUCT_CODE: ${{ secrets.KIS_TEST_PRODUCT_CODE }}
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
         run: python trade_automation.py > /tmp/trading-plan.txt
       - name: Add trading plan to Telegram message
         run: |
           printf '\n\n────────────────────\n' >> /tmp/telegram-message.txt
           cat /tmp/trading-plan.txt >> /tmp/telegram-message.txt
+      - name: Save trading plan to briefing history
+        run: |
+          briefing_file="briefings/briefing_$(TZ=Asia/Seoul date +%Y%m%d).md"
+          printf '\n\n## 자동매매 계획 (dry-run)\n\n```text\n' >> "$briefing_file"
+          cat /tmp/trading-plan.txt >> "$briefing_file"
+          printf '\n```\n' >> "$briefing_file"
       - name: Commit and push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
