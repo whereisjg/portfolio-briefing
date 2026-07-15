@@ -307,6 +307,113 @@ def fetch_quote(asset):
     return fetch_yahoo_quote(asset)
 
 
+def kis_enabled():
+    return env_value("KIS_BALANCE_ENABLED", "false").lower() == "true"
+
+
+def kis_required(name):
+    value = env_value(name)
+    if not value:
+        raise ValueError(f"KIS 환경변수가 없습니다: {name}")
+    return value
+
+
+def fetch_kis_balance():
+    """한국투자증권 실전계좌의 국내주식 잔고를 조회한다. 주문은 수행하지 않는다."""
+    app_key = kis_required("KIS_APP_KEY")
+    app_secret = kis_required("KIS_APP_SECRET")
+    account_no = kis_required("KIS_ACCOUNT_NO")
+    product_code = kis_required("KIS_PRODUCT_CODE")
+    base_url = env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
+    tr_id = env_value("KIS_BALANCE_TR_ID", "TTTC8434R")
+
+    token_response = get_http_session(retries=1).post(
+        f"{base_url}/oauth2/tokenP",
+        json={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
+        timeout=20,
+    )
+    token_response.raise_for_status()
+    access_token = token_response.json().get("access_token")
+    if not access_token:
+        raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
+
+    headers = {
+        "authorization": f"Bearer {access_token}",
+        "appkey": app_key,
+        "appsecret": app_secret,
+        "tr_id": tr_id,
+        "custtype": "P",
+    }
+    params = {
+        "CANO": account_no,
+        "ACNT_PRDT_CD": product_code,
+        "AFHR_FLPR_YN": "N",
+        "OFL_YN": "N",
+        "INQR_DVSN": "01",
+        "UNPR": "01",
+        "FUND_STTL_ICLD_YN": "N",
+        "FNCG_AMT_AUTO_RDPT_YN": "N",
+        "PRCS_DVSN": "00",
+        "CTX_AREA_FK100": "",
+        "CTX_AREA_NK100": "",
+    }
+    response = get_http_session(retries=1).get(
+        f"{base_url}/uapi/domestic-stock/v1/trading/inquire-balance",
+        headers=headers,
+        params=params,
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 잔고조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
+
+    return payload.get("output", []), (payload.get("output2") or [{}])[0]
+
+
+def as_float(value, default=0.0):
+    try:
+        return float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        return default
+
+
+def assets_from_kis_balance(configured_assets, holdings):
+    """설정의 뉴스·목표비중 정보와 KIS의 실제 보유 수량을 결합한다."""
+    configured_by_code = {
+        asset.get("symbol", "").split(".")[0]: asset for asset in configured_assets
+    }
+    assets = []
+    for holding in holdings:
+        shares = as_float(holding.get("hldg_qty"))
+        if shares <= 0:
+            continue
+        code = str(holding.get("pdno", "")).strip()
+        base = configured_by_code.get(code, {})
+        price = as_float(holding.get("prpr"))
+        previous_close = price - as_float(holding.get("prdy_vrss"))
+        if previous_close <= 0:
+            previous_close = price
+        assets.append({
+            **base,
+            "ticker": base.get("ticker") or code,
+            "symbol": base.get("symbol") or f"{code}.KS",
+            "name": base.get("name") or holding.get("prdt_name") or code,
+            "display": base.get("display") or holding.get("prdt_name") or code,
+            "currency": "KRW",
+            "shares": shares,
+            "price": price,
+            "prev_close": previous_close,
+            "chg_amount": price - previous_close,
+            "chg_pct": (price - previous_close) / previous_close * 100 if previous_close else 0,
+            "average_price": as_float(holding.get("pchs_avg_pric")),
+            "evaluation_profit_loss_amount": as_float(holding.get("evlu_pfls_amt")),
+            "provider": "KIS",
+            "news_optional": base.get("news_optional", True),
+        })
+    return assets
+
+
 def fetch_usd_to_krw():
     try:
         rate_asset = {"ticker": "USDKRW", "symbol": "KRW=X", "currency": "KRW"}
@@ -666,6 +773,10 @@ def format_change_amount(item):
 
 
 def format_position_effect(item):
+    evaluation_profit_loss = item.get("evaluation_profit_loss_amount")
+    if evaluation_profit_loss not in (None, ""):
+        return f", 평가손익 {format_signed_amount(float(evaluation_profit_loss), item['currency'])}"
+
     daily_profit_loss = item.get("daily_profit_loss_amount")
     if daily_profit_loss not in (None, ""):
         return f", 당일손익 {format_signed_amount(float(daily_profit_loss), item['currency'])}"
@@ -683,6 +794,15 @@ def format_weight(item):
     if weight in (None, ""):
         return ""
     return f", 비중 {float(weight):.1f}%"
+
+
+def format_average_price(item):
+    average_price = item.get("average_price")
+    if average_price in (None, "") or float(average_price) <= 0:
+        return ""
+    if item["currency"] == "KRW":
+        return f"평단 ₩{float(average_price):,.0f}"
+    return f"평단 ${float(average_price):,.2f}"
 
 
 def movement_emoji(chg_pct):
@@ -858,7 +978,7 @@ def build_rebalancing_lines(quotes):
     return rows
 
 
-def build_content(indexes, quotes, news, errors, screen_result=None):
+def build_content(indexes, quotes, news, errors, screen_result=None, account_summary=None):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -915,18 +1035,17 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         else:
             price_str = format_price(item)
         shares = item.get("shares")
-        if shares not in (None, "") and float(shares) > 0:
+        evaluation_profit_loss = item.get("evaluation_profit_loss_amount")
+        if evaluation_profit_loss not in (None, ""):
+            effect_str = format_signed_amount(float(evaluation_profit_loss), item["currency"])
+        elif shares not in (None, "") and float(shares) > 0:
             effect = item.get("chg_amount", 0) * float(shares)
-            if item["currency"] == "USD" and rate:
-                effect_krw = effect * rate
-                effect_str = f"{effect_krw:+,.0f}원"
-            else:
-                effect_str = format_signed_amount(effect, item["currency"])
+            effect_str = format_signed_amount(effect * rate, "KRW") if item["currency"] == "USD" and rate else format_signed_amount(effect, item["currency"])
         else:
             effect_str = ""
         weight = item.get("weight_pct")
         weight_str = f"비중 {float(weight):.1f}%" if weight not in (None, "") else ""
-        sub = " · ".join(x for x in [effect_str, weight_str] if x)
+        sub = " · ".join(x for x in [format_average_price(item), f"평가손익 {effect_str}" if effect_str else "", weight_str] if x)
         line1 = f"{movement_emoji(item['chg_pct'])} {item['display']}  {price_str}  {item['chg_pct']:+.2f}%{alert}"
         line2 = f"   {sub}" if sub else ""
         return "\n".join(x for x in [line1, line2] if x)
@@ -954,6 +1073,11 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
 
     if indexes:
         telegram_lines.append(index_summary)
+
+    if account_summary:
+        total = as_float(account_summary.get("tot_evlu_amt"))
+        cash = as_float(account_summary.get("prvs_rcdl_excc_amt"))
+        telegram_lines.append(f"계좌: 평가금액 ₩{total:,.0f} · 출금가능 ₩{cash:,.0f}")
 
     telegram_lines.extend([
         f"분위기: {mood} · {count_str}",
@@ -1024,6 +1148,8 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
         shares = item.get("shares")
         if shares in (None, "") or float(shares) <= 0:
             effect = "-"
+        elif item.get("evaluation_profit_loss_amount") not in (None, ""):
+            effect = format_signed_amount(float(item["evaluation_profit_loss_amount"]), item["currency"])
         elif item.get("daily_profit_loss_amount") not in (None, ""):
             effect = format_signed_amount(float(item["daily_profit_loss_amount"]), item["currency"])
         else:
@@ -1053,6 +1179,17 @@ def build_content(indexes, quotes, news, errors, screen_result=None):
             f"- 전체 분위기: {mood}",
         ]
     )
+
+    if account_summary:
+        total = as_float(account_summary.get("tot_evlu_amt"))
+        cash = as_float(account_summary.get("prvs_rcdl_excc_amt"))
+        md_lines.extend([
+            "",
+            "## 💳 계좌 요약",
+            "",
+            f"- 평가금액: ₩{total:,.0f}",
+            f"- 출금가능 예수금: ₩{cash:,.0f}",
+        ])
 
     if rebalancing_rows:
         md_lines.extend(["", "## 📊 리밸런싱", ""])
@@ -1151,7 +1288,17 @@ def main():
         indexes_config, assets_config = load_portfolio()
         indexes, index_errors = fetch_prices(indexes_config, require_any=False)
 
-        quotes, quote_errors = fetch_prices(assets_config)
+        account_summary = None
+        if kis_enabled():
+            print(f"[2/{total_steps}] Fetching KIS balance...")
+            holdings, account_summary = fetch_kis_balance()
+            assets_config = assets_from_kis_balance(assets_config, holdings)
+            quotes = assets_config
+            quote_errors = []
+            compute_weights(quotes, None)
+            print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
+        else:
+            quotes, quote_errors = fetch_prices(assets_config)
 
         next_step = 2
         print(f"[{next_step}/{total_steps}] Fetching news titles...")
@@ -1170,7 +1317,9 @@ def main():
 
         next_step += 1
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
-        telegram_msg, md_content = build_content(indexes, quotes, news, errors, screen_result)
+        telegram_msg, md_content = build_content(
+            indexes, quotes, news, errors, screen_result, account_summary
+        )
 
         next_step += 1
         print(f"[{next_step}/{total_steps}] Saving markdown...")

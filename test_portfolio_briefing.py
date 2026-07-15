@@ -392,6 +392,47 @@ class QuoteProviderTests(unittest.TestCase):
         self.assertEqual(fetched[1]["weight_pct"], 40.0)
 
 
+class KisBalanceTests(unittest.TestCase):
+    def test_assets_from_kis_balance_uses_actual_account_values(self):
+        configured_assets = [{
+            "ticker": "NASDAQ",
+            "symbol": "0015B0.KS",
+            "display": "나스닥성장",
+            "target_weight_pct": 70,
+        }]
+        holdings = [{
+            "pdno": "0015B0",
+            "prdt_name": "KoAct 미국나스닥성장기업액티브",
+            "hldg_qty": "10",
+            "prpr": "22000",
+            "prdy_vrss": "500",
+            "pchs_avg_pric": "25000",
+            "evlu_pfls_amt": "-30000",
+        }]
+
+        assets = briefing.assets_from_kis_balance(configured_assets, holdings)
+
+        self.assertEqual(len(assets), 1)
+        self.assertEqual(assets[0]["shares"], 10)
+        self.assertEqual(assets[0]["price"], 22000)
+        self.assertEqual(assets[0]["prev_close"], 21500)
+        self.assertEqual(assets[0]["average_price"], 25000)
+        self.assertEqual(assets[0]["evaluation_profit_loss_amount"], -30000)
+
+    def test_assets_from_kis_balance_adds_unconfigured_holding(self):
+        assets = briefing.assets_from_kis_balance([], [{
+            "pdno": "123456",
+            "prdt_name": "테스트 ETF",
+            "hldg_qty": "2",
+            "prpr": "10000",
+            "prdy_vrss": "0",
+        }])
+
+        self.assertEqual(assets[0]["ticker"], "123456")
+        self.assertEqual(assets[0]["display"], "테스트 ETF")
+        self.assertTrue(assets[0]["news_optional"])
+
+
 class ContentTests(unittest.TestCase):
     def test_build_content_shows_rebalancing_buy_priorities(self):
         quotes = [
@@ -474,6 +515,31 @@ class ContentTests(unittest.TestCase):
 
         self.assertNotIn("계좌", telegram)
         self.assertNotIn("계좌", markdown)
+
+    def test_build_content_shows_kis_account_summary_and_evaluation_profit_loss(self):
+        quotes = [{
+            "ticker": "ETF",
+            "display": "테스트 ETF",
+            "name": "테스트 ETF",
+            "currency": "KRW",
+            "price": 22000,
+            "prev_close": 21500,
+            "chg_amount": 500,
+            "chg_pct": 2.33,
+            "shares": 10,
+            "average_price": 25000,
+            "evaluation_profit_loss_amount": -30000,
+            "provider": "KIS",
+        }]
+
+        telegram, markdown = briefing.build_content(
+            [], quotes, {"ETF": []}, [],
+            account_summary={"tot_evlu_amt": "220000", "prvs_rcdl_excc_amt": "50000"},
+        )
+
+        self.assertIn("계좌: 평가금액 ₩220,000 · 출금가능 ₩50,000", telegram)
+        self.assertIn("평단 ₩25,000 · 평가손익 -30,000원", telegram)
+        self.assertIn("## 💳 계좌 요약", markdown)
 
     def test_telegram_keeps_usd_effect_as_usd_without_fx_rate(self):
         quotes = [

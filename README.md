@@ -11,7 +11,8 @@ Automated daily portfolio briefing using GitHub Actions, Yahoo Finance, and Tele
 
 ## What It Does
 
-- Fetches market prices from Yahoo Finance
+- Fetches KIS account holdings, average purchase prices, evaluation P/L, and cash when enabled
+- Fetches market prices from Yahoo Finance when KIS balance mode is disabled
 - Screens configured stocks for ROE/PER/PSR/PBR value criteria
 - Adds news titles from the last 36 hours using Yahoo Finance News API
 - Translates English headlines to Korean (Claude Haiku if key set, otherwise Google Translate)
@@ -73,6 +74,14 @@ Criteria: `ROE >= 15%`, `PER <= 15`, `PSR < 3`, `PBR <= 1.5`
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
 | `CLAUDE_API_KEY` | (Optional) Claude Haiku for news translation and action commentary |
+| `KIS_APP_KEY` | KIS API App Key for the briefing account |
+| `KIS_APP_SECRET` | KIS API App Secret for the briefing account |
+| `KIS_ACCOUNT_NO` | KIS account number, first 8 digits |
+| `KIS_PRODUCT_CODE` | KIS account product code, last 2 digits |
+
+The daily workflow currently uses the separately registered `KIS_TEST_*` Secrets
+for the general-account integration test. After ISA transfer completes, switch its
+four KIS environment mappings in `briefing.yml` to the ISA Secrets.
 
 ## cron-job.org Setup
 
