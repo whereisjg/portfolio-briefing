@@ -34,7 +34,6 @@ portfolio-briefing/
 ├─ briefings/briefing_YYYYMMDD.md
 ├─ portfolio.json
 ├─ trading_config.json
-├─ screener.json
 ├─ portfolio_briefing.py
 ├─ trade_automation.py
 ├─ test_portfolio_briefing.py
@@ -69,12 +68,6 @@ Each asset needs:
 - `news_include`: 관련 뉴스 판별 키워드
 - `news_exclude`: 제외할 뉴스 키워드
 - `news_optional`: 뉴스가 없어도 경고하지 않음
-
-## Daily Value Screener
-
-Configured in [screener.json](screener.json). Disabled by default — Yahoo Finance fundamentals endpoints return `401 Unauthorized` intermittently.
-
-Criteria: `ROE >= 15%`, `PER <= 15`, `PSR < 3`, `PBR <= 1.5`
 
 ## GitHub Secrets
 
@@ -147,7 +140,7 @@ Verify before pushing:
 python3 -m py_compile portfolio_briefing.py
 python3 -m py_compile trade_automation.py
 python3 -m unittest
-python3 -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'screener.json', 'trading_config.json')]"
+python3 -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'trading_config.json')]"
 ```
 
 ## Troubleshooting

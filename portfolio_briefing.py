@@ -11,7 +11,7 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote_plus, unquote
+from urllib.parse import unquote
 
 import pytz
 import requests
@@ -35,7 +35,6 @@ CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
 KIS_BALANCE_SNAPSHOT_FILE = env_value("KIS_BALANCE_SNAPSHOT_FILE")
 
 PORTFOLIO_FILE = "portfolio.json"
-SCREENER_FILE = "screener.json"
 SIGNIFICANT_MOVE_PCT = 3.0
 CRITICAL_MOVE_PCT = 5.0
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
@@ -144,164 +143,6 @@ def fetch_yahoo_quote(asset):
         price = closes[-1] if closes else None
 
     return quote_from_price(asset, price, previous_close, "Yahoo")
-
-
-def load_screener_config():
-    if not os.path.exists(SCREENER_FILE):
-        return None
-
-    try:
-        with open(SCREENER_FILE, "r", encoding="utf-8") as file:
-            config = json.load(file)
-    except json.JSONDecodeError:
-        return None
-
-    if not config.get("enabled", True):
-        return None
-    return config
-
-
-def raw_value(value):
-    if isinstance(value, dict):
-        return value.get("raw")
-    return value
-
-
-def float_or_none(value):
-    value = raw_value(value)
-    if value in (None, ""):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def normalize_screen_symbol(item):
-    if isinstance(item, str):
-        return {"symbol": item, "ticker": item, "currency": "USD"}
-    symbol = item.get("symbol") or item.get("ticker")
-    return {
-        "symbol": symbol,
-        "ticker": item.get("ticker") or symbol,
-        "currency": item.get("currency", "USD"),
-        "name": item.get("name"),
-    }
-
-
-def fetch_yahoo_fundamentals(symbol):
-    modules = ",".join(["price", "summaryDetail", "defaultKeyStatistics", "financialData"])
-    url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{quote_plus(symbol)}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
-    session = get_http_session()
-    response = session.get(url, params={"modules": modules}, headers=headers, timeout=20)
-    response.raise_for_status()
-
-    result = response.json().get("quoteSummary", {}).get("result") or []
-    if not result or not result[0]:
-        raise ValueError("Yahoo fundamentals not found")
-
-    data = result[0]
-    price = data.get("price", {})
-    summary = data.get("summaryDetail", {})
-    stats = data.get("defaultKeyStatistics", {})
-    financial = data.get("financialData", {})
-
-    return {
-        "symbol": symbol,
-        "name": raw_value(price.get("shortName")) or raw_value(price.get("longName")) or symbol,
-        "currency": raw_value(price.get("currency")) or "USD",
-        "roe": float_or_none(financial.get("returnOnEquity")),
-        "per": float_or_none(summary.get("trailingPE")) or float_or_none(stats.get("trailingPE")),
-        "psr": float_or_none(summary.get("priceToSalesTrailing12Months"))
-        or float_or_none(stats.get("priceToSalesTrailing12Months")),
-        "pbr": float_or_none(stats.get("priceToBook")),
-        "provider": "Yahoo fundamentals",
-    }
-
-
-def passes_fundamental_screen(item, criteria):
-    roe = item.get("roe")
-    per = item.get("per")
-    psr = item.get("psr")
-    pbr = item.get("pbr")
-    return (
-        roe is not None
-        and per is not None
-        and psr is not None
-        and pbr is not None
-        and roe >= float(criteria.get("min_roe", 0.15))
-        and per <= float(criteria.get("max_per", 15))
-        and psr < float(criteria.get("exclude_psr_gte", 3))
-        and pbr <= float(criteria.get("max_pbr", 1.5))
-    )
-
-
-def screen_fundamental_candidates(config):
-    criteria = config.get("criteria", {})
-    candidates = []
-    errors = []
-
-    for raw_symbol in config.get("symbols", []):
-        candidate = normalize_screen_symbol(raw_symbol)
-        symbol = candidate.get("symbol")
-        if not symbol:
-            continue
-        try:
-            data = fetch_yahoo_fundamentals(symbol)
-            data.update({key: value for key, value in candidate.items() if value})
-            data["passes"] = passes_fundamental_screen(data, criteria)
-            if data["passes"]:
-                candidates.append(data)
-            print(
-                f"SCREEN {symbol}: "
-                f"ROE={data.get('roe')} PER={data.get('per')} "
-                f"PSR={data.get('psr')} PBR={data.get('pbr')} pass={data['passes']}"
-            )
-        except Exception as exc:
-            errors.append(f"{symbol}: {exc}")
-            print(f"ERROR SCREEN {symbol}: {exc}")
-
-    candidates.sort(key=lambda item: (-(item.get("roe") or 0), item.get("per") or 999))
-    return candidates, errors
-
-
-def format_ratio(value, multiplier=1.0, suffix=""):
-    if value is None:
-        return "-"
-    return f"{value * multiplier:.2f}{suffix}"
-
-
-def build_screening_sections(candidates, screen_errors):
-    if not candidates and not screen_errors:
-        return [], []
-
-    telegram_lines = ["", "🔎 가치 조건 검색"]
-    markdown_lines = ["", "## 🔎 가치 조건 검색", ""]
-
-    if candidates:
-        for item in candidates[:5]:
-            line = (
-                f"{item['symbol']} ROE {format_ratio(item.get('roe'), 100, '%')}, "
-                f"PER {format_ratio(item.get('per'), suffix='배')}, "
-                f"PSR {format_ratio(item.get('psr'), suffix='배')}, "
-                f"PBR {format_ratio(item.get('pbr'), suffix='배')}"
-            )
-            telegram_lines.append(f"  • {line}")
-            markdown_lines.append(f"- {line}")
-    else:
-        telegram_lines.append("  • 조건 통과 종목 없음")
-        markdown_lines.append("- 조건 통과 종목 없음")
-
-    if screen_errors:
-        telegram_lines.extend(["", "⚠️ 검색 데이터 확인 필요"])
-        markdown_lines.extend(["", "### ⚠️ 검색 데이터 확인 필요", ""])
-        for error in screen_errors[:5]:
-            telegram_lines.append(f"  • {error}")
-            markdown_lines.append(f"- {error}")
-
-    return telegram_lines, markdown_lines
 
 
 def fetch_quote(asset):
@@ -1045,7 +886,7 @@ def build_rebalancing_lines(quotes):
     return rows
 
 
-def build_content(indexes, quotes, news, errors, screen_result=None, account_summary=None):
+def build_content(indexes, quotes, news, errors, account_summary=None):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -1074,11 +915,6 @@ def build_content(indexes, quotes, news, errors, screen_result=None, account_sum
         if not titles:
             continue
         news_sections.append((item["display"], titles))
-    screen_result = screen_result or {}
-    screen_telegram_lines, screen_markdown_lines = build_screening_sections(
-        screen_result.get("candidates", []),
-        screen_result.get("errors", []),
-    )
     rebalancing_rows = build_rebalancing_lines(quotes)
 
     usd_to_krw = next((q["usd_to_krw"] for q in quotes if q.get("usd_to_krw")), None)
@@ -1169,9 +1005,6 @@ def build_content(indexes, quotes, news, errors, screen_result=None, account_sum
 
     if errors:
         telegram_lines.extend(["", "⚠️ 오류", *[f"  • {e}" for e in errors]])
-
-    if screen_telegram_lines:
-        telegram_lines.extend(screen_telegram_lines)
 
     md_lines = [
         "# 📈 포트폴리오 일일 브리핑",
@@ -1278,9 +1111,6 @@ def build_content(indexes, quotes, news, errors, screen_result=None, account_sum
     if errors:
         md_lines.extend(["", "## ⚠️ 데이터 확인 필요", "", *[f"- {error}" for error in errors]])
 
-    if screen_markdown_lines:
-        md_lines.extend(screen_markdown_lines)
-
     return "\n".join(telegram_lines), "\n".join(md_lines) + "\n"
 
 
@@ -1346,10 +1176,7 @@ def main():
     print("=" * 50)
 
     try:
-        screener_config = load_screener_config()
         total_steps = 5
-        if screener_config:
-            total_steps += 1
 
         print(f"[1/{total_steps}] Loading portfolio...")
         indexes_config, assets_config = load_portfolio()
@@ -1375,20 +1202,10 @@ def main():
         news, news_errors = fetch_news(assets_config)
         errors = index_errors + quote_errors + news_errors
 
-        screen_result = None
-        if screener_config:
-            next_step += 1
-            print(f"[{next_step}/{total_steps}] Screening fundamentals...")
-            screen_candidates, screen_errors = screen_fundamental_candidates(screener_config)
-            screen_result = {
-                "candidates": screen_candidates,
-                "errors": screen_errors,
-            }
-
         next_step += 1
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
         telegram_msg, md_content = build_content(
-            indexes, quotes, news, errors, screen_result, account_summary
+            indexes, quotes, news, errors, account_summary
         )
 
         next_step += 1

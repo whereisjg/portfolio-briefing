@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import mock_open, patch
+from unittest.mock import patch
 import tempfile
 import json
 
@@ -220,89 +220,6 @@ class FormattingTests(unittest.TestCase):
         quotes = [{"ticker": "SCHD", "chg_pct": 0.5, "news_optional": True}]
 
         self.assertEqual(briefing.build_alert_lines(quotes, [], {"SCHD": []}), ["특이사항 없음"])
-
-
-class FundamentalScreeningTests(unittest.TestCase):
-    def test_load_screener_config_returns_none_when_disabled(self):
-        with patch.object(briefing.os.path, "exists", return_value=True):
-            with patch(
-                "builtins.open",
-                mock_open(read_data='{"enabled": false, "symbols": ["AAPL"]}'),
-            ):
-                self.assertIsNone(briefing.load_screener_config())
-
-    def test_fetch_yahoo_fundamentals_parses_quote_summary(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-
-            def json(self):
-                return {
-                    "quoteSummary": {
-                        "result": [
-                            {
-                                "price": {"shortName": "AAA Inc.", "currency": "USD"},
-                                "summaryDetail": {
-                                    "trailingPE": {"raw": 10.5},
-                                    "priceToSalesTrailing12Months": {"raw": 2.1},
-                                },
-                                "defaultKeyStatistics": {"priceToBook": {"raw": 1.2}},
-                                "financialData": {"returnOnEquity": {"raw": 0.18}},
-                            }
-                        ]
-                    }
-                }
-
-        class FakeSession:
-            def get(self, *args, **kwargs):
-                return FakeResponse()
-
-        with patch.object(briefing, "get_http_session", return_value=FakeSession()):
-            data = briefing.fetch_yahoo_fundamentals("AAA")
-
-        self.assertEqual(data["symbol"], "AAA")
-        self.assertEqual(data["name"], "AAA Inc.")
-        self.assertEqual(data["currency"], "USD")
-        self.assertEqual(data["roe"], 0.18)
-        self.assertEqual(data["per"], 10.5)
-        self.assertEqual(data["psr"], 2.1)
-        self.assertEqual(data["pbr"], 1.2)
-
-    def test_passes_requested_value_criteria(self):
-        item = {"roe": 0.16, "per": 14.9, "psr": 2.99, "pbr": 1.5}
-        criteria = {
-            "min_roe": 0.15,
-            "max_per": 15,
-            "exclude_psr_gte": 3,
-            "max_pbr": 1.5,
-        }
-
-        self.assertTrue(briefing.passes_fundamental_screen(item, criteria))
-        self.assertFalse(briefing.passes_fundamental_screen({**item, "psr": 3}, criteria))
-        self.assertFalse(briefing.passes_fundamental_screen({**item, "roe": 0.149}, criteria))
-
-    def test_screen_candidates_sorts_passing_symbols(self):
-        payloads = {
-            "AAA": {"symbol": "AAA", "roe": 0.2, "per": 10, "psr": 2, "pbr": 1, "currency": "USD"},
-            "BBB": {"symbol": "BBB", "roe": 0.16, "per": 8, "psr": 2, "pbr": 1, "currency": "USD"},
-            "CCC": {"symbol": "CCC", "roe": 0.3, "per": 20, "psr": 2, "pbr": 1, "currency": "USD"},
-        }
-
-        with patch.object(briefing, "fetch_yahoo_fundamentals", side_effect=lambda symbol: payloads[symbol]):
-            candidates, errors = briefing.screen_fundamental_candidates(
-                {
-                    "criteria": {
-                        "min_roe": 0.15,
-                        "max_per": 15,
-                        "exclude_psr_gte": 3,
-                        "max_pbr": 1.5,
-                    },
-                    "symbols": ["AAA", "BBB", "CCC"],
-                }
-            )
-
-        self.assertEqual(errors, [])
-        self.assertEqual([item["symbol"] for item in candidates], ["AAA", "BBB"])
 
 
 class QuoteProviderTests(unittest.TestCase):

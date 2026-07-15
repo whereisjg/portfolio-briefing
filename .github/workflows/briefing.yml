@@ -24,7 +24,7 @@ jobs:
       - name: Validate config and script
         run: |
           python -m py_compile portfolio_briefing.py trade_automation.py
-          python -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'screener.json', 'trading_config.json')]"
+          python -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'trading_config.json')]"
           python -m unittest
       - name: Run briefing
         env:
