@@ -46,24 +46,22 @@ portfolio-briefing/
 
 새 종목을 미리 등록하면 해당 종목을 보유했을 때 KIS 뉴스와 목표 비중을 적용합니다. 등록하지 않은 KIS 보유 종목도 브리핑에는 표시되지만, 뉴스는 선택적으로만 조회합니다.
 
-Each asset needs:
+각 종목은 다음 형식을 사용합니다.
 
 ```json
 {
-  "ticker": "QLD",
-  "symbol": "QLD",
-  "name": "QLD",
-  "display": "QLD",
-  "currency": "USD",
-  "shares": null,
-  "weight_pct": null,
-  "target_weight_pct": null
+  "ticker": "KoAct미국나스닥성장기업액티브",
+  "symbol": "0015B0.KS",
+  "name": "KoAct 미국나스닥성장기업액티브",
+  "display": "KoAct나스닥성장",
+  "currency": "KRW",
+  "target_weight_pct": 25,
+  "news_optional": true
 }
 ```
 
 국내 ETF는 앞부분에 KIS 종목코드를 둔 심볼을 사용합니다. 선택 항목:
 
-- `shares`: KIS 연동이 꺼졌을 때만 사용하는 수동 수량
 - `target_weight_pct`: 목표 비중과 신규 매수 우선순위
 - `news_optional`: 뉴스가 없어도 경고하지 않음
 
@@ -73,7 +71,7 @@ Each asset needs:
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
-| `CLAUDE_API_KEY` | (Optional) Claude Haiku for news translation and action commentary |
+| `CLAUDE_API_KEY` | (Optional) Claude Haiku for action commentary |
 | `KIS_APP_KEY` | KIS API App Key for the briefing account |
 | `KIS_APP_SECRET` | KIS API App Secret for the briefing account |
 | `KIS_ACCOUNT_NO` | KIS account number, first 8 digits |

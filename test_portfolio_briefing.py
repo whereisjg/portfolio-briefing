@@ -38,6 +38,26 @@ class ConfigurationTests(unittest.TestCase):
                 "fallback",
             )
 
+    def test_load_portfolio_warns_when_target_weights_are_invalid(self):
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as file:
+            json.dump(
+                {
+                    "assets": [
+                        {"ticker": "A", "target_weight_pct": 60},
+                        {"ticker": "B", "target_weight_pct": 30},
+                    ],
+                },
+                file,
+            )
+            file.flush()
+            with patch.object(briefing, "PORTFOLIO_FILE", file.name):
+                with patch("builtins.print") as print_mock:
+                    briefing.load_portfolio()
+
+        self.assertTrue(
+            any("목표 비중 합계 90.00%" in str(call) for call in print_mock.call_args_list)
+        )
+
 class KisBalanceTests(unittest.TestCase):
     def test_fetch_kis_news_returns_titles(self):
         class FakeResponse:

@@ -77,14 +77,17 @@ def load_portfolio():
         raise ValueError("portfolio.json에 assets가 없습니다.")
 
     try:
-        weights = [float(a["weight_pct"]) for a in assets
-                   if str(a.get("weight_pct", "")).strip() not in ("", "None")]
-        if weights:
-            total = sum(weights)
+        target_weights = [
+            float(asset["target_weight_pct"])
+            for asset in assets
+            if str(asset.get("target_weight_pct", "")).strip() not in ("", "None")
+        ]
+        if target_weights:
+            total = sum(target_weights)
             if abs(total - 100) > 1:
-                print(f"WARNING: 비중 합계 {total:.2f}% (100%와 {total - 100:+.2f}% 차이)")
+                print(f"WARNING: 목표 비중 합계 {total:.2f}% (100%와 {total - 100:+.2f}% 차이)")
     except (ValueError, TypeError) as exc:
-        print(f"WARNING: weight_pct 변환 오류, 비중 검증 건너뜀: {exc}")
+        print(f"WARNING: target_weight_pct 변환 오류, 비중 검증 건너뜀: {exc}")
 
     return indexes, assets
 
