@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """
-Daily portfolio briefing for GitHub Actions.
-
-Fetches prices from Yahoo Finance, translates news via Claude Haiku (or Google
-Translate fallback), applies rule-based guidance, sends Telegram, and saves markdown.
+Daily portfolio briefing for GitHub Actions using KIS Open API.
 """
 
 import json
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
-from urllib.parse import unquote
+from datetime import datetime, timedelta
 
 import pytz
 import requests
@@ -111,42 +107,6 @@ def quote_from_price(asset, price, previous_close, provider):
         "chg_pct": float(chg_pct),
         "provider": provider,
     }
-
-
-def fetch_yahoo_quote(asset):
-    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{asset['symbol']}"
-    params = {"range": "1d", "interval": "1m"}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
-    session = get_http_session()
-    response = session.get(url, params=params, headers=headers, timeout=20)
-    response.raise_for_status()
-
-    data = response.json()
-    result_list = data.get("chart", {}).get("result")
-    if not result_list:
-        raise ValueError(f"Yahoo Finance 응답에 데이터가 없습니다: {asset['symbol']}")
-
-    result = result_list[0]
-    if not isinstance(result, dict):
-        raise ValueError(f"Yahoo Finance 응답 형식 오류: {asset['symbol']}")
-    meta = result.get("meta")
-    if not meta:
-        raise ValueError(f"Yahoo Finance 응답에 meta 데이터가 없습니다: {asset['symbol']}")
-
-    price = meta.get("regularMarketPrice")
-    previous_close = meta.get("chartPreviousClose") or meta.get("previousClose")
-
-    if price is None:
-        closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
-        closes = [close for close in closes if close is not None]
-        price = closes[-1] if closes else None
-
-    return quote_from_price(asset, price, previous_close, "Yahoo")
-
-
-def fetch_quote(asset):
-    return fetch_yahoo_quote(asset)
 
 
 def kis_enabled():
@@ -322,126 +282,21 @@ def assets_from_kis_balance(configured_assets, holdings):
     return assets
 
 
-def fetch_usd_to_krw():
-    try:
-        rate_asset = {"ticker": "USDKRW", "symbol": "KRW=X", "currency": "KRW"}
-        q = fetch_yahoo_quote(rate_asset)
-        return q["price"]
-    except Exception as exc:
-        print(f"WARNING: 환율 조회 실패, 비중 계산 건너뜀: {exc}")
-        return None
-
-
-def compute_weights(quotes, usd_to_krw):
-    """현재가·환율 기준으로 각 quote의 weight_pct를 재계산한다."""
-    needs_fx = any(q["currency"] == "USD" for q in quotes)
-    if needs_fx and usd_to_krw is None:
-        return
+def compute_weights(quotes):
+    """KIS 국내주식 잔고의 현재가 기준으로 비중을 재계산한다."""
     values = []
     for q in quotes:
         shares = q.get("shares")
         if shares in (None, "") or float(shares) <= 0:
             values.append(None)
             continue
-        price_krw = q["price"] * usd_to_krw if q["currency"] == "USD" else q["price"]
-        values.append(float(shares) * price_krw)
+        values.append(float(shares) * q["price"])
     total = sum(v for v in values if v is not None)
     if not total:
         return
     for q, v in zip(quotes, values):
         if v is not None:
             q["weight_pct"] = round(v / total * 100, 2)
-        if q["currency"] == "USD":
-            q["usd_to_krw"] = usd_to_krw
-
-
-def fetch_prices(assets, require_any=True):
-    quotes = []
-    errors = []
-
-    for asset in assets:
-        try:
-            quote = fetch_quote(asset)
-            quotes.append(quote)
-            print(f"OK {asset['ticker']}: {quote['price']} ({quote['chg_pct']:+.2f}%)")
-        except Exception as exc:
-            errors.append(f"{asset['ticker']}: {exc}")
-            print(f"ERROR {asset['ticker']}: {exc}")
-
-    if require_any and not quotes:
-        raise ValueError("모든 가격 조회에 실패했습니다.")
-
-    has_usd = any(q["currency"] == "USD" for q in quotes)
-    usd_to_krw = fetch_usd_to_krw() if has_usd else None
-    compute_weights(quotes, usd_to_krw)
-    if has_usd:
-        if usd_to_krw is not None:
-            print(f"환율 USD/KRW={usd_to_krw:.2f}, 비중 재계산 완료")
-    else:
-        print("KRW 자산 비중 재계산 완료")
-
-    return quotes, errors
-
-
-def fetch_yahoo_news(symbol, limit):
-    """Yahoo Finance에서 ticker 기반 뉴스를 가져옴. 'title - publisher' 문자열 목록 반환."""
-    url = "https://query1.finance.yahoo.com/v1/finance/search"
-    params = {"q": symbol, "newsCount": limit, "enableFuzzyQuery": "false", "enableCb": "false"}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
-    session = get_http_session()
-    response = session.get(url, params=params, headers=headers, timeout=20)
-    response.raise_for_status()
-
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=36) # 24 -> 36시간으로 여유 확보
-    titles = []
-    for item in response.json().get("news", []):
-        if item.get("type") != "STORY":
-            continue
-        title = item.get("title", "").strip()
-        if not title:
-            continue
-        pub_time = item.get("providerPublishTime")
-        if pub_time and datetime.fromtimestamp(pub_time, tz=timezone.utc) < cutoff:
-            continue
-        publisher = item.get("publisher", "")
-        titles.append(f"{title} - {publisher}" if publisher else title)
-    return titles
-
-
-def is_excluded_news(asset, title):
-    excluded_terms = asset.get("news_exclude", [])
-    normalized_title = title.casefold()
-    return any(term.casefold() in normalized_title for term in excluded_terms)
-
-
-def news_relevance_score(asset, title):
-    include_terms = asset.get("news_include", [])
-    if not include_terms:
-        return 1
-
-    normalized_title = title.casefold()
-    score = 0
-    for term in include_terms:
-        normalized_term = str(term).casefold().strip()
-        if not normalized_term:
-            continue
-        if normalized_term in normalized_title:
-            score += 2 if len(normalized_term) >= 6 else 1
-
-    headline, _source = split_news_source(title)
-    if len(headline.strip()) < 12:
-        score -= 1
-    return score
-
-
-def news_dedupe_key(title):
-    headline, _source = split_news_source(title)
-    return " ".join(headline.casefold().split())
-
-
-def has_korean(text):
-    return any("가" <= char <= "힣" for char in text)
 
 
 def split_news_source(title):
@@ -467,154 +322,6 @@ def _parse_claude_text(resp_json):
     if not content or not isinstance(content[0], dict) or "text" not in content[0]:
         return None
     return content[0]["text"].strip()
-
-
-def translate_batch_to_korean(headlines):
-    """번역이 필요한 영어 헤드라인 목록을 한 번의 API 호출로 번역. {원문: 번역} 반환."""
-    if not headlines:
-        return {}
-
-    mapping = {}
-    if CLAUDE_API_KEY:
-        numbered = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headlines))
-        prompt = (
-            "다음 영어 뉴스 제목들을 자연스러운 한국어로 번역해줘. "
-            "번호. 번역문 형식으로만 출력:\n\n" + numbered
-        )
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "x-api-key": CLAUDE_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
-        payload = {
-            "model": CLAUDE_MODEL,
-            "max_tokens": 2048,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        try:
-            session = get_http_session(retries=2)
-            response = session.post(url, headers=headers, json=payload, timeout=40)
-            response.raise_for_status()
-            result = response.json()
-        except Exception as exc:
-            print(f"TRANSLATE BATCH SKIP (falling back to Google): {exc}")
-        else:
-            if result.get("stop_reason") == "max_tokens":
-                print(f"TRANSLATE BATCH WARN: 응답이 max_tokens({payload['max_tokens']})에서 잘림 — 번역 누락 가능")
-            text = _parse_claude_text(result)
-            if text is None:
-                print(f"TRANSLATE BATCH ERROR: Claude 응답 구조 오류 — {result}")
-            else:
-                for line in text.splitlines():
-                    m = re.match(r"^(\d+)[.:\)]\s*(.+)$", line.strip())
-                    if m:
-                        idx = int(m.group(1)) - 1
-                        if 0 <= idx < len(headlines):
-                            mapping[headlines[idx]] = m.group(2).strip()
-                print(f"TRANSLATE BATCH: {len(mapping)}/{len(headlines)} translated")
-
-    missing = [headline for headline in headlines if headline not in mapping]
-    if not missing:
-        return mapping
-    mapping.update(translate_with_google(missing))
-    return mapping
-
-
-def translate_with_google(headlines):
-    """Google 번역 fallback. 실패한 항목은 결과에서 제외한다."""
-    translations = {}
-    consecutive_fails = 0
-    session = get_http_session(retries=1)
-    for headline in headlines:
-        try:
-            url = "https://translate.googleapis.com/translate_a/single"
-            params = {"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t", "q": headline}
-            g_headers = {"User-Agent": "Mozilla/5.0"}
-            resp = session.get(url, params=params, headers=g_headers, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-            if not isinstance(data, list) or not data or not isinstance(data[0], list):
-                raise ValueError(f"예상치 못한 응답 형식: {str(data)[:80]}")
-            translated = "".join(part[0] for part in data[0] if part and part[0])
-            translations[headline] = unquote(translated).strip()
-            consecutive_fails = 0
-        except Exception as exc:
-            print(f"TRANSLATE SKIP {headline[:30]}: {exc}")
-            consecutive_fails += 1
-            if consecutive_fails >= 3:
-                remaining = len(headlines) - len(translations)
-                print(f"TRANSLATE GOOGLE: 연속 {consecutive_fails}회 실패, 나머지 {remaining}개 건너뜀")
-                break
-    return translations
-
-
-def collect_raw_news_candidates(asset, limit=2):
-    """번역 없이 뉴스 raw 후보를 수집. [(raw_title, score, order)] 반환."""
-    seen = set()
-    candidates = []
-    candidate_limit = max(limit * 4, 6)
-    order = 0
-
-    query_terms = [asset["symbol"]]
-    query_terms.extend(asset.get("news_queries") or [])
-
-    for query_text in dict.fromkeys(term for term in query_terms if term):
-        for raw_title in fetch_yahoo_news(query_text, candidate_limit):
-            if "|" in raw_title:
-                continue
-            if is_excluded_news(asset, raw_title):
-                continue
-            score = news_relevance_score(asset, raw_title)
-            if score <= 0:
-                continue
-            key = news_dedupe_key(raw_title)
-            if key in seen:
-                continue
-            seen.add(key)
-            candidates.append((raw_title, score, order))
-            order += 1
-        if len(candidates) >= candidate_limit:
-            break
-
-    return candidates
-
-
-def apply_translations_and_rank(asset, candidates, translation_map, limit=2):
-    """번역 결과를 적용해 필터링·랭킹 후 최종 제목 반환."""
-    seen = set()
-    ranked = []
-
-    for raw_title, raw_score, order in candidates:
-        headline, source = split_news_source(raw_title)
-
-        if has_korean(headline):
-            title = raw_title
-        else:
-            translated = translation_map.get(headline)
-            if translated:
-                title = f"{translated} - {source}" if source else translated
-            else:
-                title = f"[원문] {raw_title}"
-
-        if is_excluded_news(asset, title):
-            continue
-
-        if len(clean_news_headline(title).strip()) < 8:
-            continue
-
-        score = max(raw_score, news_relevance_score(asset, title))
-        if score <= 0:
-            continue
-
-        key = news_dedupe_key(title)
-        if key in seen:
-            continue
-        seen.add(key)
-        ranked.append((score, order, title))
-
-    ranked.sort(key=lambda x: (-x[0], x[1]))
-    return [title for _, _, title in ranked[:limit]]
 
 
 def fetch_kis_news(asset, access_token, limit=2):
@@ -661,14 +368,11 @@ def fetch_kis_news(asset, access_token, limit=2):
     return titles
 
 
-def fetch_news(assets, access_token=None):
+def fetch_news(assets, access_token):
     news = {}
     errors = []
     for asset in assets:
         ticker = asset["ticker"]
-        if not access_token:
-            news[ticker] = []
-            continue
         try:
             news[ticker] = fetch_kis_news(asset, access_token)
             print(f"NEWS {ticker}: {len(news[ticker])} titles")
@@ -1202,25 +906,23 @@ def main():
         print(f"[1/{total_steps}] Loading portfolio...")
         indexes_config, assets_config = load_portfolio()
 
-        account_summary = None
-        if kis_enabled():
-            print(f"[2/{total_steps}] Fetching KIS balance...")
-            holdings, account_summary, access_token = fetch_kis_balance()
-            save_kis_balance_snapshot(holdings, account_summary, access_token)
-            print(f"[2/{total_steps}] Fetching KIS indexes...")
-            indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
-            assets_config = assets_from_kis_balance(assets_config, holdings)
-            quotes = assets_config
-            quote_errors = []
-            compute_weights(quotes, None)
-            print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
-        else:
-            indexes, index_errors = fetch_prices(indexes_config, require_any=False)
-            quotes, quote_errors = fetch_prices(assets_config)
+        if not kis_enabled():
+            raise ValueError("KIS_BALANCE_ENABLED=true 설정이 필요합니다.")
+
+        print(f"[2/{total_steps}] Fetching KIS balance...")
+        holdings, account_summary, access_token = fetch_kis_balance()
+        save_kis_balance_snapshot(holdings, account_summary, access_token)
+        print(f"[2/{total_steps}] Fetching KIS indexes...")
+        indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
+        assets_config = assets_from_kis_balance(assets_config, holdings)
+        quotes = assets_config
+        quote_errors = []
+        compute_weights(quotes)
+        print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
 
         next_step = 2
         print(f"[{next_step}/{total_steps}] Fetching news titles...")
-        news, news_errors = fetch_news(assets_config, access_token if kis_enabled() else None)
+        news, news_errors = fetch_news(assets_config, access_token)
         errors = index_errors + quote_errors + news_errors
 
         next_step += 1

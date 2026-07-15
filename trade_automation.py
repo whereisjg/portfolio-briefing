@@ -149,18 +149,14 @@ def positions_from_holdings(holdings, target_codes):
     return positions
 
 
-def target_prices(configured_assets, positions, kis_prices=None):
-    prices = {
-        code: (kis_prices or {}).get(code, position["price"])
-        for code, position in positions.items()
-        if (kis_prices or {}).get(code, position["price"]) > 0
-    }
-    for asset in configured_assets:
-        code = code_from_asset(asset)
-        if code not in positions or code in prices:
-            continue
-        quote = briefing.fetch_quote(asset)
-        prices[code] = float(quote["price"])
+def target_prices(configured_assets, positions, kis_prices):
+    del configured_assets
+    prices = {}
+    for code in positions:
+        price = kis_prices.get(code)
+        if price is None or price <= 0:
+            raise ValueError(f"KIS 현재가를 찾지 못했습니다: {code}")
+        prices[code] = price
     return prices
 
 

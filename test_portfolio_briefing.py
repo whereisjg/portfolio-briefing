@@ -7,198 +7,6 @@ import portfolio_briefing as briefing
 import trade_automation as trading
 
 
-class NewsFilteringTests(unittest.TestCase):
-    def test_collect_excludes_raw_title_matching_exclusion_terms(self):
-        asset = {
-            "ticker": "USD",
-            "symbol": "USD",
-            "news_include": ["semiconductor", "chip"],
-            "news_exclude": ["US dollar"],
-        }
-        raw_titles = [
-            "US dollar rises before Fed decision - Reuters",
-            "Semiconductor ETF rebounds after chip rally - MarketWatch",
-        ]
-
-        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
-            candidates = briefing.collect_raw_news_candidates(asset)
-
-        titles = [raw_title for raw_title, _, _ in candidates]
-        self.assertNotIn("US dollar rises before Fed decision - Reuters", titles)
-        self.assertIn("Semiconductor ETF rebounds after chip rally - MarketWatch", titles)
-
-    def test_collect_requires_relevant_news_terms(self):
-        asset = {
-            "ticker": "AIPO",
-            "symbol": "AIPO",
-            "news_include": ["AIPO", "power infrastructure", "data center"],
-            "news_exclude": ["Bitcoin", "MARA"],
-        }
-        raw_titles = [
-            "AI debate heats up again - KBS News",
-            "Defiance AIPO ETF tracks AI power infrastructure - ETF.com",
-            "MARA falls as Bitcoin mining revenue slows - MarketWatch",
-        ]
-
-        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
-            candidates = briefing.collect_raw_news_candidates(asset)
-
-        titles = [raw_title for raw_title, _, _ in candidates]
-        self.assertEqual(
-            titles,
-            ["Defiance AIPO ETF tracks AI power infrastructure - ETF.com"],
-        )
-
-    def test_collect_uses_configured_fallback_news_queries(self):
-        asset = {
-            "ticker": "USD",
-            "symbol": "USD",
-            "news_queries": ["ProShares Ultra Semiconductors ETF"],
-            "news_include": ["semiconductor", "ProShares Ultra Semiconductors"],
-            "news_exclude": ["US dollar"],
-        }
-
-        def fake_fetch(query, _limit):
-            if query == "USD":
-                return ["US dollar rises before Fed decision - Reuters"]
-            return ["ProShares Ultra Semiconductors ETF gains on chip rally - MarketWatch"]
-
-        with patch.object(briefing, "fetch_yahoo_news", side_effect=fake_fetch) as fetch_news:
-            candidates = briefing.collect_raw_news_candidates(asset)
-
-        self.assertEqual(
-            [raw_title for raw_title, _, _ in candidates],
-            ["ProShares Ultra Semiconductors ETF gains on chip rally - MarketWatch"],
-        )
-        self.assertEqual(
-            [call.args[0] for call in fetch_news.call_args_list],
-            ["USD", "ProShares Ultra Semiconductors ETF"],
-        )
-
-    def test_global_ai_filter_rejects_broad_ai_only_news(self):
-        asset = {
-            "ticker": "TIME글로벌AI인공지능액티브",
-            "symbol": "456600.KS",
-            "news_include": [
-                "TIME 글로벌AI",
-                "타임폴리오 글로벌 AI",
-                "글로벌AI",
-                "글로벌 AI",
-                "인공지능",
-                "artificial intelligence",
-                "Nvidia",
-                "OpenAI",
-                "AI chip",
-                "AI data center",
-                "456600",
-            ],
-            "news_exclude": [],
-        }
-        raw_titles = [
-            "AI becomes flashpoint in foreign policy debate - USA TODAY",
-            "TIME 글로벌AI인공지능액티브 ETF tracks artificial intelligence rally - ETF.com",
-        ]
-
-        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
-            candidates = briefing.collect_raw_news_candidates(asset)
-
-        titles = [raw_title for raw_title, _, _ in candidates]
-        self.assertEqual(
-            titles,
-            ["TIME 글로벌AI인공지능액티브 ETF tracks artificial intelligence rally - ETF.com"],
-        )
-
-    def test_korea_value_up_filter_rejects_broad_time_news(self):
-        asset = {
-            "ticker": "TIME코리아밸류업액티브",
-            "symbol": "495060.KS",
-            "news_include": [
-                "TIME 코리아밸류업",
-                "타임폴리오 코리아밸류업",
-                "코리아밸류업",
-                "코리아 밸류업",
-                "밸류업 ETF",
-                "Korea Value-up",
-                "495060",
-            ],
-            "news_exclude": [],
-        }
-        raw_titles = [
-            "Starmer timeline appears near as rival Burnham heads to UK parliament - Associated Press",
-            "TIME 코리아밸류업액티브 ETF rises with Korea Value-up rally - ETF.com",
-        ]
-
-        with patch.object(briefing, "fetch_yahoo_news", return_value=raw_titles):
-            candidates = briefing.collect_raw_news_candidates(asset)
-
-        titles = [raw_title for raw_title, _, _ in candidates]
-        self.assertEqual(
-            titles,
-            ["TIME 코리아밸류업액티브 ETF rises with Korea Value-up rally - ETF.com"],
-        )
-
-    def test_apply_translations_uses_mapping(self):
-        asset = {
-            "ticker": "QLD",
-            "news_include": ["QQQ", "Nasdaq", "나스닥"],
-            "news_exclude": [],
-        }
-        candidates = [("QQQ ETF surges on Nasdaq rally - Reuters", 2, 0)]
-        translation_map = {"QQQ ETF surges on Nasdaq rally": "나스닥 랠리로 QQQ ETF 급등"}
-
-        titles = briefing.apply_translations_and_rank(asset, candidates, translation_map, limit=1)
-
-        self.assertEqual(titles, ["나스닥 랠리로 QQQ ETF 급등 - Reuters"])
-
-    def test_apply_excludes_translated_title(self):
-        asset = {
-            "ticker": "USD",
-            "news_include": ["semiconductor", "반도체"],
-            "news_exclude": ["달러"],
-        }
-        candidates = [("Dollar rises as chip fears ease - Reuters", 2, 0)]
-        translation_map = {"Dollar rises as chip fears ease": "달러 상승, 반도체 우려 완화"}
-
-        titles = briefing.apply_translations_and_rank(asset, candidates, translation_map, limit=1)
-
-        self.assertEqual(titles, [])
-
-    def test_claude_translation_falls_back_for_unparsed_headlines(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-
-            def json(self):
-                return {
-                    "content": [{"text": "1. 첫 번째 번역"}],
-                    "stop_reason": "end_turn",
-                }
-
-        class FakeSession:
-            def post(self, *args, **kwargs):
-                return FakeResponse()
-
-        headlines = ["First headline", "Second headline"]
-
-        with patch.object(briefing, "CLAUDE_API_KEY", "test-key"):
-            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
-                with patch.object(
-                    briefing,
-                    "translate_with_google",
-                    return_value={"Second headline": "두 번째 번역"},
-                ) as google:
-                    translations = briefing.translate_batch_to_korean(headlines)
-
-        self.assertEqual(
-            translations,
-            {
-                "First headline": "첫 번째 번역",
-                "Second headline": "두 번째 번역",
-            },
-        )
-        google.assert_called_once_with(["Second headline"])
-
-
 class FormattingTests(unittest.TestCase):
     def test_formats_signed_usd_amount(self):
         self.assertEqual(briefing.format_signed_amount(12.3, "USD"), "+$12.30")
@@ -222,95 +30,13 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(briefing.build_alert_lines(quotes, [], {"SCHD": []}), ["특이사항 없음"])
 
 
-class QuoteProviderTests(unittest.TestCase):
+class ConfigurationTests(unittest.TestCase):
     def test_env_value_uses_default_for_empty_environment_value(self):
         with patch.dict(briefing.os.environ, {"EMPTY_SETTING": ""}):
             self.assertEqual(
                 briefing.env_value("EMPTY_SETTING", "fallback"),
                 "fallback",
             )
-
-    def test_fetch_quote_uses_yahoo(self):
-        asset = {"ticker": "QLD", "symbol": "QLD", "currency": "USD"}
-        yahoo_quote = {
-            **asset,
-            "price": 88.77,
-            "prev_close": 92.25,
-            "chg_amount": -3.48,
-            "chg_pct": -3.77,
-            "provider": "Yahoo",
-        }
-
-        with patch.object(briefing, "fetch_yahoo_quote", return_value=yahoo_quote) as fetch_yahoo:
-            quote = briefing.fetch_quote(asset)
-
-        self.assertEqual(quote["provider"], "Yahoo")
-        fetch_yahoo.assert_called_once_with(asset)
-
-    def test_fetch_prices_keeps_quotes_when_fx_lookup_fails(self):
-        assets = [
-            {"ticker": "SOXL", "symbol": "SOXL", "currency": "USD"},
-            {"ticker": "KODEX", "symbol": "494300.KS", "currency": "KRW"},
-        ]
-        quotes = [
-            {
-                **assets[0],
-                "price": 10.0,
-                "prev_close": 9.0,
-                "chg_amount": 1.0,
-                "chg_pct": 11.11,
-                "provider": "Yahoo",
-            },
-            {
-                **assets[1],
-                "price": 10000.0,
-                "prev_close": 9900.0,
-                "chg_amount": 100.0,
-                "chg_pct": 1.01,
-                "provider": "Yahoo",
-            },
-        ]
-
-        with patch.object(briefing, "fetch_quote", side_effect=quotes):
-            with patch.object(briefing, "fetch_usd_to_krw", return_value=None):
-                fetched, errors = briefing.fetch_prices(assets)
-
-        self.assertEqual(fetched, quotes)
-        self.assertEqual(errors, [])
-
-    def test_fetch_prices_computes_weights_for_krw_only_assets(self):
-        assets = [
-            {"ticker": "AAA", "symbol": "AAA.KS", "currency": "KRW", "shares": 3},
-            {"ticker": "BBB", "symbol": "BBB.KS", "currency": "KRW", "shares": 2},
-        ]
-        quotes = [
-            {
-                **assets[0],
-                "price": 1000.0,
-                "prev_close": 900.0,
-                "chg_amount": 100.0,
-                "chg_pct": 11.11,
-                "provider": "Yahoo",
-            },
-            {
-                **assets[1],
-                "price": 1000.0,
-                "prev_close": 990.0,
-                "chg_amount": 10.0,
-                "chg_pct": 1.01,
-                "provider": "Yahoo",
-            },
-        ]
-
-        with patch.object(briefing, "fetch_quote", side_effect=quotes):
-            with patch.object(briefing, "fetch_usd_to_krw") as fx:
-                fetched, errors = briefing.fetch_prices(assets)
-
-        fx.assert_not_called()
-        self.assertEqual(errors, [])
-        self.assertEqual(fetched[0]["weight_pct"], 60.0)
-        self.assertEqual(fetched[1]["weight_pct"], 40.0)
-
 
 class KisBalanceTests(unittest.TestCase):
     def test_fetch_kis_news_returns_titles(self):
@@ -498,7 +224,7 @@ class ContentTests(unittest.TestCase):
                 "shares": 1,
                 "weight_pct": 66.6,
                 "target_weight_pct": 70,
-                "provider": "Yahoo",
+                "provider": "KIS",
             },
             {
                 "ticker": "INCOME",
@@ -512,7 +238,7 @@ class ContentTests(unittest.TestCase):
                 "shares": 1,
                 "weight_pct": 33.4,
                 "target_weight_pct": 30,
-                "provider": "Yahoo",
+                "provider": "KIS",
             },
         ]
 
@@ -534,7 +260,7 @@ class ContentTests(unittest.TestCase):
                 "chg_amount": 1.0,
                 "chg_pct": 1.01,
                 "shares": 0,
-                "provider": "Yahoo",
+                "provider": "KIS",
             }
         ]
 
@@ -557,7 +283,7 @@ class ContentTests(unittest.TestCase):
                 "prev_close": 91.0,
                 "chg_amount": -1.0,
                 "chg_pct": -1.1,
-                "provider": "Yahoo",
+                "provider": "KIS",
             }
         ]
 
@@ -603,7 +329,7 @@ class ContentTests(unittest.TestCase):
                 "chg_amount": 1.0,
                 "chg_pct": 11.11,
                 "shares": 2,
-                "provider": "Yahoo",
+                "provider": "KIS",
             }
         ]
 

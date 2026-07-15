@@ -26,29 +26,7 @@
       "currency": "KRW",
       "shares": null,
       "target_weight_pct": 25,
-      "news_optional": true,
-      "news_query": "KoAct 미국나스닥성장기업액티브 ETF",
-      "news_queries": [
-        "KoAct 미국나스닥성장기업액티브 ETF",
-        "삼성액티브 미국나스닥성장기업 액티브 ETF",
-        "미국 나스닥 성장기업 ETF"
-      ],
-      "news_include": [
-        "KoAct 미국나스닥성장기업",
-        "미국나스닥성장기업",
-        "나스닥 성장기업",
-        "Nasdaq growth",
-        "나스닥",
-        "Nasdaq",
-        "미국 기술주",
-        "빅테크",
-        "0015B0"
-      ],
-      "news_exclude": [
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
-      ]
+      "news_optional": true
     },
     {
       "ticker": "TIGER미국나스닥100타겟데일리커버드콜",
@@ -58,28 +36,7 @@
       "currency": "KRW",
       "shares": null,
       "target_weight_pct": 25,
-      "news_optional": true,
-      "news_query": "TIGER 미국나스닥100타겟데일리커버드콜 ETF",
-      "news_queries": [
-        "TIGER 미국나스닥100타겟데일리커버드콜 ETF",
-        "미국나스닥100 타겟데일리커버드콜 ETF",
-        "나스닥100 데일리커버드콜 ETF"
-      ],
-      "news_include": [
-        "TIGER 미국나스닥100타겟데일리커버드콜",
-        "미국나스닥100타겟데일리커버드콜",
-        "NASDAQ100 Daily Covered Call",
-        "나스닥",
-        "Nasdaq",
-        "미국 기술주",
-        "빅테크",
-        "486290"
-      ],
-      "news_exclude": [
-        "목표주가",
-        "뭉칫돈",
-        "서학개미"
-      ]
+      "news_optional": true
     },
     {
       "ticker": "KODEX미국S&P500데일리커버드콜OTM",
@@ -89,20 +46,7 @@
       "currency": "KRW",
       "shares": null,
       "target_weight_pct": 25,
-      "news_optional": true,
-      "news_query": "KODEX 미국S&P500데일리커버드콜OTM ETF",
-      "news_queries": [
-        "KODEX 미국S&P500데일리커버드콜OTM ETF",
-        "미국 S&P500 데일리커버드콜 OTM ETF"
-      ],
-      "news_include": [
-        "KODEX 미국S&P500데일리커버드콜OTM",
-        "미국S&P500데일리커버드콜OTM",
-        "S&P 500",
-        "S&P500",
-        "0005A0"
-      ],
-      "news_exclude": ["목표주가", "뭉칫돈", "서학개미"]
+      "news_optional": true
     },
     {
       "ticker": "KODEX미국머니마켓액티브",
@@ -112,16 +56,7 @@
       "currency": "KRW",
       "shares": null,
       "target_weight_pct": 25,
-      "news_optional": true,
-      "news_query": "KODEX 미국머니마켓액티브 ETF",
-      "news_queries": ["KODEX 미국머니마켓액티브 ETF", "미국 머니마켓 ETF"],
-      "news_include": [
-        "KODEX 미국머니마켓액티브",
-        "미국머니마켓액티브",
-        "미국 머니마켓",
-        "0048J0"
-      ],
-      "news_exclude": ["목표주가", "뭉칫돈", "서학개미"]
+      "news_optional": true
     }
   ]
 }
