@@ -435,6 +435,32 @@ class KisBalanceTests(unittest.TestCase):
         self.assertEqual(assets[0]["display"], "테스트 ETF")
         self.assertTrue(assets[0]["news_optional"])
 
+    def test_fetch_kis_index_quote_parses_kis_response(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "rt_cd": "0",
+                    "output1": {"ovrs_nmix_prpr": "22000", "ovrs_nmix_prdy_clpr": "21800"},
+                }
+
+        class FakeSession:
+            def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        with patch.dict(briefing.os.environ, {"KIS_APP_KEY": "key", "KIS_APP_SECRET": "secret"}):
+            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
+                quote = briefing.fetch_kis_index_quote(
+                    {"ticker": "NASDAQ100", "kis_symbol": "NDX", "currency": "POINT"},
+                    "token",
+                )
+
+        self.assertEqual(quote["price"], 22000)
+        self.assertEqual(quote["chg_pct"], 200 / 21800 * 100)
+        self.assertEqual(quote["provider"], "KIS")
+
 
 class TradingPlanTests(unittest.TestCase):
     def setUp(self):

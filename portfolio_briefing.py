@@ -372,6 +372,59 @@ def fetch_kis_balance():
     return payload.get("output", []), (payload.get("output2") or [{}])[0], access_token
 
 
+def fetch_kis_index_quote(index, access_token):
+    """KIS 해외지수 일별시세에서 최신 지수와 전일 종가를 읽는다."""
+    app_key = kis_required("KIS_APP_KEY")
+    app_secret = kis_required("KIS_APP_SECRET")
+    symbol = index.get("kis_symbol")
+    if not symbol:
+        raise ValueError(f"KIS 지수 코드가 없습니다: {index.get('ticker')}")
+
+    today = datetime.now(KST).date()
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "N",
+        "FID_INPUT_ISCD": symbol,
+        "FID_INPUT_DATE_1": (today - timedelta(days=10)).strftime("%Y%m%d"),
+        "FID_INPUT_DATE_2": today.strftime("%Y%m%d"),
+        "FID_PERIOD_DIV_CODE": "D",
+    }
+    response = get_http_session(retries=1).get(
+        f"{env_value('KIS_API_BASE_URL', 'https://openapi.koreainvestment.com:9443')}/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+        headers={
+            "authorization": f"Bearer {access_token}",
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": "FHKST03030100",
+            "custtype": "P",
+        },
+        params=params,
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 지수조회 실패({symbol}): {payload.get('msg1', '알 수 없는 오류')}")
+
+    output = payload.get("output1") or {}
+    price = as_float(output.get("ovrs_nmix_prpr"), None)
+    previous_close = as_float(output.get("ovrs_nmix_prdy_clpr"), None)
+    return quote_from_price(index, price, previous_close, "KIS")
+
+
+def fetch_kis_indexes(indexes, access_token):
+    quotes = []
+    errors = []
+    for index in indexes:
+        try:
+            quote = fetch_kis_index_quote(index, access_token)
+            quotes.append(quote)
+            print(f"OK {index['ticker']}: {quote['price']} ({quote['chg_pct']:+.2f}%)")
+        except Exception as exc:
+            errors.append(f"{index['ticker']}: {exc}")
+            print(f"ERROR {index['ticker']}: {exc}")
+    return quotes, errors
+
+
 def save_kis_balance_snapshot(holdings, summary, access_token):
     """Share one KIS balance response with later workflow steps."""
     if not KIS_BALANCE_SNAPSHOT_FILE:
@@ -1298,21 +1351,23 @@ def main():
         if screener_config:
             total_steps += 1
 
-        print(f"[1/{total_steps}] Fetching prices...")
+        print(f"[1/{total_steps}] Loading portfolio...")
         indexes_config, assets_config = load_portfolio()
-        indexes, index_errors = fetch_prices(indexes_config, require_any=False)
 
         account_summary = None
         if kis_enabled():
             print(f"[2/{total_steps}] Fetching KIS balance...")
             holdings, account_summary, access_token = fetch_kis_balance()
             save_kis_balance_snapshot(holdings, account_summary, access_token)
+            print(f"[2/{total_steps}] Fetching KIS indexes...")
+            indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
             assets_config = assets_from_kis_balance(assets_config, holdings)
             quotes = assets_config
             quote_errors = []
             compute_weights(quotes, None)
             print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
         else:
+            indexes, index_errors = fetch_prices(indexes_config, require_any=False)
             quotes, quote_errors = fetch_prices(assets_config)
 
         next_step = 2

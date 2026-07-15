@@ -1,15 +1,17 @@
 {
   "indexes": [
     {
-      "ticker": "NASDAQ",
-      "symbol": "^IXIC",
-      "name": "나스닥",
-      "display": "나스닥",
+      "ticker": "NASDAQ100",
+      "symbol": "^NDX",
+      "kis_symbol": "NDX",
+      "name": "나스닥100",
+      "display": "나스닥100",
       "currency": "POINT"
     },
     {
       "ticker": "SP500",
       "symbol": "^GSPC",
+      "kis_symbol": "SPX",
       "name": "S&P 500",
       "display": "S&P 500",
       "currency": "POINT"
