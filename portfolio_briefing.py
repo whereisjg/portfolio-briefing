@@ -32,6 +32,7 @@ TELEGRAM_CHAT_ID = env_value("TELEGRAM_CHAT_ID")
 SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
 TELEGRAM_MESSAGE_FILE = env_value("TELEGRAM_MESSAGE_FILE")
 CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
+KIS_BALANCE_SNAPSHOT_FILE = env_value("KIS_BALANCE_SNAPSHOT_FILE")
 
 PORTFOLIO_FILE = "portfolio.json"
 SCREENER_FILE = "screener.json"
@@ -369,6 +370,15 @@ def fetch_kis_balance():
         raise ValueError(f"KIS 잔고조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
 
     return payload.get("output", []), (payload.get("output2") or [{}])[0]
+
+
+def save_kis_balance_snapshot(holdings, summary):
+    """Share one KIS balance response with later workflow steps."""
+    if not KIS_BALANCE_SNAPSHOT_FILE:
+        return
+    with open(KIS_BALANCE_SNAPSHOT_FILE, "w", encoding="utf-8") as file:
+        json.dump({"holdings": holdings, "summary": summary}, file, ensure_ascii=False)
+    print(f"KIS balance snapshot saved: {KIS_BALANCE_SNAPSHOT_FILE}")
 
 
 def as_float(value, default=0.0):
@@ -1292,6 +1302,7 @@ def main():
         if kis_enabled():
             print(f"[2/{total_steps}] Fetching KIS balance...")
             holdings, account_summary = fetch_kis_balance()
+            save_kis_balance_snapshot(holdings, account_summary)
             assets_config = assets_from_kis_balance(assets_config, holdings)
             quotes = assets_config
             quote_errors = []

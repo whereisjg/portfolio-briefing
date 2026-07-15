@@ -23,9 +23,8 @@ jobs:
       - run: pip install requests pytz
       - name: Validate config and script
         run: |
-          python -m py_compile portfolio_briefing.py
-          python -c "import json; json.load(open('portfolio.json', encoding='utf-8'))"
-          python -c "import json; json.load(open('screener.json', encoding='utf-8'))"
+          python -m py_compile portfolio_briefing.py trade_automation.py
+          python -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'screener.json', 'trading_config.json')]"
           python -m unittest
       - name: Run briefing
         env:
@@ -35,8 +34,17 @@ jobs:
           KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
           KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
           KIS_PRODUCT_CODE: ${{ secrets.KIS_TEST_PRODUCT_CODE }}
+          KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           TELEGRAM_MESSAGE_FILE: /tmp/telegram-message.txt
         run: python portfolio_briefing.py
+      - name: Build trading plan from briefing balance (no orders)
+        env:
+          KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
+        run: python trade_automation.py > /tmp/trading-plan.txt
+      - name: Add trading plan to Telegram message
+        run: |
+          printf '\n\n────────────────────\n' >> /tmp/telegram-message.txt
+          cat /tmp/trading-plan.txt >> /tmp/telegram-message.txt
       - name: Commit and push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

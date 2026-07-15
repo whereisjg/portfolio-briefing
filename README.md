@@ -32,7 +32,6 @@ GitHub Actions, KIS Open API, Yahoo Finance, Telegram을 사용한 일일 포트
 ```text
 portfolio-briefing/
 ├─ .github/workflows/briefing.yml
-├─ .github/workflows/trading-dry-run.yml
 ├─ briefings/briefing_YYYYMMDD.md
 ├─ portfolio.json
 ├─ trading_config.json
@@ -120,11 +119,11 @@ KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
 - 미래 실주문은 최우선 매수호가·최우선 매도호가의 지정가만 허용합니다. 5분 뒤 미체결분을 확인하고 취소한 뒤, 매수 가격이 최초 주문가보다 0.3% 이내일 때만 한 번 재시도합니다. 이후 잔량은 취소하고 다음 영업일로 넘깁니다.
 - 중복 주문 방지, 체결·미체결 조회, 정정·취소는 실주문 활성화 단계에서 KIS 주문번호와 취소가능수량을 기준으로 구현합니다.
 
-`Trading Dry Run` workflow는 평일 10:20 KST와 수동 실행 때 현재 일반계좌 Secret으로 주문 계획만 출력합니다. ISA 이전이 완료된 뒤 잔고조회와 dry-run 결과를 확인한 후에만 별도의 실주문 활성화 작업을 진행합니다.
+브리핑 workflow는 KIS 잔고를 한 번만 조회하고, 같은 스냅샷으로 브리핑과 dry-run 계획을 함께 만듭니다. ISA 이전이 완료된 뒤 잔고조회와 dry-run 결과를 확인한 후에만 별도의 실주문 활성화 작업을 진행합니다.
 
 ## cron-job.org Setup
 
-Triggers `workflow_dispatch` every morning at 07:00 KST:
+Triggers `workflow_dispatch` every business day at 10:20 KST:
 
 ```
 URL:    https://api.github.com/repos/{owner}/portfolio-briefing/actions/workflows/briefing.yml/dispatches

@@ -1,5 +1,7 @@
 import unittest
 from unittest.mock import mock_open, patch
+import tempfile
+import json
 
 import portfolio_briefing as briefing
 import trade_automation as trading
@@ -478,6 +480,16 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(sum(order["value"] for order in plan["buys"]), 30000)
         self.assertEqual(plan["unallocated_cash"], 5000)
+
+    def test_load_balance_snapshot_reuses_briefing_response(self):
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as file:
+            json.dump({"holdings": [{"pdno": "A"}], "summary": {"dnca_tot_amt": "100"}}, file)
+            file.flush()
+            with patch.dict(trading.os.environ, {"KIS_BALANCE_SNAPSHOT_FILE": file.name}):
+                holdings, summary = trading.load_balance_snapshot()
+
+        self.assertEqual(holdings, [{"pdno": "A"}])
+        self.assertEqual(summary["dnca_tot_amt"], "100")
 
 
 class ContentTests(unittest.TestCase):

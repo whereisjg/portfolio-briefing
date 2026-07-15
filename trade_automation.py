@@ -7,6 +7,7 @@ until the ISA account is verified and a separate explicit activation is made.
 
 import json
 import math
+import os
 from pathlib import Path
 
 import portfolio_briefing as briefing
@@ -27,6 +28,15 @@ def load_config(path=CONFIG_FILE):
     if config.get("live_orders_enabled", False):
         raise ValueError("실주문 활성화는 아직 지원하지 않습니다.")
     return config
+
+
+def load_balance_snapshot():
+    path = os.getenv("KIS_BALANCE_SNAPSHOT_FILE", "").strip()
+    if not path:
+        return None
+    with open(path, encoding="utf-8") as file:
+        snapshot = json.load(file)
+    return snapshot.get("holdings", []), snapshot.get("summary", {})
 
 
 def code_from_asset(asset):
@@ -160,7 +170,11 @@ def format_plan(plan):
 def main():
     config = load_config()
     _indexes, assets = briefing.load_portfolio()
-    holdings, summary = briefing.fetch_kis_balance()
+    snapshot = load_balance_snapshot()
+    if snapshot is None:
+        holdings, summary = briefing.fetch_kis_balance()
+    else:
+        holdings, summary = snapshot
     positions = positions_from_holdings(holdings, config["target_weights"])
     prices = target_prices(assets, positions)
     plan = plan_orders(config, positions, prices, cash_from_balance(summary))
