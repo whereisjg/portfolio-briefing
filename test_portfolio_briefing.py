@@ -270,6 +270,16 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(session.kwargs["json"]["CNDT_PRIC"], "")
         self.assertEqual(session.kwargs["headers"]["content-type"], "application/json; charset=utf-8")
 
+    def test_kis_request_spacing_waits_until_the_next_slot(self):
+        context = {"next_kis_request_at": 11.1}
+        with patch.object(trading.time, "monotonic", side_effect=[10.0, 11.1]):
+            with patch.object(trading.time, "sleep") as sleep:
+                trading.wait_for_kis_request_slot(context)
+
+        sleep.assert_called_once()
+        self.assertAlmostEqual(sleep.call_args.args[0], 1.1)
+        self.assertAlmostEqual(context["next_kis_request_at"], 12.2)
+
 
 class ContentTests(unittest.TestCase):
     def test_build_content_shows_rebalancing_buy_priorities(self):

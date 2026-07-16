@@ -9,6 +9,7 @@ import argparse
 import json
 import math
 import os
+import time
 from pathlib import Path
 
 import portfolio_briefing as briefing
@@ -78,6 +79,9 @@ def get_kis_context(access_token=None):
         "product_code": product_code,
         "base_url": base_url,
         "session": session,
+        # The briefing may have just used the same token. Keep order-related
+        # calls below KIS's per-second request limit.
+        "next_kis_request_at": time.monotonic() + 1.1,
         "headers": {
             "authorization": f"Bearer {access_token}",
             "appkey": app_key,
@@ -87,9 +91,18 @@ def get_kis_context(access_token=None):
     }
 
 
+def wait_for_kis_request_slot(context):
+    """Serialize KIS calls so a quote lookup cannot immediately block an order."""
+    wait_seconds = context.get("next_kis_request_at", 0) - time.monotonic()
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+    context["next_kis_request_at"] = time.monotonic() + 1.1
+
+
 def fetch_kis_prices(codes, context):
     prices = {}
     for code in codes:
+        wait_for_kis_request_slot(context)
         response = context["session"].get(
             f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-price",
             headers={**context["headers"], "tr_id": "FHKST01010100"},
@@ -108,6 +121,7 @@ def fetch_kis_prices(codes, context):
 
 
 def fetch_kis_best_ask(code, context):
+    wait_for_kis_request_slot(context)
     response = context["session"].get(
         f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
         headers={**context["headers"], "tr_id": "FHKST01010200"},
@@ -136,6 +150,7 @@ def submit_cash_buy(code, quantity, price, context):
         "SLL_TYPE": "",
         "CNDT_PRIC": "",
     }
+    wait_for_kis_request_slot(context)
     response = context["session"].post(
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-cash",
         headers={
@@ -179,6 +194,7 @@ def fetch_kis_orderable_cash(prices, context):
     if code is None:
         return 0.0
 
+    wait_for_kis_request_slot(context)
     response = context["session"].get(
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/inquire-psbl-order",
         headers={
