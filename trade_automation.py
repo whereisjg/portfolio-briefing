@@ -256,6 +256,8 @@ def format_plan(plan):
             lines.append(
                 f"  {order['code']} {order['quantity']}주 / 기준가 {order['price']:,.0f}원 / {order['value']:,.0f}원"
             )
+    for warning in plan.get("warnings", []):
+        lines.append(f"주의: {warning}")
     lines.append(f"주문 후 남는 주문가능금액(추정): {plan['unallocated_cash']:,.0f}원")
     lines.append("실제 주문은 전송하지 않았습니다.")
     return "\n".join(lines)
@@ -274,8 +276,14 @@ def main():
     kis_prices = fetch_kis_prices(config["target_weights"], kis_context)
     prices = target_prices(assets, positions, kis_prices)
     cash = cash_from_balance(summary)
-    orderable_cash = fetch_kis_orderable_cash(prices, kis_context)
+    warnings = []
+    try:
+        orderable_cash = fetch_kis_orderable_cash(prices, kis_context)
+    except Exception as exc:
+        orderable_cash = 0
+        warnings.append(f"KIS 주문가능금액 조회 실패로 매수 계획을 만들지 않았습니다: {exc}")
     plan = plan_orders(config, positions, prices, cash, orderable_cash)
+    plan["warnings"] = warnings
     print(format_plan(plan))
 
 
