@@ -442,7 +442,9 @@ def execute_live_rebalance(config, holdings, summary, context):
         if result is not None
     ]
 
+    wait_for_kis_request_slot(context)
     fresh_holdings, fresh_summary, _token = briefing.fetch_kis_balance()
+    context["next_kis_request_at"] = time.monotonic() + 1.1
     fresh_positions = positions_from_holdings(fresh_holdings, config["target_weights"])
     fresh_prices = fetch_kis_prices(config["target_weights"], context)
     fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
