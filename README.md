@@ -106,9 +106,9 @@ KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
 
 ## 자동매매 규칙
 
-[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. 현재 `live_orders_enabled: true`, `mode: live`이며 기본 workflow 실행은 실주문 모드입니다. `execute_live_orders` 입력을 끄면 주문 없이 계획만 만듭니다.
+[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. `live_orders_enabled: true`, `mode: live`는 주문 실행을 허용하는 설정입니다. workflow 기본 계좌는 `paper`이며, `account_mode: live`를 선택한 경우에만 일반계좌 주문을 사용합니다. `execute_live_orders` 입력을 끄면 어느 계좌에서도 주문 없이 계획만 만듭니다.
 
-- 매일 10:00 KST 기준으로 잔고·예수금·가격을 조회합니다.
+- cron-job.org가 영업일 10:00 KST에 workflow를 실행하면 잔고·예수금·가격을 조회합니다.
 - 완료된 일봉의 20일·60일 이동평균 신호가 3거래일 연속 같을 때 목표 비중을 변경합니다. 상승 추세는 위험 선호, 하락 추세는 위험 회피, 그 외에는 중립 비중을 적용합니다.
 - 매수는 KIS 주문가능금액 범위에서만 계산합니다. 매수·매도를 합친 일일 총 매매금액은 계좌 총자산의 3%를 넘지 않습니다. 1주를 살 수 없는 잔액은 다음 영업일로 이월합니다.
 - 위 3% 일일 한도는 실계좌에만 적용합니다. 모의투자는 당일 한도와 누적 체결액 차감을 적용하지 않되, 한 번의 workflow에서 최대 10만원(`paper_test_order_limit_krw`)까지만 주문해 반복 검증할 수 있게 합니다.

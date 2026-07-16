@@ -366,21 +366,6 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(summary["dnca_tot_amt"], "100")
         self.assertEqual(access_token, "token")
 
-    def test_confirmed_test_buys_require_cash_before_submitting_orders(self):
-        context = {"account_no": "12345678", "product_code": "01"}
-        with patch.dict(trading.os.environ, {"CONFIRM_LIVE_TEST_BUY": "CONFIRM"}):
-            with patch.object(trading, "fetch_kis_best_ask", side_effect=[21000, 11000]):
-                with patch.object(trading, "fetch_kis_orderable_cash", return_value=40000):
-                    with patch.object(
-                        trading,
-                        "submit_cash_buy",
-                        side_effect=[{"ODNO": "1"}, {"ODNO": "2"}],
-                    ) as submit:
-                        results = trading.execute_confirmed_test_buys(["0015B0", "486290"], context)
-
-        self.assertEqual([result["order_no"] for result in results], ["1", "2"])
-        self.assertEqual(submit.call_count, 2)
-
     def test_submit_cash_buy_uses_complete_kis_order_payload(self):
         class FakeResponse:
             status_code = 200

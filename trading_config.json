@@ -1,7 +1,6 @@
 {
   "live_orders_enabled": true,
   "mode": "live",
-  "execution_time_kst": "10:00",
   "daily_turnover_limit_pct": 3,
   "paper_test_order_limit_krw": 100000,
   "daily_sell_limit_per_asset_krw": 1000000,
@@ -44,8 +43,6 @@
     "buy_price": "best_ask",
     "sell_price": "best_bid",
     "first_order_check_minutes": 5,
-    "retry_once": true,
-    "max_buy_price_increase_pct": 0.3,
-    "final_cancel_minutes": 11
+    "max_buy_price_increase_pct": 0.3
   }
 }

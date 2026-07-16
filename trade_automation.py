@@ -59,10 +59,6 @@ def load_balance_snapshot():
     return snapshot.get("holdings", []), snapshot.get("summary", {}), snapshot.get("access_token")
 
 
-def code_from_asset(asset):
-    return str(asset.get("symbol", "")).split(".")[0]
-
-
 def cash_from_balance(summary):
     for field in ("prvs_rcdl_excc_amt", "nxdy_excc_amt", "dnca_tot_amt"):
         amount = briefing.as_float(summary.get(field), None)
@@ -315,23 +311,6 @@ def submit_cash_buy(code, quantity, price, context):
 
 def submit_cash_sell(code, quantity, price, context):
     return submit_cash_order(code, quantity, price, "sell", context)
-
-
-def execute_confirmed_test_buys(codes, context):
-    if os.getenv("CONFIRM_LIVE_TEST_BUY") != "CONFIRM":
-        raise ValueError("실주문 확인값이 없습니다.")
-    asks = {code: fetch_kis_best_ask(code, context) for code in codes}
-    required_cash = sum(asks.values())
-    orderable_cash = fetch_kis_orderable_cash(asks, context)
-    if required_cash > orderable_cash:
-        raise ValueError(f"주문가능금액 부족: 필요 {required_cash:,.0f}원 / 가능 {orderable_cash:,.0f}원")
-
-    results = []
-    for code in codes:
-        price = asks[code]
-        result = submit_cash_buy(code, 1, price, context)
-        results.append({"code": code, "price": price, "order_no": result.get("ODNO", "")})
-    return results
 
 
 def fetch_kis_orderable_cash(prices, context):
@@ -775,17 +754,6 @@ def positions_from_holdings(holdings, target_codes):
     return positions
 
 
-def target_prices(configured_assets, positions, kis_prices):
-    del configured_assets
-    prices = {}
-    for code in positions:
-        price = kis_prices.get(code)
-        if price is None or price <= 0:
-            raise ValueError(f"KIS 현재가를 찾지 못했습니다: {code}")
-        prices[code] = price
-    return prices
-
-
 def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limits=None, turnover_limit=None):
     """Return sell-first and cash-funded buy plans without placing an order."""
     targets = {code: float(weight) / 100 for code, weight in config["target_weights"].items()}
@@ -919,21 +887,10 @@ def format_plan(plan, live=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--execute-test-buy", nargs="+", metavar="CODE")
     parser.add_argument("--execute-live", action="store_true")
     args = parser.parse_args()
 
-    if args.execute_test_buy:
-        snapshot = load_balance_snapshot()
-        access_token = snapshot[2] if snapshot else None
-        context = get_kis_context(access_token)
-        results = execute_confirmed_test_buys(args.execute_test_buy, context)
-        for result in results:
-            print(f"실주문 접수: {result['code']} 1주 / 지정가 {result['price']:,.0f}원 / 주문번호 {result['order_no']}")
-        return
-
     config = load_config()
-    _indexes, assets = briefing.load_portfolio()
     snapshot = load_balance_snapshot()
     if snapshot is None:
         holdings, summary, access_token = briefing.fetch_kis_balance()
@@ -966,8 +923,7 @@ def main():
     effective_config = deepcopy(config)
     effective_config["target_weights"] = trend["weights"]
     positions = positions_from_holdings(holdings, effective_config["target_weights"])
-    kis_prices = fetch_kis_prices(effective_config["target_weights"], kis_context)
-    prices = target_prices(assets, positions, kis_prices)
+    prices = fetch_kis_prices(effective_config["target_weights"], kis_context)
     cash = cash_from_balance(summary)
     warnings = []
     try:
