@@ -85,6 +85,10 @@ Secret 값은 채팅, 코드, `portfolio.json`에 넣지 않습니다.
 
 KIS 접근 토큰은 GitHub Actions cache에 암호화해서 저장합니다. 마지막 발급 후 6시간 이내의 토큰만 재사용하며, 6시간이 지나거나 cache 복호화에 실패하면 새 토큰을 발급합니다. 암호화 키는 `KIS_APP_SECRET`이며 토큰 평문은 GitHub cache에 저장하지 않습니다.
 
+## 모의투자
+
+기본 workflow는 `paper` 모드이며, `KIS_PAPER_*` Secrets와 모의투자 URL, `VTTC...` TR ID만 사용합니다. `live`는 workflow 실행 화면에서 명시적으로 선택할 때만 실전 일반계좌를 사용합니다. 모의투자에서도 주문·5분 후 취소·한 번 재주문 흐름을 검증할 수 있습니다.
+
 ## ISA 전환
 
 ISA 이전이 완료되고 KIS API에서 잔고조회가 성공하면 `.github/workflows/briefing.yml`의 `Run briefing` 단계에서 아래 네 환경변수를 ISA용 Secret으로 바꿉니다.

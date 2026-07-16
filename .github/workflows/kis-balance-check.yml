@@ -2,6 +2,15 @@ name: KIS Balance Check
 
 on:
   workflow_dispatch:
+    inputs:
+      account_mode:
+        description: 'KIS account environment'
+        required: false
+        type: choice
+        options:
+          - paper
+          - live
+        default: paper
 
 permissions:
   contents: read
@@ -9,6 +18,13 @@ permissions:
 jobs:
   balance-check:
     runs-on: ubuntu-latest
+    env:
+      KIS_ACCOUNT_MODE: ${{ inputs.account_mode }}
+      KIS_APP_KEY: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_KEY || secrets.KIS_TEST_APP_KEY }}
+      KIS_APP_SECRET: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_SECRET || secrets.KIS_TEST_APP_SECRET }}
+      KIS_ACCOUNT_NO: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_ACCOUNT_NO || secrets.KIS_TEST_ACCOUNT_NO }}
+      KIS_PRODUCT_CODE: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_PRODUCT_CODE || secrets.KIS_TEST_PRODUCT_CODE }}
+      KIS_API_BASE_URL: ${{ inputs.account_mode == 'paper' && 'https://openapivts.koreainvestment.com:29443' || 'https://openapi.koreainvestment.com:9443' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -17,8 +33,6 @@ jobs:
       - run: pip install requests pytz
       - name: Configure KIS token cache key
         id: kis-token-key
-        env:
-          KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
         run: |
           scope=$(printf %s "$KIS_ACCOUNT_NO" | sha256sum | cut -c1-16)
           echo "prefix=kis-token-v1-${scope}-" >> "$GITHUB_OUTPUT"
@@ -31,8 +45,6 @@ jobs:
           restore-keys: |
             ${{ steps.kis-token-key.outputs.prefix }}
       - name: Decrypt cached KIS token
-        env:
-          KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
         run: |
           rm -f /tmp/kis-access-token.json /tmp/kis-access-token.json.updated
           if [ -f /tmp/kis-access-token.enc ]; then
@@ -43,17 +55,11 @@ jobs:
           fi
       - name: Query KIS balance (read only)
         env:
-          KIS_APP_KEY: ${{ secrets.KIS_TEST_APP_KEY }}
-          KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
-          KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
-          KIS_PRODUCT_CODE: ${{ secrets.KIS_TEST_PRODUCT_CODE }}
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
         run: python kis_balance_check.py
       - name: Encrypt newly issued KIS token
         id: seal-kis-token
         if: success()
-        env:
-          KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
         run: |
           if [ -f /tmp/kis-access-token.json.updated ]; then
             openssl enc -aes-256-cbc -pbkdf2 -salt \

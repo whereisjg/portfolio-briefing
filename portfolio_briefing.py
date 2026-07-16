@@ -119,6 +119,14 @@ def kis_enabled():
     return env_value("KIS_BALANCE_ENABLED", "false").lower() == "true"
 
 
+def kis_is_paper():
+    return env_value("KIS_ACCOUNT_MODE", "live").lower() == "paper"
+
+
+def kis_tr_id(real, paper):
+    return paper if kis_is_paper() else real
+
+
 def kis_required(name):
     value = env_value(name)
     if not value:
@@ -179,7 +187,7 @@ def fetch_kis_balance():
     account_no = kis_required("KIS_ACCOUNT_NO")
     product_code = kis_required("KIS_PRODUCT_CODE")
     base_url = env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
-    tr_id = env_value("KIS_BALANCE_TR_ID", "TTTC8434R")
+    tr_id = env_value("KIS_BALANCE_TR_ID", kis_tr_id("TTTC8434R", "VTTC8434R"))
 
     access_token = get_kis_access_token(app_key, app_secret, base_url)
 

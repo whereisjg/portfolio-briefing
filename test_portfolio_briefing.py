@@ -324,6 +324,33 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(session.kwargs["headers"]["tr_id"], "TTTC0011U")
         self.assertEqual(session.kwargs["json"]["SLL_TYPE"], "01")
 
+    def test_paper_order_uses_virtual_transaction_id(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"rt_cd": "0", "output": {"ODNO": "123"}}
+
+        class FakeSession:
+            def post(self, _url, **kwargs):
+                self.kwargs = kwargs
+                return FakeResponse()
+
+        session = FakeSession()
+        context = {
+            "account_no": "12345678",
+            "product_code": "01",
+            "base_url": "https://example.test",
+            "headers": {"authorization": "Bearer token"},
+            "session": session,
+            "is_paper": True,
+        }
+
+        trading.submit_cash_buy("0015B0", 1, 21300, context)
+
+        self.assertEqual(session.kwargs["headers"]["tr_id"], "VTTC0012U")
+
     def test_cancel_unfilled_order_uses_cancelable_quantity(self):
         class FakeResponse:
             status_code = 200
@@ -354,6 +381,14 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(result, {"order_no": "123", "quantity": 2})
         self.assertEqual(session.kwargs["headers"]["tr_id"], "TTTC0013U")
         self.assertEqual(session.kwargs["json"]["QTY_ALL_ORD_YN"], "Y")
+
+    def test_paper_unfilled_orders_uses_remaining_quantity_only(self):
+        orders = trading.paper_unfilled_orders(
+            [{"odno": "1", "rmn_qty": "2"}, {"odno": "2", "rmn_qty": "0"}],
+            [{"order_no": "1", "quantity": 3}, {"order_no": "2", "quantity": 1}],
+        )
+
+        self.assertEqual(orders, [{"order_no": "1", "quantity": 2}])
 
     def test_reprice_orders_never_exceeds_live_cash_limit(self):
         orders = [

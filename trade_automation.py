@@ -69,6 +69,7 @@ def get_kis_context(access_token=None):
         "account_no": account_no,
         "product_code": product_code,
         "base_url": base_url,
+        "is_paper": briefing.kis_is_paper(),
         "session": session,
         # The briefing may have just used the same token. Keep order-related
         # calls below KIS's per-second request limit.
@@ -80,6 +81,10 @@ def get_kis_context(access_token=None):
             "custtype": "P",
         },
     }
+
+
+def kis_tr_id(context, real, paper):
+    return paper if context.get("is_paper") else real
 
 
 def wait_for_kis_request_slot(context):
@@ -156,7 +161,11 @@ def submit_cash_order(code, quantity, price, side, context):
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-cash",
         headers={
             **context["headers"],
-            "tr_id": "TTTC0012U" if side == "buy" else "TTTC0011U",
+            "tr_id": kis_tr_id(
+                context,
+                "TTTC0012U" if side == "buy" else "TTTC0011U",
+                "VTTC0012U" if side == "buy" else "VTTC0011U",
+            ),
             "content-type": "application/json; charset=utf-8",
         },
         json=payload,
@@ -208,7 +217,7 @@ def fetch_kis_orderable_cash(prices, context):
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/inquire-psbl-order",
         headers={
             **context["headers"],
-            "tr_id": "TTTC8908R",
+            "tr_id": kis_tr_id(context, "TTTC8908R", "VTTC8908R"),
         },
         params={
             "CANO": context["account_no"],
@@ -237,7 +246,7 @@ def fetch_today_orders(context):
     wait_for_kis_request_slot(context)
     response = context["session"].get(
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
-        headers={**context["headers"], "tr_id": "TTTC0081R"},
+        headers={**context["headers"], "tr_id": kis_tr_id(context, "TTTC0081R", "VTTC0081R")},
         params={
             "CANO": context["account_no"],
             "ACNT_PRDT_CD": context["product_code"],
@@ -265,6 +274,8 @@ def fetch_today_orders(context):
 
 
 def fetch_cancelable_orders(context):
+    if context.get("is_paper"):
+        return []
     wait_for_kis_request_slot(context)
     response = context["session"].get(
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl",
@@ -314,7 +325,7 @@ def cancel_unfilled_order(order, cancelable, context):
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-rvsecncl",
         headers={
             **context["headers"],
-            "tr_id": "TTTC0013U",
+            "tr_id": kis_tr_id(context, "TTTC0013U", "VTTC0013U"),
             "content-type": "application/json; charset=utf-8",
         },
         json=payload,
@@ -326,6 +337,54 @@ def cancel_unfilled_order(order, cancelable, context):
     if result.get("rt_cd") != "0":
         raise ValueError(f"KIS 주문취소 실패({order_no}): {result.get('msg1', '알 수 없는 오류')}")
     return {"order_no": order_no, "quantity": quantity}
+
+
+def cancel_order_by_receipt(order, context):
+    """Paper trading has no cancelable-order inquiry; cancel the remaining receipt directly."""
+    order_no = str(order.get("order_no", "")).strip()
+    org_no = str(order.get("order_org_no", "")).strip()
+    if not order_no or not org_no:
+        raise ValueError("모의투자 주문취소에 필요한 주문번호 또는 조직번호가 없습니다.")
+    payload = {
+        "CANO": context["account_no"],
+        "ACNT_PRDT_CD": context["product_code"],
+        "KRX_FWDG_ORD_ORGNO": org_no,
+        "ORGN_ODNO": order_no,
+        "ORD_DVSN": "00",
+        "RVSE_CNCL_DVSN_CD": "02",
+        "ORD_QTY": str(order["quantity"]),
+        "ORD_UNPR": str(order["price"]),
+        "QTY_ALL_ORD_YN": "Y",
+        "EXCG_ID_DVSN_CD": "KRX",
+    }
+    wait_for_kis_request_slot(context)
+    response = context["session"].post(
+        f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-rvsecncl",
+        headers={
+            **context["headers"],
+            "tr_id": "VTTC0013U",
+            "content-type": "application/json; charset=utf-8",
+        },
+        json=payload,
+        timeout=20,
+    )
+    if response.status_code != 200:
+        raise ValueError(f"KIS 모의 주문취소 HTTP {response.status_code}: {response.text[:500]}")
+    result = response.json()
+    if result.get("rt_cd") != "0":
+        raise ValueError(f"KIS 모의 주문취소 실패({order_no}): {result.get('msg1', '알 수 없는 오류')}")
+    return {"order_no": order_no, "quantity": order["quantity"]}
+
+
+def paper_unfilled_orders(today_orders, submitted):
+    submitted_by_no = {str(order.get("order_no", "")): order for order in submitted}
+    unfilled = []
+    for row in today_orders:
+        order = submitted_by_no.get(str(row.get("odno", "")))
+        quantity = int(briefing.as_float(row.get("rmn_qty"), 0))
+        if order and quantity >= 1:
+            unfilled.append({**order, "quantity": quantity})
+    return unfilled
 
 
 def target_order_exists_today(orders, target_codes):
@@ -436,11 +495,17 @@ def execute_live_rebalance(config, holdings, summary, context):
         return {"status": "submitted", "plan": plan, "orders": [], "reason": ""}
 
     time.sleep(int(config["order_policy"]["first_order_check_minutes"]) * 60)
-    cancelable = fetch_cancelable_orders(context)
-    cancelled = [
-        result for result in (cancel_unfilled_order(order, cancelable, context) for order in submitted)
-        if result is not None
-    ]
+    if context.get("is_paper"):
+        cancelled = [
+            cancel_order_by_receipt(order, context)
+            for order in paper_unfilled_orders(fetch_today_orders(context), submitted)
+        ]
+    else:
+        cancelable = fetch_cancelable_orders(context)
+        cancelled = [
+            result for result in (cancel_unfilled_order(order, cancelable, context) for order in submitted)
+            if result is not None
+        ]
 
     wait_for_kis_request_slot(context)
     fresh_holdings, fresh_summary, _token = briefing.fetch_kis_balance()
