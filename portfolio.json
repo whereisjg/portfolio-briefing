@@ -25,8 +25,7 @@
       "display": "KoAct나스닥성장",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 25,
-      "news_optional": true
+      "target_weight_pct": 25
     },
     {
       "ticker": "TIGER미국나스닥100타겟데일리커버드콜",
@@ -35,8 +34,7 @@
       "display": "TIGER나스닥100커버드콜",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 25,
-      "news_optional": true
+      "target_weight_pct": 25
     },
     {
       "ticker": "KODEX미국S&P500데일리커버드콜OTM",
@@ -45,8 +43,7 @@
       "display": "KODEX S&P500커버드콜OTM",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 25,
-      "news_optional": true
+      "target_weight_pct": 25
     },
     {
       "ticker": "KODEX미국머니마켓액티브",
@@ -55,8 +52,7 @@
       "display": "KODEX미국머니마켓",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 25,
-      "news_optional": true
+      "target_weight_pct": 25
     }
   ]
 }

@@ -63,15 +63,13 @@ portfolio-briefing/
   "name": "KoAct 미국나스닥성장기업액티브",
   "display": "KoAct나스닥성장",
   "currency": "KRW",
-  "target_weight_pct": 25,
-  "news_optional": true
+  "target_weight_pct": 25
 }
 ```
 
 국내 ETF는 앞부분에 KIS 종목코드를 둔 심볼을 사용합니다. 선택 항목:
 
 - `target_weight_pct`: 목표 비중과 신규 매수 우선순위
-- `news_optional`: 뉴스가 없어도 경고하지 않음
 
 ## GitHub Secrets
 
@@ -79,7 +77,6 @@ portfolio-briefing/
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Telegram chat ID |
-| `CLAUDE_API_KEY` | (Optional) Claude Haiku for action commentary |
 | `KIS_APP_KEY` | KIS API App Key for the briefing account |
 | `KIS_APP_SECRET` | KIS API App Secret for the briefing account |
 | `KIS_ACCOUNT_NO` | KIS account number, first 8 digits |

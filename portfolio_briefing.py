@@ -5,7 +5,6 @@ Daily portfolio briefing for GitHub Actions using KIS Open API.
 
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -23,7 +22,6 @@ TELEGRAM_BOT_TOKEN = env_value("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = env_value("TELEGRAM_CHAT_ID")
 SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
 TELEGRAM_MESSAGE_FILE = env_value("TELEGRAM_MESSAGE_FILE")
-CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
 KIS_BALANCE_SNAPSHOT_FILE = env_value("KIS_BALANCE_SNAPSHOT_FILE")
 KIS_ACCESS_TOKEN_CACHE_FILE = env_value("KIS_ACCESS_TOKEN_CACHE_FILE")
 KIS_TREND_STATE_FILE = env_value("KIS_TREND_STATE_FILE")
@@ -32,11 +30,6 @@ KIS_ACCESS_TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 PORTFOLIO_FILE = "portfolio.json"
 SIGNIFICANT_MOVE_PCT = 3.0
 CRITICAL_MOVE_PCT = 5.0
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-NON_ACTIONABLE_NEWS_PHRASES = (
-    "ETF 추가ㆍ변경상장신청서(수량변경)",
-    "ETF 추가 ㆍ 변경상장신청서(수량변경)",
-)
 
 
 def get_http_session(retries=3, backoff_factor=0.3, status_forcelist=(429, 500, 502, 504)):
@@ -294,7 +287,6 @@ def assets_from_kis_balance(configured_assets, holdings, market_quotes=None):
             "average_price": as_float(holding.get("pchs_avg_pric")),
             "evaluation_profit_loss_amount": as_float(holding.get("evlu_pfls_amt")),
             "provider": "KIS",
-            "news_optional": base.get("news_optional", True),
         })
     return assets
 
@@ -336,96 +328,6 @@ def compute_weights(quotes):
     for q, v in zip(quotes, values):
         if v is not None:
             q["weight_pct"] = round(v / total * 100, 2)
-
-
-def split_news_source(title):
-    if " - " not in title:
-        return title, ""
-    headline, source = title.rsplit(" - ", 1)
-    return headline.strip(), source.strip()
-
-
-def clean_news_headline(title):
-    headline, _ = split_news_source(title)
-    for _ in range(3):
-        cleaned = re.sub(r',\s*(?=[^,]*\b[A-Z]{2,}\b)[^,]+$', '', headline).strip()
-        if cleaned == headline:
-            break
-        headline = cleaned
-    return headline
-
-
-def is_actionable_news(title):
-    """Exclude routine ETF unit-creation filings from investor-facing news."""
-    normalized = re.sub(r"\s+", " ", clean_news_headline(title))
-    return not any(phrase in normalized for phrase in NON_ACTIONABLE_NEWS_PHRASES)
-
-
-def _parse_claude_text(resp_json):
-    """Claude API 응답에서 텍스트를 추출. 구조가 올바르지 않으면 None 반환."""
-    content = resp_json.get("content", [])
-    if not content or not isinstance(content[0], dict) or "text" not in content[0]:
-        return None
-    return content[0]["text"].strip()
-
-
-def fetch_kis_news(asset, access_token, limit=2):
-    """KIS에 해당 ETF 코드로 연결된 국내 뉴스 제목만 반환한다."""
-    code = str(asset.get("symbol", "")).split(".")[0]
-    if not code:
-        return []
-    app_key = kis_required("KIS_APP_KEY")
-    app_secret = kis_required("KIS_APP_SECRET")
-    response = get_http_session(retries=1).get(
-        f"{env_value('KIS_API_BASE_URL', 'https://openapi.koreainvestment.com:9443')}/uapi/domestic-stock/v1/quotations/news-title",
-        headers={
-            "authorization": f"Bearer {access_token}",
-            "appkey": app_key,
-            "appsecret": app_secret,
-            "tr_id": "FHKST01011800",
-            "custtype": "P",
-        },
-        params={
-            "FID_NEWS_OFER_ENTP_CODE": "",
-            "FID_COND_MRKT_CLS_CODE": "",
-            "FID_INPUT_ISCD": code,
-            "FID_TITL_CNTT": "",
-            "FID_INPUT_DATE_1": "",
-            "FID_INPUT_HOUR_1": "",
-            "FID_RANK_SORT_CLS_CODE": "",
-            "FID_INPUT_SRNO": "",
-        },
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("rt_cd") != "0":
-        raise ValueError(f"KIS 뉴스조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
-    titles = []
-    for item in payload.get("output") or []:
-        title = str(item.get("hts_pbnt_titl_cntt", "")).strip()
-        if not title or not is_actionable_news(title):
-            continue
-        source = str(item.get("dorg", "")).strip()
-        titles.append(f"{title} - {source}" if source else title)
-        if len(titles) >= limit:
-            break
-    return titles
-
-
-def fetch_news(assets, access_token):
-    news = {}
-    errors = []
-    for asset in assets:
-        ticker = asset["ticker"]
-        try:
-            news[ticker] = fetch_kis_news(asset, access_token)
-            print(f"NEWS {ticker}: {len(news[ticker])} titles")
-        except Exception as exc:
-            news[ticker] = []
-            errors.append(f"{ticker} KIS 뉴스: {exc}")
-            print(f"ERROR NEWS {asset['ticker']}: {exc}")
-    return news, errors
 
 
 def format_price(item):
@@ -491,74 +393,6 @@ def movement_emoji(chg_pct):
     return "⚪"
 
 
-def generate_actions_with_claude(quotes, news):
-    if not CLAUDE_API_KEY:
-        return {}
-
-    # 급등/급락(±3% 이상) 종목만 Claude로 처리, 나머지는 규칙 기반 fallback
-    significant = [item for item in quotes if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT]
-    if not significant:
-        return {}
-
-    legend_lines = [
-        f"- {item['ticker']}: {item.get('news_query') or item['ticker']}"
-        for item in significant
-    ]
-    lines = []
-    for item in significant:
-        ticker = item["ticker"]
-        chg = item["chg_pct"]
-        news_titles = news.get(ticker, [])
-        news_text = " / ".join(clean_news_headline(t) for t in news_titles) if news_titles else "뉴스 없음"
-        lines.append(f"{ticker}: {chg:+.2f}%, 뉴스: {news_text}")
-
-    prompt = (
-        "다음 포트폴리오 종목들의 오늘 등락률과 뉴스를 보고, "
-        "각 종목에 대한 투자 대응 멘트를 한 줄로 작성해줘. "
-        "뉴스 맥락을 반영해서 구체적으로 써줘. "
-        "형식: 티커: 멘트 (줄바꿈으로 구분, 반드시 티커 이름만 사용)\n\n"
-        "종목 설명:\n" + "\n".join(legend_lines) + "\n\n"
-        + "\n".join(lines)
-    )
-
-    try:
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "x-api-key": CLAUDE_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
-        payload = {
-            "model": CLAUDE_MODEL,
-            "max_tokens": 512,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        session = get_http_session(retries=2)
-        response = session.post(url, headers=headers, json=payload, timeout=40)
-        response.raise_for_status()
-        resp_json = response.json()
-    except Exception as exc:
-        print(f"Claude action generation failed: {exc}")
-        return {}
-
-    text = _parse_claude_text(resp_json)
-    if text is None:
-        print(f"Claude action generation: 응답 구조 오류 — {resp_json}")
-        return {}
-
-    ticker_set = {q["ticker"] for q in significant}
-    actions = {}
-    for line in text.splitlines():
-        if ":" in line:
-            ticker, _, msg = line.partition(":")
-            ticker = ticker.strip()
-            if ticker in ticker_set:
-                actions[ticker] = f"{ticker}: {msg.strip()}"
-            else:
-                print(f"Claude action parse miss: {ticker!r} not in {ticker_set}")
-    return actions
-
-
 def action_for(item):
     ticker = item["ticker"]
     chg = item["chg_pct"]
@@ -620,16 +454,13 @@ def focused_headline(quotes, headline):
     return f"{headline}. {market_snapshot(quotes)}."
 
 
-def build_alert_lines(quotes, errors, news):
+def build_alert_lines(quotes, errors):
     alerts = []
     for item in quotes:
         if item["chg_pct"] >= SIGNIFICANT_MOVE_PCT:
             alerts.append(f"급등: {item['ticker']} {item['chg_pct']:+.2f}%")
         elif item["chg_pct"] <= -SIGNIFICANT_MOVE_PCT:
             alerts.append(f"급락: {item['ticker']} {item['chg_pct']:+.2f}%")
-
-        if not item.get("news_optional") and not news.get(item["ticker"]):
-            alerts.append(f"뉴스 없음: {item['ticker']}")
 
     if errors:
         alerts.extend(f"데이터 확인: {error}" for error in errors)
@@ -656,7 +487,7 @@ def build_rebalancing_lines(quotes):
     return rows
 
 
-def build_content(indexes, quotes, news, errors, account_summary=None, trend_state=None):
+def build_content(indexes, quotes, errors, account_summary=None, trend_state=None):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -676,15 +507,9 @@ def build_content(indexes, quotes, news, errors, account_summary=None, trend_sta
         )
         for item in quotes
     ]
-    alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors, news)]
+    alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors)]
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
-    news_sections = []
-    for item in quotes:
-        titles = news.get(item["ticker"], [])
-        if not titles:
-            continue
-        news_sections.append((item["display"], titles))
     rebalancing_rows = build_rebalancing_lines(quotes)
 
     usd_to_krw = next((q["usd_to_krw"] for q in quotes if q.get("usd_to_krw")), None)
@@ -725,7 +550,7 @@ def build_content(indexes, quotes, news, errors, account_summary=None, trend_sta
 
     compact_rows = [price_row(item) for item in quotes]
 
-    claude_actions = generate_actions_with_claude(quotes, news)
+    claude_actions = {}
 
     alert_action_lines = []
     for item in quotes:
@@ -736,11 +561,6 @@ def build_content(indexes, quotes, news, errors, account_summary=None, trend_sta
             else:
                 action_text = action_for(item).split(": ", 1)[-1]
             alert_action_lines.append(f"{icon} {item['ticker']} {item['chg_pct']:+.2f}% → {action_text}")
-
-    flat_news = []
-    for item in quotes:
-        for title in news.get(item["ticker"], [])[:1]:
-            flat_news.append(f"📰 {item['ticker']}: {clean_news_headline(title)}")
 
     telegram_lines = [f"📈 포트폴리오 브리핑 {today_short}", ""]
 
@@ -767,9 +587,6 @@ def build_content(indexes, quotes, news, errors, account_summary=None, trend_sta
     if alert_action_lines:
         telegram_lines.extend(["", *alert_action_lines])
 
-    if flat_news:
-        telegram_lines.extend(["", *flat_news])
-
     if rebalancing_rows:
         telegram_lines.extend(["", "📊 리밸런싱"])
         telegram_lines.extend(
@@ -794,7 +611,7 @@ def build_content(indexes, quotes, news, errors, account_summary=None, trend_sta
         "",
         "## ⚠️ 먼저 볼 것",
         "",
-        *[f"- {line}" for line in build_alert_lines(quotes, errors, news)],
+        *[f"- {line}" for line in build_alert_lines(quotes, errors)],
         "",
         "## 💰 가격 요약",
         "",
@@ -871,16 +688,6 @@ def build_content(indexes, quotes, news, errors, account_summary=None, trend_sta
             f"- {display}: 목표 {target:.0f}% / 현재 {current:.1f}% → {action}"
             for display, target, current, action in rebalancing_rows
         )
-
-    if news_sections:
-        md_lines.extend(["", "## 📰 참고 뉴스", ""])
-        for display, titles in news_sections:
-            md_lines.extend([f"### {display}", ""])
-            for title in titles:
-                headline = clean_news_headline(title)
-                _, src = split_news_source(title)
-                md_lines.append(f"- {headline} - {src}" if src else f"- {headline}")
-            md_lines.append("")
 
     if errors:
         md_lines.extend(["", "## ⚠️ 데이터 확인 필요", "", *[f"- {error}" for error in errors]])
@@ -975,15 +782,12 @@ def main():
         compute_weights(quotes)
         print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
 
-        next_step = 2
-        print(f"[{next_step}/{total_steps}] Fetching news titles...")
-        news, news_errors = fetch_news(assets_config, access_token)
-        errors = index_errors + market_quote_errors + quote_errors + news_errors
+        errors = index_errors + market_quote_errors + quote_errors
 
-        next_step += 1
+        next_step = 3
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
         telegram_msg, md_content = build_content(
-            indexes, quotes, news, errors, account_summary, trend_state
+            indexes, quotes, errors, account_summary, trend_state
         )
 
         next_step += 1

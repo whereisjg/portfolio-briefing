@@ -25,10 +25,10 @@ class FormattingTests(unittest.TestCase):
             "3개 중 상승 1개, 하락 2개 / 상대강세 AMD +2.95% / 최대약세 QLD -3.77%",
         )
 
-    def test_news_optional_suppresses_missing_news_alert(self):
-        quotes = [{"ticker": "SCHD", "chg_pct": 0.5, "news_optional": True}]
+    def test_alerts_do_not_report_missing_news(self):
+        quotes = [{"ticker": "SCHD", "chg_pct": 0.5}]
 
-        self.assertEqual(briefing.build_alert_lines(quotes, [], {"SCHD": []}), ["특이사항 없음"])
+        self.assertEqual(briefing.build_alert_lines(quotes, []), ["특이사항 없음"])
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -134,54 +134,6 @@ class KisBalanceTests(unittest.TestCase):
 
         self.assertEqual(session.calls, 1)
 
-    def test_fetch_kis_news_returns_titles(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-
-            def json(self):
-                return {
-                    "rt_cd": "0",
-                    "output": [
-                        {"hts_pbnt_titl_cntt": "ETF 관련 공시", "dorg": "한국경제"},
-                        {"hts_pbnt_titl_cntt": "두 번째 뉴스", "dorg": ""},
-                    ],
-                }
-
-        class FakeSession:
-            def get(self, *args, **kwargs):
-                return FakeResponse()
-
-        with patch.dict(briefing.os.environ, {"KIS_APP_KEY": "key", "KIS_APP_SECRET": "secret"}):
-            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
-                titles = briefing.fetch_kis_news({"symbol": "486290.KS"}, "token")
-
-        self.assertEqual(titles, ["ETF 관련 공시 - 한국경제", "두 번째 뉴스"])
-
-    def test_kis_news_ignores_routine_etf_unit_change_filings(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-
-            def json(self):
-                return {
-                    "rt_cd": "0",
-                    "output": [
-                        {"hts_pbnt_titl_cntt": "ETF 추가 ㆍ 변경상장신청서(수량변경)(일괄공시)", "dorg": "삼성자산운용"},
-                        {"hts_pbnt_titl_cntt": "미국 기술주 실적 전망", "dorg": "한국경제"},
-                    ],
-                }
-
-        class FakeSession:
-            def get(self, *args, **kwargs):
-                return FakeResponse()
-
-        with patch.dict(briefing.os.environ, {"KIS_APP_KEY": "key", "KIS_APP_SECRET": "secret"}):
-            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
-                titles = briefing.fetch_kis_news({"symbol": "486290.KS"}, "token")
-
-        self.assertEqual(titles, ["미국 기술주 실적 전망 - 한국경제"])
-
     def test_assets_from_kis_balance_uses_actual_account_values(self):
         configured_assets = [{
             "ticker": "NASDAQ",
@@ -269,7 +221,6 @@ class KisBalanceTests(unittest.TestCase):
 
         self.assertEqual(assets[0]["ticker"], "123456")
         self.assertEqual(assets[0]["display"], "테스트 ETF")
-        self.assertTrue(assets[0]["news_optional"])
 
     def test_fetch_kis_index_quote_parses_kis_response(self):
         class FakeResponse:
@@ -686,7 +637,7 @@ class ContentTests(unittest.TestCase):
             },
         ]
 
-        telegram, markdown = briefing.build_content([], quotes, {"GROWTH": [], "INCOME": []}, [])
+        telegram, markdown = briefing.build_content([], quotes, [])
 
         self.assertIn("성장  목표 70% / 현재 66.6%  → 신규 매수 우선", telegram)
         self.assertIn("인컴  목표 30% / 현재 33.4%  → 신규 매수 보류", telegram)
@@ -708,7 +659,7 @@ class ContentTests(unittest.TestCase):
             }
         ]
 
-        telegram, markdown = briefing.build_content([], quotes, {"SPMO": []}, [])
+        telegram, markdown = briefing.build_content([], quotes, [])
 
         self.assertNotIn("영업일 적립", telegram)
         self.assertIn("🔴 SPMO", telegram)
@@ -731,7 +682,7 @@ class ContentTests(unittest.TestCase):
             }
         ]
 
-        telegram, markdown = briefing.build_content([], quotes, {"QLD": []}, [])
+        telegram, markdown = briefing.build_content([], quotes, [])
 
         self.assertNotIn("계좌", telegram)
         self.assertNotIn("계좌", markdown)
@@ -753,7 +704,7 @@ class ContentTests(unittest.TestCase):
         }]
 
         telegram, markdown = briefing.build_content(
-            [], quotes, {"ETF": []}, [],
+            [], quotes, [],
             account_summary={"tot_evlu_amt": "220000", "prvs_rcdl_excc_amt": "50000"},
         )
 
@@ -777,7 +728,7 @@ class ContentTests(unittest.TestCase):
             }
         ]
 
-        telegram, _markdown = briefing.build_content([], quotes, {"SOXL": []}, [])
+        telegram, _markdown = briefing.build_content([], quotes, [])
 
         self.assertIn("+$2.00", telegram)
         self.assertNotIn("+2원", telegram)
