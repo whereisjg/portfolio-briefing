@@ -265,7 +265,6 @@ class TradingPlanTests(unittest.TestCase):
     def setUp(self):
         self.config = {
             "mode": "dry-run",
-            "daily_buy_limit_krw": 500000,
             "daily_sell_limit_per_asset_krw": 1000000,
             "sell_trigger_weight_pct": 30,
             "sell_target_weight_pct": 27,
@@ -273,13 +272,15 @@ class TradingPlanTests(unittest.TestCase):
         }
         self.prices = {"A": 10000, "B": 10000, "C": 10000, "D": 10000}
 
-    def test_buy_plan_limits_initial_cash_to_daily_buy_limit(self):
+    def test_buy_plan_limits_initial_cash_to_daily_turnover_limit(self):
         positions = {code: {"quantity": 0, "price": 0} for code in self.prices}
 
-        plan = trading.plan_orders(self.config, positions, self.prices, 22000000)
+        plan = trading.plan_orders(
+            {**self.config, "daily_turnover_limit_pct": 3}, positions, self.prices, 22000000
+        )
 
-        self.assertEqual(plan["daily_buy_limit"], 500000)
-        self.assertEqual(sum(order["value"] for order in plan["buys"]), 500000)
+        self.assertEqual(plan["daily_turnover_limit"], 660000)
+        self.assertEqual(sum(order["value"] for order in plan["buys"]), 660000)
 
     def test_sell_plan_triggers_above_thirty_percent_and_targets_twenty_seven(self):
         positions = {
@@ -520,7 +521,6 @@ class TradingPlanTests(unittest.TestCase):
     def test_live_rebalance_skips_when_target_order_exists_today(self):
         config = {
             "target_weights": {"A": 50, "B": 50},
-            "daily_buy_limit_krw": 500000,
             "daily_sell_limit_per_asset_krw": 1000000,
             "sell_trigger_weight_pct": 30,
             "sell_target_weight_pct": 27,

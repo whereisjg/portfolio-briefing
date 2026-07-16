@@ -28,9 +28,6 @@ def load_config(path=CONFIG_FILE):
         raise ValueError("mode는 dry-run 또는 live여야 합니다.")
     if mode == "live" and not config.get("live_orders_enabled", False):
         raise ValueError("live 모드에는 live_orders_enabled: true가 필요합니다.")
-    daily_buy_limit = float(config.get("daily_buy_limit_krw", 0))
-    if daily_buy_limit <= 0:
-        raise ValueError("daily_buy_limit_krw는 0보다 커야 합니다.")
     daily_turnover_limit_pct = float(config.get("daily_turnover_limit_pct", 100))
     if not 0 < daily_turnover_limit_pct <= 100:
         raise ValueError("daily_turnover_limit_pct는 0 초과 100 이하여야 합니다.")
@@ -496,7 +493,7 @@ def live_orders_for_plan(plan, config, context, first_buy_prices=None):
     buy_orders = reprice_orders(
         [order for order in plan["buys"] if order["code"] in ask_prices],
         ask_prices,
-        min(plan["orderable_cash"], float(config["daily_buy_limit_krw"])),
+        min(plan["orderable_cash"], sum(order["value"] for order in plan["buys"])),
     )
     return sell_orders, buy_orders
 
@@ -563,7 +560,6 @@ def execute_live_rebalance(config, holdings, summary, context):
     fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
     filled = filled_values_for_orders(fetch_today_orders(context), submitted)
     retry_config = deepcopy(config)
-    retry_config["daily_buy_limit_krw"] = max(float(config["daily_buy_limit_krw"]) - filled["buy"], 0)
     retry_sell_limits = {
         code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
         for code in config["target_weights"]
@@ -664,8 +660,7 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         if prices.get(code, 0) > 0
     }
     buyable_cash = cash if orderable_cash is None else min(cash, max(orderable_cash, 0))
-    daily_buy_limit = float(config["daily_buy_limit_krw"])
-    budget = min(buyable_cash, daily_buy_limit, remaining_turnover, sum(deficits.values()))
+    budget = min(buyable_cash, remaining_turnover, sum(deficits.values()))
     buys = []
     if budget > 0 and deficits:
         total_deficit = sum(deficits.values())
@@ -701,7 +696,6 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         "total_value": total,
         "cash": cash,
         "orderable_cash": buyable_cash,
-        "daily_buy_limit": daily_buy_limit,
         "daily_turnover_limit": daily_turnover_limit,
         "sells": sells,
         "buys": buys,
@@ -715,7 +709,6 @@ def format_plan(plan, live=False):
         f"총 자산(예수금 포함): {plan['total_value']:,.0f}원",
         f"주문 전 예수금: {plan['cash']:,.0f}원",
         f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
-        f"일일 매수 limit: {plan.get('daily_buy_limit', 0):,.0f}원",
         f"일일 총 매매 limit: {plan.get('daily_turnover_limit', 0):,.0f}원",
     ]
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
