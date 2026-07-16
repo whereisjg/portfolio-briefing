@@ -430,6 +430,51 @@ def filled_values_for_orders(today_orders, submitted):
     return values
 
 
+def format_execution_report(today_orders, submitted, cancelled):
+    """Format KIS order status into a compact Telegram-friendly execution report."""
+    if not submitted:
+        return []
+
+    rows_by_order_no = {str(row.get("odno", "")).strip(): row for row in today_orders}
+    cancelled_order_nos = {str(item.get("order_no", "")).strip() for item in cancelled}
+    lines = ["📋 체결 품질"]
+    for order in submitted:
+        order_no = str(order.get("order_no", "")).strip()
+        row = rows_by_order_no.get(order_no)
+        side = "매수" if order["side"] == "buy" else "매도"
+        requested = int(order["quantity"])
+        if row is None:
+            lines.append(
+                f"{side} {order['code']} · 지정가 {order['price']:,.0f}원 · 상태 조회 대기"
+            )
+            continue
+
+        filled = int(briefing.as_float(row.get("tot_ccld_qty"), 0))
+        remaining = int(briefing.as_float(row.get("rmn_qty"), 0))
+        average_price = briefing.as_float(row.get("avg_prvs"), 0)
+        if filled >= requested:
+            status = "전량 체결"
+        elif filled > 0:
+            status = f"부분 체결 · 잔량 {remaining}주"
+        elif order_no in cancelled_order_nos:
+            status = "미체결 취소"
+        elif remaining > 0:
+            status = f"미체결 · 잔량 {remaining}주"
+        else:
+            status = "미체결"
+
+        details = f"체결 {filled}/{requested}주"
+        if filled > 0 and average_price > 0:
+            difference = average_price - order["price"]
+            difference_pct = difference / order["price"] * 100 if order["price"] else 0
+            details += (
+                f" @ {average_price:,.0f}원 · 주문 대비 {difference:+,.0f}원"
+                f" ({difference_pct:+.2f}%)"
+            )
+        lines.append(f"{side} {order['code']} · 지정가 {order['price']:,.0f}원 · {details} · {status}")
+    return lines
+
+
 def live_orders_for_plan(plan, config, context, first_buy_prices=None):
     bid_prices = {order["code"]: fetch_kis_best_bid(order["code"], context) for order in plan["sells"]}
     sell_limits = {
@@ -531,11 +576,14 @@ def execute_live_rebalance(config, holdings, summary, context):
     first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
     retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
     retried = submit_live_orders(retry_sells, retry_buys, context)
+    all_orders = submitted + retried
+    final_today_orders = fetch_today_orders(context)
     return {
         "status": "submitted",
         "plan": plan,
-        "orders": submitted + retried,
+        "orders": all_orders,
         "cancelled": cancelled,
+        "execution_report": format_execution_report(final_today_orders, all_orders, cancelled),
         "reason": "",
     }
 
@@ -710,6 +758,8 @@ def main():
                 f"실주문 접수: {direction} {order['code']} {order['quantity']}주 / "
                 f"지정가 {order['price']:,.0f}원 / 주문번호 {order['order_no']}"
             )
+        for line in execution.get("execution_report", []):
+            print(line)
         return
 
     kis_prices = fetch_kis_prices(config["target_weights"], kis_context)

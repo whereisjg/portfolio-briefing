@@ -475,6 +475,23 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(orders, [{"order_no": "1", "quantity": 2}])
 
+    def test_execution_report_includes_fill_slippage_and_cancellation(self):
+        report = trading.format_execution_report(
+            [
+                {"odno": "1", "tot_ccld_qty": "2", "rmn_qty": "0", "avg_prvs": "9900"},
+                {"odno": "2", "tot_ccld_qty": "0", "rmn_qty": "3", "avg_prvs": "0"},
+            ],
+            [
+                {"order_no": "1", "side": "buy", "code": "A", "quantity": 2, "price": 10000},
+                {"order_no": "2", "side": "sell", "code": "B", "quantity": 3, "price": 11000},
+            ],
+            [{"order_no": "2", "quantity": 3}],
+        )
+
+        self.assertEqual(report[0], "📋 체결 품질")
+        self.assertIn("체결 2/2주 @ 9,900원 · 주문 대비 -100원 (-1.00%) · 전량 체결", report[1])
+        self.assertIn("미체결 취소", report[2])
+
     def test_reprice_orders_never_exceeds_live_cash_limit(self):
         orders = [
             {"code": "A", "quantity": 3, "price": 10000, "value": 30000},

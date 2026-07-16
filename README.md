@@ -8,7 +8,7 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 - 실제 보유 종목의 비중, 시장 등락, 관련 뉴스, 리밸런싱 우선순위를 Telegram으로 보냅니다.
 - 결과는 `briefings/briefing_YYYYMMDD.md`에 저장하고 GitHub에 기록합니다.
 - 현재는 일반계좌용 `KIS_TEST_*` Secret을 사용합니다. ISA 이전이 완료되면 ISA Secret으로 전환합니다.
-- 자동매매 규칙은 KIS 실계좌의 지정가 주문, 미체결 취소, 한 번의 재시도까지 실행합니다.
+- 자동매매 규칙은 KIS 실계좌의 지정가 주문, 미체결 취소, 한 번의 재시도까지 실행합니다. Telegram에는 주문별 지정가, 체결수량, 평균 체결가, 미체결·취소 상태를 함께 기록합니다.
 
 ## 목표 비중
 
