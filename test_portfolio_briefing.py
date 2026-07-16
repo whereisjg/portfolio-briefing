@@ -4,7 +4,8 @@ import tempfile
 import json
 
 import portfolio_briefing as briefing
-import trade_automation as trading
+import trading_execution as trading
+import trading_strategy as strategy
 
 
 class FormattingTests(unittest.TestCase):
@@ -57,6 +58,18 @@ class ConfigurationTests(unittest.TestCase):
         self.assertTrue(
             any("목표 비중 합계 90.00%" in str(call) for call in print_mock.call_args_list)
         )
+
+    def test_strategy_module_does_not_depend_on_kis_or_briefing_modules(self):
+        self.assertNotIn("portfolio_briefing", strategy.__dict__)
+        self.assertNotIn("trade_automation", strategy.__dict__)
+
+    def test_legacy_trade_automation_entry_point_exports_executor(self):
+        import trade_automation
+
+        self.assertIs(trade_automation.plan_orders, trading.plan_orders)
+
+    def test_execution_module_does_not_depend_on_briefing_module(self):
+        self.assertNotIn("portfolio_briefing", trading.__dict__)
 
 class KisBalanceTests(unittest.TestCase):
     def test_paper_balance_uses_virtual_tr_id_and_unpr_dvsn(self):
@@ -144,6 +157,30 @@ class KisBalanceTests(unittest.TestCase):
                 titles = briefing.fetch_kis_news({"symbol": "486290.KS"}, "token")
 
         self.assertEqual(titles, ["ETF 관련 공시 - 한국경제", "두 번째 뉴스"])
+
+    def test_kis_news_ignores_routine_etf_unit_change_filings(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "rt_cd": "0",
+                    "output": [
+                        {"hts_pbnt_titl_cntt": "ETF 추가 ㆍ 변경상장신청서(수량변경)(일괄공시)", "dorg": "삼성자산운용"},
+                        {"hts_pbnt_titl_cntt": "미국 기술주 실적 전망", "dorg": "한국경제"},
+                    ],
+                }
+
+        class FakeSession:
+            def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        with patch.dict(briefing.os.environ, {"KIS_APP_KEY": "key", "KIS_APP_SECRET": "secret"}):
+            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
+                titles = briefing.fetch_kis_news({"symbol": "486290.KS"}, "token")
+
+        self.assertEqual(titles, ["미국 기술주 실적 전망 - 한국경제"])
 
     def test_assets_from_kis_balance_uses_actual_account_values(self):
         configured_assets = [{

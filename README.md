@@ -36,11 +36,17 @@ portfolio-briefing/
 ├─ briefings/briefing_YYYYMMDD.md
 ├─ portfolio.json
 ├─ trading_config.json
+├─ kis_client.py             # KIS 인증, 토큰, 계좌 잔고 공통 계층
+├─ trading_strategy.py       # 목표 비중, 추세 판단, 주문 계획
+├─ trading_execution.py      # KIS 주문, 취소, 체결 확인
+├─ run_state.py              # workflow 단계 간 임시 상태
 ├─ portfolio_briefing.py
-├─ trade_automation.py
+├─ trade_automation.py       # 이전 실행 명령 호환용 진입점
 ├─ test_portfolio_briefing.py
 └─ README.md
 ```
+
+`kis_client.py`는 KIS 인증, 토큰 cache, 계좌 정보, 잔고조회를 공통으로 담당합니다. `trading_strategy.py`는 KIS 호출이나 주문 전송을 하지 않고 잔고·가격 Snapshot에서 매수·매도 계획만 반환합니다. `trading_execution.py`는 KIS client와 전략 계획을 사용해 지정가 주문·취소·체결 확인을 실행합니다. `portfolio_briefing.py`는 실행 후 실제 잔고와 결과를 Telegram 및 Markdown으로 전달합니다. `trade_automation.py`는 이전 실행 명령을 유지하기 위한 호환용 진입점입니다.
 
 ## 종목 설정
 
@@ -143,7 +149,7 @@ Verify before pushing:
 
 ```bash
 python3 -m py_compile portfolio_briefing.py
-python3 -m py_compile trade_automation.py
+python3 -m py_compile portfolio_briefing.py kis_client.py trading_execution.py trading_strategy.py run_state.py
 python3 -m unittest
 python3 -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'trading_config.json')]"
 ```

@@ -66,7 +66,7 @@ jobs:
           fi
       - name: Validate config and script
         run: |
-          python -m py_compile portfolio_briefing.py trade_automation.py
+          python -m py_compile portfolio_briefing.py kis_client.py trading_execution.py trading_strategy.py run_state.py trade_automation.py
           python -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'trading_config.json')]"
           python -m unittest
       - name: Fetch pre-trade KIS balance
@@ -88,14 +88,14 @@ jobs:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
           KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
-        run: python trade_automation.py --execute-live > /tmp/trading-plan.txt
+        run: python trading_execution.py --execute-live > /tmp/trading-plan.txt
       - name: Build trading plan only
         if: inputs.execute_live_orders != true
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
           KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
-        run: python trade_automation.py > /tmp/trading-plan.txt
+        run: python trading_execution.py > /tmp/trading-plan.txt
       - name: Run post-trade briefing
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}

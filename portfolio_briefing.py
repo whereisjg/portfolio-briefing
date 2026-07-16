@@ -10,20 +10,15 @@ import sys
 import time
 from datetime import datetime, timedelta
 
-import pytz
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import kis_client
+import run_state
 
 
 def env_value(name, default=""):
-    value = os.getenv(name)
-    if value is None or not str(value).strip():
-        return default
-    return str(value).strip()
+    return kis_client.env_value(name, default)
 
 
-KST = pytz.timezone("Asia/Seoul")
+KST = kis_client.KST
 TELEGRAM_BOT_TOKEN = env_value("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = env_value("TELEGRAM_CHAT_ID")
 SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
@@ -38,21 +33,14 @@ PORTFOLIO_FILE = "portfolio.json"
 SIGNIFICANT_MOVE_PCT = 3.0
 CRITICAL_MOVE_PCT = 5.0
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+NON_ACTIONABLE_NEWS_PHRASES = (
+    "ETF 추가ㆍ변경상장신청서(수량변경)",
+    "ETF 추가 ㆍ 변경상장신청서(수량변경)",
+)
 
 
 def get_http_session(retries=3, backoff_factor=0.3, status_forcelist=(429, 500, 502, 504)):
-    """재시도 로직이 포함된 HTTP 세션 생성"""
-    session = requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount("https://", adapter)
-    return session
+    return kis_client.get_http_session(retries, backoff_factor, status_forcelist)
 
 def configure_console_output():
     """Avoid UnicodeEncodeError during local Windows previews."""
@@ -121,112 +109,40 @@ def kis_enabled():
 
 
 def kis_is_paper():
-    return env_value("KIS_ACCOUNT_MODE", "live").lower() == "paper"
+    return kis_client.is_paper()
 
 
 def kis_tr_id(real, paper):
-    return paper if kis_is_paper() else real
+    return kis_client.transaction_id(real, paper)
 
 
 def kis_required(name):
-    value = env_value(name)
-    if not value:
-        raise ValueError(f"KIS 환경변수가 없습니다: {name}")
-    return value
+    return kis_client.required(name)
 
 
 def load_cached_kis_access_token():
-    """Return a locally restored KIS token only while it is younger than six hours."""
-    if not KIS_ACCESS_TOKEN_CACHE_FILE:
-        return None
-    try:
-        with open(KIS_ACCESS_TOKEN_CACHE_FILE, encoding="utf-8") as file:
-            cached = json.load(file)
-        issued_at = float(cached.get("issued_at", 0))
-        token = str(cached.get("access_token", "")).strip()
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return None
-    if not token or time.time() - issued_at >= KIS_ACCESS_TOKEN_MAX_AGE_SECONDS:
-        return None
-    print("KIS access token cache hit (issued within 6 hours)")
-    return token
+    return kis_client.load_cached_access_token(
+        KIS_ACCESS_TOKEN_CACHE_FILE,
+        KIS_ACCESS_TOKEN_MAX_AGE_SECONDS,
+    )
 
 
 def save_kis_access_token(access_token):
-    if not KIS_ACCESS_TOKEN_CACHE_FILE:
-        return
-    payload = {"access_token": access_token, "issued_at": time.time()}
-    with open(KIS_ACCESS_TOKEN_CACHE_FILE, "w", encoding="utf-8") as file:
-        json.dump(payload, file)
-    with open(f"{KIS_ACCESS_TOKEN_CACHE_FILE}.updated", "w", encoding="utf-8") as file:
-        file.write("issued\n")
+    kis_client.save_access_token(KIS_ACCESS_TOKEN_CACHE_FILE, access_token)
 
 
 def get_kis_access_token(app_key, app_secret, base_url):
-    access_token = load_cached_kis_access_token()
-    if access_token:
-        return access_token
-
-    token_response = get_http_session(retries=1).post(
-        f"{base_url}/oauth2/tokenP",
-        json={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
-        timeout=20,
+    return kis_client.get_access_token(
+        app_key,
+        app_secret,
+        base_url,
+        KIS_ACCESS_TOKEN_CACHE_FILE,
+        get_http_session,
     )
-    token_response.raise_for_status()
-    access_token = token_response.json().get("access_token")
-    if not access_token:
-        raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
-    save_kis_access_token(access_token)
-    print("KIS access token issued")
-    return access_token
 
 
 def fetch_kis_balance():
-    """한국투자증권 실전계좌의 국내주식 잔고를 조회한다. 주문은 수행하지 않는다."""
-    app_key = kis_required("KIS_APP_KEY")
-    app_secret = kis_required("KIS_APP_SECRET")
-    account_no = kis_required("KIS_ACCOUNT_NO")
-    product_code = kis_required("KIS_PRODUCT_CODE")
-    base_url = env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
-    tr_id = env_value("KIS_BALANCE_TR_ID", kis_tr_id("TTTC8434R", "VTTC8434R"))
-
-    access_token = get_kis_access_token(app_key, app_secret, base_url)
-
-    headers = {
-        "authorization": f"Bearer {access_token}",
-        "appkey": app_key,
-        "appsecret": app_secret,
-        "tr_id": tr_id,
-        "custtype": "P",
-    }
-    params = {
-        "CANO": account_no,
-        "ACNT_PRDT_CD": product_code,
-        "AFHR_FLPR_YN": "N",
-        "OFL_YN": "N",
-        "INQR_DVSN": "01",
-        "UNPR_DVSN": "01",
-        "FUND_STTL_ICLD_YN": "N",
-        "FNCG_AMT_AUTO_RDPT_YN": "N",
-        "PRCS_DVSN": "00",
-        "CTX_AREA_FK100": "",
-        "CTX_AREA_NK100": "",
-    }
-    response = get_http_session(retries=1).get(
-        f"{base_url}/uapi/domestic-stock/v1/trading/inquire-balance",
-        headers=headers,
-        params=params,
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("rt_cd") != "0":
-        raise ValueError(f"KIS 잔고조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
-
-    holdings = payload.get("output1") or payload.get("output") or []
-    summary_rows = payload.get("output2") or [{}]
-    summary = summary_rows[0] if isinstance(summary_rows, list) else summary_rows
-    return holdings, summary, access_token
+    return kis_client.fetch_balance(get_http_session, KIS_ACCESS_TOKEN_CACHE_FILE)
 
 
 def fetch_kis_index_quote(index, access_token):
@@ -286,20 +202,12 @@ def save_kis_balance_snapshot(holdings, summary, access_token):
     """Share one KIS balance response with later workflow steps."""
     if not KIS_BALANCE_SNAPSHOT_FILE:
         return
-    with open(KIS_BALANCE_SNAPSHOT_FILE, "w", encoding="utf-8") as file:
-        json.dump(
-            {"holdings": holdings, "summary": summary, "access_token": access_token},
-            file,
-            ensure_ascii=False,
-        )
+    run_state.save_balance_snapshot(KIS_BALANCE_SNAPSHOT_FILE, holdings, summary, access_token)
     print(f"KIS balance snapshot saved: {KIS_BALANCE_SNAPSHOT_FILE}")
 
 
 def as_float(value, default=0.0):
-    try:
-        return float(str(value).replace(",", ""))
-    except (TypeError, ValueError):
-        return default
+    return kis_client.as_float(value, default)
 
 
 def fetch_kis_domestic_quotes(codes, access_token):
@@ -394,14 +302,10 @@ def assets_from_kis_balance(configured_assets, holdings, market_quotes=None):
 def load_trend_state():
     if not KIS_TREND_STATE_FILE or not os.path.exists(KIS_TREND_STATE_FILE):
         return None
-    try:
-        with open(KIS_TREND_STATE_FILE, encoding="utf-8") as file:
-            state = json.load(file)
-        if not isinstance(state.get("weights"), dict):
-            return None
-        return state
-    except (OSError, json.JSONDecodeError):
+    state = run_state.load_json(KIS_TREND_STATE_FILE)
+    if not isinstance((state or {}).get("weights"), dict):
         return None
+    return state
 
 
 def apply_trend_weights(assets, trend_state):
@@ -451,6 +355,12 @@ def clean_news_headline(title):
     return headline
 
 
+def is_actionable_news(title):
+    """Exclude routine ETF unit-creation filings from investor-facing news."""
+    normalized = re.sub(r"\s+", " ", clean_news_headline(title))
+    return not any(phrase in normalized for phrase in NON_ACTIONABLE_NEWS_PHRASES)
+
+
 def _parse_claude_text(resp_json):
     """Claude API 응답에서 텍스트를 추출. 구조가 올바르지 않으면 None 반환."""
     content = resp_json.get("content", [])
@@ -494,7 +404,7 @@ def fetch_kis_news(asset, access_token, limit=2):
     titles = []
     for item in payload.get("output") or []:
         title = str(item.get("hts_pbnt_titl_cntt", "")).strip()
-        if not title:
+        if not title or not is_actionable_news(title):
             continue
         source = str(item.get("dorg", "")).strip()
         titles.append(f"{title} - {source}" if source else title)
