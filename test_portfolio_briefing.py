@@ -171,6 +171,56 @@ class KisBalanceTests(unittest.TestCase):
         self.assertEqual(assets[0]["average_price"], 25000)
         self.assertEqual(assets[0]["evaluation_profit_loss_amount"], -30000)
 
+    def test_assets_from_kis_balance_prefers_current_quote_change(self):
+        holdings = [{
+            "pdno": "0015B0",
+            "hldg_qty": "10",
+            "prpr": "22000",
+            "prdy_vrss": "0",
+        }]
+
+        assets = briefing.assets_from_kis_balance([], holdings, {
+            "0015B0": {
+                "price": 22100,
+                "prev_close": 22000,
+                "chg_amount": 100,
+                "chg_pct": 100 / 22000 * 100,
+            }
+        })
+
+        self.assertEqual(assets[0]["price"], 22100)
+        self.assertEqual(assets[0]["chg_amount"], 100)
+        self.assertAlmostEqual(assets[0]["chg_pct"], 100 / 22000 * 100)
+
+    def test_fetch_kis_domestic_quotes_parses_signed_change(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "rt_cd": "0",
+                    "output": {
+                        "stck_prpr": "22000",
+                        "prdy_vrss": "500",
+                        "prdy_vrss_sign": "4",
+                        "prdy_ctrt": "-2.22",
+                    },
+                }
+
+        class FakeSession:
+            def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        environment = {"KIS_APP_KEY": "key", "KIS_APP_SECRET": "secret"}
+        with patch.dict(briefing.os.environ, environment):
+            with patch.object(briefing, "get_http_session", return_value=FakeSession()):
+                quotes, errors = briefing.fetch_kis_domestic_quotes(["0015B0"], "token")
+
+        self.assertEqual(errors, [])
+        self.assertEqual(quotes["0015B0"]["chg_amount"], -500)
+        self.assertEqual(quotes["0015B0"]["chg_pct"], -2.22)
+
     def test_assets_from_kis_balance_adds_unconfigured_holding(self):
         assets = briefing.assets_from_kis_balance([], [{
             "pdno": "123456",

@@ -301,7 +301,59 @@ def as_float(value, default=0.0):
         return default
 
 
-def assets_from_kis_balance(configured_assets, holdings):
+def fetch_kis_domestic_quotes(codes, access_token):
+    """잔고 응답의 0% 변동값 대신 KIS 현재가 API에서 등락률을 읽는다."""
+    app_key = kis_required("KIS_APP_KEY")
+    app_secret = kis_required("KIS_APP_SECRET")
+    base_url = env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
+    session = get_http_session(retries=1)
+    quotes = {}
+    errors = []
+
+    for index, code in enumerate(codes):
+        if index:
+            time.sleep(1.1)
+        try:
+            response = session.get(
+                f"{base_url}/uapi/domestic-stock/v1/quotations/inquire-price",
+                headers={
+                    "authorization": f"Bearer {access_token}",
+                    "appkey": app_key,
+                    "appsecret": app_secret,
+                    "tr_id": "FHKST01010100",
+                    "custtype": "P",
+                },
+                params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+                timeout=20,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("rt_cd") != "0":
+                raise ValueError(payload.get("msg1", "알 수 없는 오류"))
+            output = payload.get("output") or {}
+            price = as_float(output.get("stck_prpr"), None)
+            change_pct = as_float(output.get("prdy_ctrt"), None)
+            change_amount = as_float(output.get("prdy_vrss"), None)
+            sign = str(output.get("prdy_vrss_sign", "")).strip()
+            if price is None or price <= 0 or change_pct is None:
+                raise ValueError("현재가 또는 등락률이 없습니다.")
+            if sign in {"4", "5"} and change_amount is not None:
+                change_amount = -abs(change_amount)
+            elif sign in {"1", "2"} and change_amount is not None:
+                change_amount = abs(change_amount)
+            previous_close = price / (1 + change_pct / 100) if change_pct != -100 else price
+            quotes[code] = {
+                "price": price,
+                "prev_close": previous_close,
+                "chg_amount": change_amount if change_amount is not None else price - previous_close,
+                "chg_pct": change_pct,
+            }
+        except Exception as exc:
+            errors.append(f"{code} KIS 현재가 조회 실패: {exc}")
+    return quotes, errors
+
+
+def assets_from_kis_balance(configured_assets, holdings, market_quotes=None):
     """설정의 뉴스·목표비중 정보와 KIS의 실제 보유 수량을 결합한다."""
     configured_by_code = {
         asset.get("symbol", "").split(".")[0]: asset for asset in configured_assets
@@ -313,8 +365,9 @@ def assets_from_kis_balance(configured_assets, holdings):
             continue
         code = str(holding.get("pdno", "")).strip()
         base = configured_by_code.get(code, {})
-        price = as_float(holding.get("prpr"))
-        previous_close = price - as_float(holding.get("prdy_vrss"))
+        market_quote = (market_quotes or {}).get(code, {})
+        price = market_quote.get("price", as_float(holding.get("prpr")))
+        previous_close = market_quote.get("prev_close", price - as_float(holding.get("prdy_vrss")))
         if previous_close <= 0:
             previous_close = price
         assets.append({
@@ -327,8 +380,8 @@ def assets_from_kis_balance(configured_assets, holdings):
             "shares": shares,
             "price": price,
             "prev_close": previous_close,
-            "chg_amount": price - previous_close,
-            "chg_pct": (price - previous_close) / previous_close * 100 if previous_close else 0,
+            "chg_amount": market_quote.get("chg_amount", price - previous_close),
+            "chg_pct": market_quote.get("chg_pct", (price - previous_close) / previous_close * 100 if previous_close else 0),
             "average_price": as_float(holding.get("pchs_avg_pric")),
             "evaluation_profit_loss_amount": as_float(holding.get("evlu_pfls_amt")),
             "provider": "KIS",
@@ -969,7 +1022,11 @@ def main():
         save_kis_balance_snapshot(holdings, account_summary, access_token)
         print(f"[2/{total_steps}] Fetching KIS indexes...")
         indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
-        assets_config = assets_from_kis_balance(assets_config, holdings)
+        market_quotes, market_quote_errors = fetch_kis_domestic_quotes(
+            [str(holding.get("pdno", "")).strip() for holding in holdings if holding.get("hldg_qty")],
+            access_token,
+        )
+        assets_config = assets_from_kis_balance(assets_config, holdings, market_quotes)
         quotes = assets_config
         quote_errors = []
         compute_weights(quotes)
@@ -978,7 +1035,7 @@ def main():
         next_step = 2
         print(f"[{next_step}/{total_steps}] Fetching news titles...")
         news, news_errors = fetch_news(assets_config, access_token)
-        errors = index_errors + quote_errors + news_errors
+        errors = index_errors + market_quote_errors + quote_errors + news_errors
 
         next_step += 1
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
