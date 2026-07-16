@@ -31,6 +31,9 @@ def load_config(path=CONFIG_FILE):
     daily_turnover_limit_pct = float(config.get("daily_turnover_limit_pct", 100))
     if not 0 < daily_turnover_limit_pct <= 100:
         raise ValueError("daily_turnover_limit_pct는 0 초과 100 이하여야 합니다.")
+    paper_test_order_limit = float(config.get("paper_test_order_limit_krw", 0))
+    if paper_test_order_limit <= 0:
+        raise ValueError("paper_test_order_limit_krw는 0보다 커야 합니다.")
     return config
 
 
@@ -450,7 +453,7 @@ def has_open_target_order(today_orders, target_codes):
 def daily_turnover_budget(config, total_assets, today_orders, target_codes, context):
     """Keep real-account daily turnover bounded while leaving paper tests unrestricted."""
     if context.get("is_paper"):
-        return None, 0.0, math.inf
+        return None, 0.0, float(config["paper_test_order_limit_krw"])
 
     cap = total_assets * float(config["daily_turnover_limit_pct"]) / 100
     used = filled_turnover_for_codes(today_orders, target_codes)
@@ -750,7 +753,7 @@ def format_plan(plan, live=False):
         f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
     ]
     if plan.get("daily_turnover_cap") is None:
-        lines.append("일일 총 매매 한도: 모의투자 제한 없음")
+        lines.append(f"모의투자 실행당 매매 한도: {plan['daily_turnover_limit']:,.0f}원")
     else:
         lines.extend([
             f"일일 총 매매 한도: {plan['daily_turnover_cap']:,.0f}원",
