@@ -519,7 +519,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     ]
     if usd_to_krw:
         index_lines_list.append(f"환율 ₩{usd_to_krw:,.0f}")
-    index_summary = "\n".join(index_lines_list)
+    index_summary = " · ".join(index_lines_list)
 
     pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
     neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
@@ -543,10 +543,12 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
             effect_str = ""
         weight = item.get("weight_pct")
         weight_str = f"비중 {float(weight):.1f}%" if weight not in (None, "") else ""
-        sub = " · ".join(x for x in [format_average_price(item), f"평가손익 {effect_str}" if effect_str else "", weight_str] if x)
-        line1 = f"{movement_emoji(item['chg_pct'])} {item['display']}  {price_str}  {item['chg_pct']:+.2f}%{alert}"
-        line2 = f"   {sub}" if sub else ""
-        return "\n".join(x for x in [line1, line2] if x)
+        details = " · ".join(x for x in [format_average_price(item), effect_str, weight_str] if x)
+        return (
+            f"{movement_emoji(item['chg_pct'])} {item['display']} {price_str} "
+            f"{item['chg_pct']:+.2f}%{alert}"
+            f" · {details}" if details else f"{movement_emoji(item['chg_pct'])} {item['display']} {price_str} {item['chg_pct']:+.2f}%{alert}"
+        )
 
     compact_rows = [price_row(item) for item in quotes]
 
@@ -577,7 +579,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         telegram_lines.append(f"추세 전략: {labels.get(trend_state.get('state'), '중립')}")
 
     telegram_lines.extend([
-        f"분위기: {mood} · {count_str}",
+        f"오늘 흐름: {pos_count} 상승 · {neg_count} 하락",
         "",
         "─" * 20,
         *compact_rows,
@@ -588,11 +590,9 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         telegram_lines.extend(["", *alert_action_lines])
 
     if rebalancing_rows:
-        telegram_lines.extend(["", "📊 리밸런싱"])
-        telegram_lines.extend(
-            f"{display}  목표 {target:.0f}% / 현재 {current:.1f}%  → {action}"
-            for display, target, current, action in rebalancing_rows
-        )
+        changes = [f"{display} {action}" for display, _target, _current, action in rebalancing_rows if action != "목표 범위"]
+        if changes:
+            telegram_lines.extend(["", "📊 리밸런싱: " + " · ".join(changes)])
 
     if errors:
         telegram_lines.extend(["", "⚠️ 오류", *[f"  • {e}" for e in errors]])

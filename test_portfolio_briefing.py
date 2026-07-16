@@ -86,7 +86,7 @@ class ConfigurationTests(unittest.TestCase):
 
         report = strategy.format_plan(plan, asset_labels={"0015B0": "KoAct나스닥성장"})
 
-        self.assertIn("추세 기준: KoAct나스닥성장", report)
+        self.assertIn("추세: 중립 · KoAct나스닥성장", report)
         self.assertIn("KoAct나스닥성장 1주", report)
         self.assertNotIn("0015B0 1주", report)
 
@@ -658,8 +658,7 @@ class ContentTests(unittest.TestCase):
 
         telegram, markdown = briefing.build_content([], quotes, [])
 
-        self.assertIn("성장  목표 70% / 현재 66.6%  → 신규 매수 우선", telegram)
-        self.assertIn("인컴  목표 30% / 현재 33.4%  → 신규 매수 보류", telegram)
+        self.assertIn("📊 리밸런싱: 성장 신규 매수 우선 · 인컴 신규 매수 보류", telegram)
         self.assertIn("## 📊 리밸런싱", markdown)
 
     def test_build_content_shows_zero_share_tracking_asset_without_position_values(self):
@@ -728,7 +727,7 @@ class ContentTests(unittest.TestCase):
         )
 
         self.assertIn("계좌: 평가금액 ₩220,000 · 출금가능 ₩50,000", telegram)
-        self.assertIn("평단 ₩25,000 · 평가손익 -30,000원", telegram)
+        self.assertIn("평단 ₩25,000 · -30,000원", telegram)
         self.assertIn("## 💳 계좌 요약", markdown)
 
     def test_telegram_keeps_usd_effect_as_usd_without_fx_rate(self):
