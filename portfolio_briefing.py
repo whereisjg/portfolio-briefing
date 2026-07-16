@@ -550,7 +550,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         weight_str = f"비중 {float(weight):.1f}%" if weight not in (None, "") else ""
         details = " · ".join(x for x in [weight_str, effect_str] if x)
         first_line = f"{movement_emoji(item['chg_pct'])} {item['display']} {item['chg_pct']:+.2f}%{alert}"
-        second_line = " · ".join(x for x in [price_str, format_average_price(item), details] if x)
+        second_line = " · ".join(x for x in [price_str, details] if x)
         return f"{first_line}\n   {second_line}" if second_line else first_line
 
     compact_rows = [price_row(item) for item in quotes]
@@ -586,11 +586,6 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
 
     if alert_action_lines:
         telegram_lines.extend(["", *alert_action_lines])
-
-    if rebalancing_rows:
-        changes = [f"{display} {action}" for display, _target, _current, action in rebalancing_rows if action != "목표 범위"]
-        if changes:
-            telegram_lines.extend(["", "📊 조정", *changes])
 
     if errors:
         telegram_lines.extend(["", "⚠️ 오류", *[f"  • {e}" for e in errors]])

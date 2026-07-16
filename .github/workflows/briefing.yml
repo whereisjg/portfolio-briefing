@@ -106,7 +106,7 @@ jobs:
         run: python portfolio_briefing.py
       - name: Add trading plan to Telegram message
         run: |
-          printf '\n\n────────────────────\n' >> /tmp/telegram-message.txt
+          printf '\n\n' >> /tmp/telegram-message.txt
           cat /tmp/trading-plan.txt >> /tmp/telegram-message.txt
       - name: Save trading plan to briefing history
         run: |

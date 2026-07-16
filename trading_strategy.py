@@ -193,7 +193,7 @@ def format_plan(plan, live=False, asset_labels=None):
         value = float(amount) / 10000
         return f"{value:,.1f}".rstrip("0").rstrip(".") + "만"
 
-    lines = ["자동매매 실주문" if live else "자동매매 dry-run"]
+    lines = ["🤖 자동매매 실주문" if live else "🤖 자동매매 dry-run"]
     if plan.get("daily_turnover_cap") is None:
         lines[0] += f" · 한도 {short_amount(plan['daily_turnover_limit'])}"
     else:
