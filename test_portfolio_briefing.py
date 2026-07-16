@@ -305,6 +305,21 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(plan["sells"], [])
 
+    def test_turnover_limit_caps_combined_daily_buys_and_sells(self):
+        config = {**self.config, "daily_turnover_limit_pct": 3}
+        positions = {
+            "A": {"quantity": 682, "price": 10000},
+            "B": {"quantity": 506, "price": 10000},
+            "C": {"quantity": 506, "price": 10000},
+            "D": {"quantity": 506, "price": 10000},
+        }
+
+        plan = trading.plan_orders(config, positions, self.prices, 0)
+
+        self.assertEqual(plan["daily_turnover_limit"], 660000)
+        self.assertEqual(sum(order["value"] for order in plan["sells"]), 660000)
+        self.assertEqual(plan["buys"], [])
+
     def test_buy_plan_does_not_exceed_available_cash(self):
         positions = {code: {"quantity": 0, "price": 0} for code in self.prices}
 

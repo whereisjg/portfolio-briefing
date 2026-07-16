@@ -3,6 +3,7 @@
   "mode": "live",
   "execution_time_kst": "10:00",
   "daily_buy_limit_krw": 100000,
+  "daily_turnover_limit_pct": 3,
   "daily_sell_limit_per_asset_krw": 1000000,
   "sell_trigger_weight_pct": 30,
   "sell_target_weight_pct": 27,

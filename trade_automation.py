@@ -31,6 +31,9 @@ def load_config(path=CONFIG_FILE):
     daily_buy_limit = float(config.get("daily_buy_limit_krw", 0))
     if daily_buy_limit <= 0:
         raise ValueError("daily_buy_limit_krw는 0보다 커야 합니다.")
+    daily_turnover_limit_pct = float(config.get("daily_turnover_limit_pct", 100))
+    if not 0 < daily_turnover_limit_pct <= 100:
+        raise ValueError("daily_turnover_limit_pct는 0 초과 100 이하여야 합니다.")
     return config
 
 
@@ -565,6 +568,7 @@ def execute_live_rebalance(config, holdings, summary, context):
         code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
         for code in config["target_weights"]
     }
+    filled_turnover = filled["buy"] + sum(filled["sell"].values())
     retry_plan = plan_orders(
         retry_config,
         fresh_positions,
@@ -572,6 +576,7 @@ def execute_live_rebalance(config, holdings, summary, context):
         cash_from_balance(fresh_summary),
         fresh_orderable_cash,
         retry_sell_limits,
+        max(plan["daily_turnover_limit"] - filled_turnover, 0),
     )
     first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
     retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
@@ -612,7 +617,7 @@ def target_prices(configured_assets, positions, kis_prices):
     return prices
 
 
-def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limits=None):
+def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limits=None, turnover_limit=None):
     """Return sell-first and cash-funded buy plans without placing an order."""
     targets = {code: float(weight) / 100 for code, weight in config["target_weights"].items()}
     values = {
@@ -623,6 +628,12 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
     if total <= 0:
         return {"total_value": 0, "cash": cash, "sells": [], "buys": [], "unallocated_cash": cash}
 
+    daily_turnover_limit = (
+        float(turnover_limit)
+        if turnover_limit is not None
+        else total * float(config.get("daily_turnover_limit_pct", 100)) / 100
+    )
+    remaining_turnover = daily_turnover_limit
     sells = []
     for code, target_weight in targets.items():
         current_weight = values[code] / total
@@ -639,10 +650,13 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         sell_value = min(
             values[code] - total * config["sell_target_weight_pct"] / 100,
             sell_limit,
+            remaining_turnover,
         )
         quantity = min(positions[code]["quantity"], math.floor(sell_value / price))
         if quantity >= 1:
-            sells.append({"code": code, "quantity": int(quantity), "price": price, "value": quantity * price})
+            value = quantity * price
+            sells.append({"code": code, "quantity": int(quantity), "price": price, "value": value})
+            remaining_turnover -= value
 
     deficits = {
         code: max(total * target_weight - values[code], 0)
@@ -651,7 +665,7 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
     }
     buyable_cash = cash if orderable_cash is None else min(cash, max(orderable_cash, 0))
     daily_buy_limit = float(config["daily_buy_limit_krw"])
-    budget = min(buyable_cash, daily_buy_limit, sum(deficits.values()))
+    budget = min(buyable_cash, daily_buy_limit, remaining_turnover, sum(deficits.values()))
     buys = []
     if budget > 0 and deficits:
         total_deficit = sum(deficits.values())
@@ -688,6 +702,7 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         "cash": cash,
         "orderable_cash": buyable_cash,
         "daily_buy_limit": daily_buy_limit,
+        "daily_turnover_limit": daily_turnover_limit,
         "sells": sells,
         "buys": buys,
         "unallocated_cash": buyable_cash - sum(order["value"] for order in buys),
@@ -701,6 +716,7 @@ def format_plan(plan, live=False):
         f"주문 전 예수금: {plan['cash']:,.0f}원",
         f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
         f"일일 매수 limit: {plan.get('daily_buy_limit', 0):,.0f}원",
+        f"일일 총 매매 limit: {plan.get('daily_turnover_limit', 0):,.0f}원",
     ]
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         lines.append(label + ":")
