@@ -133,10 +133,16 @@ def submit_cash_buy(code, quantity, price, context):
         "ORD_QTY": str(quantity),
         "ORD_UNPR": str(round(price)),
         "EXCG_ID_DVSN_CD": "KRX",
+        "SLL_TYPE": "",
+        "CNDT_PRIC": "",
     }
     response = context["session"].post(
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-cash",
-        headers={**context["headers"], "tr_id": "TTTC0012U"},
+        headers={
+            **context["headers"],
+            "tr_id": "TTTC0012U",
+            "content-type": "application/json; charset=utf-8",
+        },
         json=payload,
         timeout=20,
     )

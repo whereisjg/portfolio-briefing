@@ -238,6 +238,35 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual([result["order_no"] for result in results], ["1", "2"])
         self.assertEqual(submit.call_count, 2)
 
+    def test_submit_cash_buy_uses_complete_kis_order_payload(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"rt_cd": "0", "output": {"ODNO": "123"}}
+
+        class FakeSession:
+            def post(self, _url, **kwargs):
+                self.kwargs = kwargs
+                return FakeResponse()
+
+        session = FakeSession()
+        context = {
+            "account_no": "12345678",
+            "product_code": "01",
+            "base_url": "https://example.test",
+            "headers": {"authorization": "Bearer token"},
+            "session": session,
+        }
+
+        result = trading.submit_cash_buy("0015B0", 1, 21300, context)
+
+        self.assertEqual(result["ODNO"], "123")
+        self.assertEqual(session.kwargs["json"]["SLL_TYPE"], "")
+        self.assertEqual(session.kwargs["json"]["CNDT_PRIC"], "")
+        self.assertEqual(session.kwargs["headers"]["content-type"], "application/json; charset=utf-8")
+
 
 class ContentTests(unittest.TestCase):
     def test_build_content_shows_rebalancing_buy_priorities(self):
