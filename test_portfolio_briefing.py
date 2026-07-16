@@ -59,6 +59,33 @@ class ConfigurationTests(unittest.TestCase):
         )
 
 class KisBalanceTests(unittest.TestCase):
+    def test_kis_access_token_cache_reuses_token_within_six_hours(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"access_token": "issued-token"}
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = 0
+
+            def post(self, *args, **kwargs):
+                self.calls += 1
+                return FakeResponse()
+
+        session = FakeSession()
+        with tempfile.TemporaryDirectory() as directory:
+            cache_file = f"{directory}/kis-token.json"
+            with patch.dict(briefing.os.environ, {"KIS_ACCESS_TOKEN_CACHE_FILE": cache_file}):
+                with patch.object(briefing, "KIS_ACCESS_TOKEN_CACHE_FILE", cache_file):
+                    with patch.object(briefing, "get_http_session", return_value=session):
+                        self.assertEqual(briefing.get_kis_access_token("key", "secret", "https://example.test"), "issued-token")
+                        self.assertEqual(briefing.get_kis_access_token("key", "secret", "https://example.test"), "issued-token")
+
+        self.assertEqual(session.calls, 1)
+
     def test_fetch_kis_news_returns_titles(self):
         class FakeResponse:
             def raise_for_status(self):

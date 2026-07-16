@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timedelta
 
 import pytz
@@ -29,6 +30,8 @@ SEND_TELEGRAM = env_value("SEND_TELEGRAM", "true").lower()
 TELEGRAM_MESSAGE_FILE = env_value("TELEGRAM_MESSAGE_FILE")
 CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
 KIS_BALANCE_SNAPSHOT_FILE = env_value("KIS_BALANCE_SNAPSHOT_FILE")
+KIS_ACCESS_TOKEN_CACHE_FILE = env_value("KIS_ACCESS_TOKEN_CACHE_FILE")
+KIS_ACCESS_TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 
 PORTFOLIO_FILE = "portfolio.json"
 SIGNIFICANT_MOVE_PCT = 3.0
@@ -123,14 +126,37 @@ def kis_required(name):
     return value
 
 
-def fetch_kis_balance():
-    """한국투자증권 실전계좌의 국내주식 잔고를 조회한다. 주문은 수행하지 않는다."""
-    app_key = kis_required("KIS_APP_KEY")
-    app_secret = kis_required("KIS_APP_SECRET")
-    account_no = kis_required("KIS_ACCOUNT_NO")
-    product_code = kis_required("KIS_PRODUCT_CODE")
-    base_url = env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
-    tr_id = env_value("KIS_BALANCE_TR_ID", "TTTC8434R")
+def load_cached_kis_access_token():
+    """Return a locally restored KIS token only while it is younger than six hours."""
+    if not KIS_ACCESS_TOKEN_CACHE_FILE:
+        return None
+    try:
+        with open(KIS_ACCESS_TOKEN_CACHE_FILE, encoding="utf-8") as file:
+            cached = json.load(file)
+        issued_at = float(cached.get("issued_at", 0))
+        token = str(cached.get("access_token", "")).strip()
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    if not token or time.time() - issued_at >= KIS_ACCESS_TOKEN_MAX_AGE_SECONDS:
+        return None
+    print("KIS access token cache hit (issued within 6 hours)")
+    return token
+
+
+def save_kis_access_token(access_token):
+    if not KIS_ACCESS_TOKEN_CACHE_FILE:
+        return
+    payload = {"access_token": access_token, "issued_at": time.time()}
+    with open(KIS_ACCESS_TOKEN_CACHE_FILE, "w", encoding="utf-8") as file:
+        json.dump(payload, file)
+    with open(f"{KIS_ACCESS_TOKEN_CACHE_FILE}.updated", "w", encoding="utf-8") as file:
+        file.write("issued\n")
+
+
+def get_kis_access_token(app_key, app_secret, base_url):
+    access_token = load_cached_kis_access_token()
+    if access_token:
+        return access_token
 
     token_response = get_http_session(retries=1).post(
         f"{base_url}/oauth2/tokenP",
@@ -141,6 +167,21 @@ def fetch_kis_balance():
     access_token = token_response.json().get("access_token")
     if not access_token:
         raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
+    save_kis_access_token(access_token)
+    print("KIS access token issued")
+    return access_token
+
+
+def fetch_kis_balance():
+    """한국투자증권 실전계좌의 국내주식 잔고를 조회한다. 주문은 수행하지 않는다."""
+    app_key = kis_required("KIS_APP_KEY")
+    app_secret = kis_required("KIS_APP_SECRET")
+    account_no = kis_required("KIS_ACCOUNT_NO")
+    product_code = kis_required("KIS_PRODUCT_CODE")
+    base_url = env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
+    tr_id = env_value("KIS_BALANCE_TR_ID", "TTTC8434R")
+
+    access_token = get_kis_access_token(app_key, app_secret, base_url)
 
     headers = {
         "authorization": f"Bearer {access_token}",

@@ -64,15 +64,7 @@ def get_kis_context(access_token=None):
     base_url = briefing.env_value("KIS_API_BASE_URL", "https://openapi.koreainvestment.com:9443")
     session = briefing.get_http_session(retries=1)
     if not access_token:
-        token_response = session.post(
-            f"{base_url}/oauth2/tokenP",
-            json={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
-            timeout=20,
-        )
-        token_response.raise_for_status()
-        access_token = token_response.json().get("access_token")
-        if not access_token:
-            raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
+        access_token = briefing.get_kis_access_token(app_key, app_secret, base_url)
 
     return {
         "account_no": account_no,
