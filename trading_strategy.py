@@ -190,7 +190,8 @@ def format_plan(plan, live=False, asset_labels=None):
         return asset_labels.get(code, code)
 
     def short_amount(amount):
-        return f"{round(float(amount) / 10000):,.0f}만"
+        value = float(amount) / 10000
+        return f"{value:,.1f}".rstrip("0").rstrip(".") + "만"
 
     lines = ["자동매매 실주문" if live else "자동매매 dry-run"]
     if plan.get("daily_turnover_cap") is None:
