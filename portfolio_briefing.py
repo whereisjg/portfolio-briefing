@@ -31,6 +31,7 @@ TELEGRAM_MESSAGE_FILE = env_value("TELEGRAM_MESSAGE_FILE")
 CLAUDE_API_KEY = env_value("CLAUDE_API_KEY")
 KIS_BALANCE_SNAPSHOT_FILE = env_value("KIS_BALANCE_SNAPSHOT_FILE")
 KIS_ACCESS_TOKEN_CACHE_FILE = env_value("KIS_ACCESS_TOKEN_CACHE_FILE")
+KIS_TREND_STATE_FILE = env_value("KIS_TREND_STATE_FILE")
 KIS_ACCESS_TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 
 PORTFOLIO_FILE = "portfolio.json"
@@ -390,6 +391,32 @@ def assets_from_kis_balance(configured_assets, holdings, market_quotes=None):
     return assets
 
 
+def load_trend_state():
+    if not KIS_TREND_STATE_FILE or not os.path.exists(KIS_TREND_STATE_FILE):
+        return None
+    try:
+        with open(KIS_TREND_STATE_FILE, encoding="utf-8") as file:
+            state = json.load(file)
+        if not isinstance(state.get("weights"), dict):
+            return None
+        return state
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def apply_trend_weights(assets, trend_state):
+    if not trend_state:
+        return assets
+    weights = trend_state["weights"]
+    return [
+        {
+            **asset,
+            "target_weight_pct": weights.get(asset.get("symbol", "").split(".")[0], asset.get("target_weight_pct")),
+        }
+        for asset in assets
+    ]
+
+
 def compute_weights(quotes):
     """KIS 국내주식 잔고의 현재가 기준으로 비중을 재계산한다."""
     values = []
@@ -719,7 +746,7 @@ def build_rebalancing_lines(quotes):
     return rows
 
 
-def build_content(indexes, quotes, news, errors, account_summary=None):
+def build_content(indexes, quotes, news, errors, account_summary=None, trend_state=None):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -814,6 +841,10 @@ def build_content(indexes, quotes, news, errors, account_summary=None):
         total = as_float(account_summary.get("tot_evlu_amt"))
         cash = as_float(account_summary.get("prvs_rcdl_excc_amt"))
         telegram_lines.append(f"계좌: 평가금액 ₩{total:,.0f} · 출금가능 ₩{cash:,.0f}")
+
+    if trend_state:
+        labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
+        telegram_lines.append(f"추세 전략: {labels.get(trend_state.get('state'), '중립')}")
 
     telegram_lines.extend([
         f"분위기: {mood} · {count_str}",
@@ -1027,6 +1058,8 @@ def main():
             access_token,
         )
         assets_config = assets_from_kis_balance(assets_config, holdings, market_quotes)
+        trend_state = load_trend_state()
+        assets_config = apply_trend_weights(assets_config, trend_state)
         quotes = assets_config
         quote_errors = []
         compute_weights(quotes)
@@ -1040,7 +1073,7 @@ def main():
         next_step += 1
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
         telegram_msg, md_content = build_content(
-            indexes, quotes, news, errors, account_summary
+            indexes, quotes, news, errors, account_summary, trend_state
         )
 
         next_step += 1

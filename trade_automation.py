@@ -7,7 +7,7 @@ import json
 import math
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import portfolio_briefing as briefing
@@ -15,6 +15,7 @@ import portfolio_briefing as briefing
 
 CONFIG_FILE = Path("trading_config.json")
 KIS_REQUEST_MIN_INTERVAL_SECONDS = 2.0
+TREND_STATE_FILE = os.getenv("KIS_TREND_STATE_FILE", "").strip()
 
 
 def load_config(path=CONFIG_FILE):
@@ -35,6 +36,14 @@ def load_config(path=CONFIG_FILE):
     paper_test_order_limit = float(config.get("paper_test_order_limit_krw", 0))
     if paper_test_order_limit <= 0:
         raise ValueError("paper_test_order_limit_krw는 0보다 커야 합니다.")
+    trend = config.get("trend_strategy", {})
+    if trend.get("enabled"):
+        if trend.get("signal_code") not in weights:
+            raise ValueError("trend_strategy.signal_code는 target_weights에 있어야 합니다.")
+        for state in ("risk_on", "neutral", "risk_off"):
+            state_weights = trend.get("weights", {}).get(state, {})
+            if set(state_weights) != set(weights) or abs(sum(float(value) for value in state_weights.values()) - 100) > 0.01:
+                raise ValueError(f"trend_strategy.weights.{state}는 대상 ETF 전체 합계 100이어야 합니다.")
     return config
 
 
@@ -77,7 +86,7 @@ def get_kis_context(access_token=None):
         "session": session,
         # The briefing may have just used the same token. Keep order-related
         # calls below KIS's per-second request limit.
-        "next_kis_request_at": time.monotonic() + 1.1,
+        "next_kis_request_at": time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS,
         "headers": {
             "authorization": f"Bearer {access_token}",
             "appkey": app_key,
@@ -97,6 +106,104 @@ def wait_for_kis_request_slot(context):
     if wait_seconds > 0:
         time.sleep(wait_seconds)
     context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
+
+
+def fetch_kis_daily_closes(code, context):
+    """Fetch completed daily closes for a domestic ETF trend signal."""
+    now = datetime.now(briefing.KST)
+    start = (now - timedelta(days=180)).strftime("%Y%m%d")
+    end = now.strftime("%Y%m%d")
+    wait_for_kis_request_slot(context)
+    response = context["session"].get(
+        f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+        headers={**context["headers"], "tr_id": "FHKST03010100"},
+        params={
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": start,
+            "FID_INPUT_DATE_2": end,
+            "FID_PERIOD_DIV_CODE": "D",
+            "FID_ORG_ADJ_PRC": "1",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 일봉조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
+
+    closes = []
+    today = now.strftime("%Y%m%d")
+    for row in payload.get("output2") or []:
+        date = str(row.get("stck_bsop_date", "")).strip()
+        close = briefing.as_float(row.get("stck_clpr"), 0)
+        if date and date < today and close > 0:
+            closes.append((date, close))
+    closes.sort(key=lambda item: item[0])
+    return closes
+
+
+def calculate_trend_state(closes, short_window, long_window, confirmation_days):
+    """Classify a confirmed moving-average regime from completed closing prices."""
+    required = long_window + confirmation_days - 1
+    if len(closes) < required:
+        raise ValueError(f"추세 판단에 필요한 일봉이 부족합니다: {len(closes)}/{required}")
+
+    signals = []
+    for index in range(len(closes) - confirmation_days, len(closes)):
+        price = closes[index][1]
+        short_average = sum(close for _date, close in closes[index - short_window + 1:index + 1]) / short_window
+        long_average = sum(close for _date, close in closes[index - long_window + 1:index + 1]) / long_window
+        if price > long_average and short_average > long_average:
+            signals.append("risk_on")
+        elif price < long_average and short_average < long_average:
+            signals.append("risk_off")
+        else:
+            signals.append("neutral")
+
+    state = signals[0] if len(set(signals)) == 1 else "neutral"
+    latest_date, latest_close = closes[-1]
+    return {
+        "state": state,
+        "latest_date": latest_date,
+        "latest_close": latest_close,
+        "confirmation_days": confirmation_days,
+        "signals": signals,
+    }
+
+
+def resolve_trend_strategy(config, context):
+    """Resolve effective target weights and persist them for the post-trade briefing."""
+    trend = config.get("trend_strategy", {})
+    default_weights = config["target_weights"]
+    if not trend.get("enabled"):
+        result = {"state": "neutral", "weights": default_weights, "enabled": False}
+    else:
+        try:
+            closes = fetch_kis_daily_closes(trend["signal_code"], context)
+            result = calculate_trend_state(
+                closes,
+                int(trend["short_window_days"]),
+                int(trend["long_window_days"]),
+                int(trend["confirmation_days"]),
+            )
+            result.update({
+                "enabled": True,
+                "signal_code": trend["signal_code"],
+                "weights": trend["weights"][result["state"]],
+            })
+        except Exception as exc:
+            result = {
+                "state": "neutral",
+                "weights": trend.get("weights", {}).get("neutral", default_weights),
+                "enabled": True,
+                "error": str(exc),
+            }
+
+    if TREND_STATE_FILE:
+        with open(TREND_STATE_FILE, "w", encoding="utf-8") as file:
+            json.dump(result, file, ensure_ascii=False)
+    return result
 
 
 def fetch_kis_prices(codes, context):
@@ -554,6 +661,9 @@ def submit_live_orders(sell_orders, buy_orders, context):
 def execute_live_rebalance(config, holdings, summary, context):
     """Submit one guarded live rebalance pass using limit orders only."""
     target_codes = set(config["target_weights"])
+    trend = resolve_trend_strategy(config, context)
+    effective_config = deepcopy(config)
+    effective_config["target_weights"] = trend["weights"]
     today_orders = fetch_today_orders(context)
     if has_open_target_order(today_orders, target_codes):
         return {
@@ -561,10 +671,11 @@ def execute_live_rebalance(config, holdings, summary, context):
             "reason": "대상 ETF의 미체결 주문이 남아 있어 추가 주문을 보류했습니다.",
             "plan": None,
             "orders": [],
+            "trend": trend,
         }
 
-    positions = positions_from_holdings(holdings, config["target_weights"])
-    market_prices = fetch_kis_prices(config["target_weights"], context)
+    positions = positions_from_holdings(holdings, effective_config["target_weights"])
+    market_prices = fetch_kis_prices(effective_config["target_weights"], context)
     cash = cash_from_balance(summary)
     orderable_cash = fetch_kis_orderable_cash(market_prices, context)
     total_assets = cash + sum(
@@ -572,10 +683,10 @@ def execute_live_rebalance(config, holdings, summary, context):
         for code in config["target_weights"]
     )
     daily_turnover_cap, daily_turnover_used, remaining_turnover = daily_turnover_budget(
-        config, total_assets, today_orders, target_codes, context
+        effective_config, total_assets, today_orders, target_codes, context
     )
     plan = plan_orders(
-        config,
+        effective_config,
         positions,
         market_prices,
         cash,
@@ -584,13 +695,14 @@ def execute_live_rebalance(config, holdings, summary, context):
     )
     plan["daily_turnover_cap"] = daily_turnover_cap
     plan["daily_turnover_used"] = daily_turnover_used
+    plan["trend"] = trend
 
-    sell_orders, buy_orders = live_orders_for_plan(plan, config, context)
+    sell_orders, buy_orders = live_orders_for_plan(plan, effective_config, context)
     submitted = submit_live_orders(sell_orders, buy_orders, context)
     if not submitted:
-        return {"status": "submitted", "plan": plan, "orders": [], "reason": ""}
+        return {"status": "submitted", "plan": plan, "orders": [], "trend": trend, "reason": ""}
 
-    time.sleep(int(config["order_policy"]["first_order_check_minutes"]) * 60)
+    time.sleep(int(effective_config["order_policy"]["first_order_check_minutes"]) * 60)
     if context.get("is_paper"):
         cancelled = [
             cancel_order_by_receipt(order, context)
@@ -605,15 +717,15 @@ def execute_live_rebalance(config, holdings, summary, context):
 
     wait_for_kis_request_slot(context)
     fresh_holdings, fresh_summary, _token = briefing.fetch_kis_balance()
-    context["next_kis_request_at"] = time.monotonic() + 1.1
-    fresh_positions = positions_from_holdings(fresh_holdings, config["target_weights"])
-    fresh_prices = fetch_kis_prices(config["target_weights"], context)
+    context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
+    fresh_positions = positions_from_holdings(fresh_holdings, effective_config["target_weights"])
+    fresh_prices = fetch_kis_prices(effective_config["target_weights"], context)
     fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
     filled = filled_values_for_orders(fetch_today_orders(context), submitted)
-    retry_config = deepcopy(config)
+    retry_config = deepcopy(effective_config)
     retry_sell_limits = {
         code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
-        for code in config["target_weights"]
+        for code in effective_config["target_weights"]
     }
     filled_turnover = filled["buy"] + sum(filled["sell"].values())
     retry_plan = plan_orders(
@@ -636,6 +748,7 @@ def execute_live_rebalance(config, holdings, summary, context):
         "orders": all_orders,
         "cancelled": cancelled,
         "execution_report": format_execution_report(final_today_orders, all_orders, cancelled),
+        "trend": trend,
         "reason": "",
     }
 
@@ -768,6 +881,12 @@ def format_plan(plan, live=False):
             f"일일 총 매매 한도: {plan['daily_turnover_cap']:,.0f}원",
             f"오늘 체결: {plan.get('daily_turnover_used', 0):,.0f}원 · 잔여: {plan.get('daily_turnover_limit', 0):,.0f}원",
         ])
+    trend = plan.get("trend")
+    if trend:
+        state_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
+        lines.append(f"추세 전략: {state_labels.get(trend['state'], trend['state'])}")
+        if trend.get("error"):
+            lines.append(f"추세 판단 오류로 중립 비중 적용: {trend['error']}")
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         lines.append(label + ":")
         if not orders:
@@ -828,7 +947,11 @@ def main():
             print(line)
         return
 
-    kis_prices = fetch_kis_prices(config["target_weights"], kis_context)
+    trend = resolve_trend_strategy(config, kis_context)
+    effective_config = deepcopy(config)
+    effective_config["target_weights"] = trend["weights"]
+    positions = positions_from_holdings(holdings, effective_config["target_weights"])
+    kis_prices = fetch_kis_prices(effective_config["target_weights"], kis_context)
     prices = target_prices(assets, positions, kis_prices)
     cash = cash_from_balance(summary)
     warnings = []
@@ -837,7 +960,8 @@ def main():
     except Exception as exc:
         orderable_cash = 0
         warnings.append(f"KIS 주문가능금액 조회 실패로 매수 계획을 만들지 않았습니다: {exc}")
-    plan = plan_orders(config, positions, prices, cash, orderable_cash)
+    plan = plan_orders(effective_config, positions, prices, cash, orderable_cash)
+    plan["trend"] = trend
     plan["warnings"] = warnings
     print(format_plan(plan))
 

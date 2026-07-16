@@ -13,6 +13,33 @@
     "0005A0": 25,
     "0048J0": 25
   },
+  "trend_strategy": {
+    "enabled": true,
+    "signal_code": "0015B0",
+    "short_window_days": 20,
+    "long_window_days": 60,
+    "confirmation_days": 3,
+    "weights": {
+      "risk_on": {
+        "0015B0": 30,
+        "486290": 30,
+        "0005A0": 20,
+        "0048J0": 20
+      },
+      "neutral": {
+        "0015B0": 25,
+        "486290": 25,
+        "0005A0": 25,
+        "0048J0": 25
+      },
+      "risk_off": {
+        "0015B0": 15,
+        "486290": 20,
+        "0005A0": 30,
+        "0048J0": 35
+      }
+    }
+  },
   "order_policy": {
     "type": "limit",
     "buy_price": "best_ask",

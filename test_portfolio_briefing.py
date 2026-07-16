@@ -545,6 +545,17 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(trading.filled_turnover_for_codes(orders, {"A", "B"}), 20000)
 
+    def test_trend_state_requires_confirmed_moving_average_direction(self):
+        rising = [(f"20260{index:03}", float(100 + index)) for index in range(65)]
+        falling = [(f"20260{index:03}", float(200 - index)) for index in range(65)]
+
+        self.assertEqual(
+            trading.calculate_trend_state(rising, 20, 60, 3)["state"], "risk_on"
+        )
+        self.assertEqual(
+            trading.calculate_trend_state(falling, 20, 60, 3)["state"], "risk_off"
+        )
+
     def test_paper_account_uses_per_run_test_limit(self):
         cap, used, remaining = trading.daily_turnover_budget(
             {**self.config, "paper_test_order_limit_krw": 100000},
@@ -602,6 +613,18 @@ class TradingPlanTests(unittest.TestCase):
 
 
 class ContentTests(unittest.TestCase):
+    def test_apply_trend_weights_overrides_static_targets(self):
+        assets = [
+            {"symbol": "0015B0.KS", "target_weight_pct": 25},
+            {"symbol": "0048J0.KS", "target_weight_pct": 25},
+        ]
+        result = briefing.apply_trend_weights(assets, {
+            "state": "risk_off",
+            "weights": {"0015B0": 15, "0048J0": 35},
+        })
+
+        self.assertEqual([asset["target_weight_pct"] for asset in result], [15, 35])
+
     def test_build_content_shows_rebalancing_buy_priorities(self):
         quotes = [
             {

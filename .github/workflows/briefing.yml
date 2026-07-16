@@ -87,12 +87,14 @@ jobs:
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
+          KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
         run: python trade_automation.py --execute-live > /tmp/trading-plan.txt
       - name: Build trading plan only
         if: inputs.execute_live_orders != true
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
+          KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
         run: python trade_automation.py > /tmp/trading-plan.txt
       - name: Run post-trade briefing
         env:
@@ -100,6 +102,7 @@ jobs:
           KIS_BALANCE_ENABLED: 'true'
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
+          KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
           TELEGRAM_MESSAGE_FILE: /tmp/telegram-message.txt
         run: python portfolio_briefing.py
       - name: Add trading plan to Telegram message
