@@ -518,18 +518,24 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(repriced, [{"code": "A", "quantity": 2, "price": 12000, "value": 24000}, {"code": "B", "quantity": 1, "price": 11000, "value": 11000}])
 
-    def test_live_rebalance_skips_when_target_order_exists_today(self):
-        config = {
-            "target_weights": {"A": 50, "B": 50},
-            "daily_sell_limit_per_asset_krw": 1000000,
-            "sell_trigger_weight_pct": 30,
-            "sell_target_weight_pct": 27,
-        }
-        with patch.object(trading, "fetch_today_orders", return_value=[{"pdno": "A"}]):
-            result = trading.execute_live_rebalance(config, [], {}, {})
+    def test_completed_orders_do_not_block_a_new_run(self):
+        orders = [{"pdno": "A", "rmn_qty": "0"}]
 
-        self.assertEqual(result["status"], "skipped")
-        self.assertEqual(result["orders"], [])
+        self.assertFalse(trading.has_open_target_order(orders, {"A"}))
+
+    def test_open_orders_block_a_new_run(self):
+        orders = [{"pdno": "A", "rmn_qty": "2"}]
+
+        self.assertTrue(trading.has_open_target_order(orders, {"A"}))
+
+    def test_filled_turnover_counts_only_managed_etfs(self):
+        orders = [
+            {"pdno": "A", "tot_ccld_amt": "10000"},
+            {"pdno": "B", "tot_ccld_qty": "2", "avg_prvs": "5000"},
+            {"pdno": "OTHER", "tot_ccld_amt": "90000"},
+        ]
+
+        self.assertEqual(trading.filled_turnover_for_codes(orders, {"A", "B"}), 20000)
 
     def test_kis_request_spacing_waits_until_the_next_slot(self):
         context = {"next_kis_request_at": 11.1}

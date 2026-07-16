@@ -387,10 +387,6 @@ def paper_unfilled_orders(today_orders, submitted):
     return unfilled
 
 
-def target_order_exists_today(orders, target_codes):
-    return any(str(order.get("pdno", "")).strip() in target_codes for order in orders)
-
-
 def reprice_orders(orders, prices, total_limit, per_order_limits=None):
     """Keep quantity plans within real limit prices and the applicable cash cap."""
     remaining = max(float(total_limit), 0)
@@ -428,6 +424,27 @@ def filled_values_for_orders(today_orders, submitted):
         else:
             values["sell"][order["code"]] = values["sell"].get(order["code"], 0) + value
     return values
+
+
+def filled_turnover_for_codes(today_orders, target_codes):
+    """Return today's actual filled turnover for the managed ETF set."""
+    turnover = 0.0
+    for row in today_orders:
+        if str(row.get("pdno", "")).strip() not in target_codes:
+            continue
+        value = briefing.as_float(row.get("tot_ccld_amt"), 0)
+        if value <= 0:
+            value = briefing.as_float(row.get("tot_ccld_qty"), 0) * briefing.as_float(row.get("avg_prvs"), 0)
+        turnover += max(value, 0)
+    return turnover
+
+
+def has_open_target_order(today_orders, target_codes):
+    return any(
+        str(row.get("pdno", "")).strip() in target_codes
+        and briefing.as_float(row.get("rmn_qty"), 0) > 0
+        for row in today_orders
+    )
 
 
 def format_execution_report(today_orders, submitted, cancelled):
@@ -513,17 +530,13 @@ def submit_live_orders(sell_orders, buy_orders, context):
 
 
 def execute_live_rebalance(config, holdings, summary, context):
-    """Submit one guarded live rebalance pass using limit orders only.
-
-    An existing target-ETF order today is treated as a completed or in-progress
-    run. This intentionally blocks a second workflow run from duplicating it.
-    """
+    """Submit one guarded live rebalance pass using limit orders only."""
     target_codes = set(config["target_weights"])
     today_orders = fetch_today_orders(context)
-    if target_order_exists_today(today_orders, target_codes):
+    if has_open_target_order(today_orders, target_codes):
         return {
             "status": "skipped",
-            "reason": "오늘 대상 ETF 주문 이력이 있어 중복 주문을 차단했습니다.",
+            "reason": "대상 ETF의 미체결 주문이 남아 있어 추가 주문을 보류했습니다.",
             "plan": None,
             "orders": [],
         }
@@ -532,7 +545,22 @@ def execute_live_rebalance(config, holdings, summary, context):
     market_prices = fetch_kis_prices(config["target_weights"], context)
     cash = cash_from_balance(summary)
     orderable_cash = fetch_kis_orderable_cash(market_prices, context)
-    plan = plan_orders(config, positions, market_prices, cash, orderable_cash)
+    total_assets = cash + sum(
+        positions[code]["quantity"] * market_prices[code]
+        for code in config["target_weights"]
+    )
+    daily_turnover_cap = total_assets * float(config["daily_turnover_limit_pct"]) / 100
+    daily_turnover_used = filled_turnover_for_codes(today_orders, target_codes)
+    plan = plan_orders(
+        config,
+        positions,
+        market_prices,
+        cash,
+        orderable_cash,
+        turnover_limit=max(daily_turnover_cap - daily_turnover_used, 0),
+    )
+    plan["daily_turnover_cap"] = daily_turnover_cap
+    plan["daily_turnover_used"] = daily_turnover_used
 
     sell_orders, buy_orders = live_orders_for_plan(plan, config, context)
     submitted = submit_live_orders(sell_orders, buy_orders, context)
@@ -709,7 +737,8 @@ def format_plan(plan, live=False):
         f"총 자산(예수금 포함): {plan['total_value']:,.0f}원",
         f"주문 전 예수금: {plan['cash']:,.0f}원",
         f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
-        f"일일 총 매매 limit: {plan.get('daily_turnover_limit', 0):,.0f}원",
+        f"일일 총 매매 한도: {plan.get('daily_turnover_cap', plan.get('daily_turnover_limit', 0)):,.0f}원",
+        f"오늘 체결: {plan.get('daily_turnover_used', 0):,.0f}원 · 잔여: {plan.get('daily_turnover_limit', 0):,.0f}원",
     ]
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         lines.append(label + ":")
