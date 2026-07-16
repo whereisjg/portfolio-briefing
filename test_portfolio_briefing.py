@@ -65,7 +65,7 @@ class KisBalanceTests(unittest.TestCase):
                 return None
 
             def json(self):
-                return {"rt_cd": "0", "output": [], "output2": [{}]}
+                return {"rt_cd": "0", "output1": [{"pdno": "0015B0"}], "output2": [{}]}
 
         class FakeSession:
             def post(self, *args, **kwargs):
@@ -88,10 +88,11 @@ class KisBalanceTests(unittest.TestCase):
         }
         with patch.dict(briefing.os.environ, environment):
             with patch.object(briefing, "get_http_session", return_value=session):
-                briefing.fetch_kis_balance()
+                holdings, _summary, _token = briefing.fetch_kis_balance()
 
         self.assertEqual(session.kwargs["headers"]["tr_id"], "VTTC8434R")
         self.assertEqual(session.kwargs["params"]["UNPR_DVSN"], "01")
+        self.assertEqual(holdings, [{"pdno": "0015B0"}])
 
     def test_kis_access_token_cache_reuses_token_within_six_hours(self):
         class FakeResponse:

@@ -222,7 +222,10 @@ def fetch_kis_balance():
     if payload.get("rt_cd") != "0":
         raise ValueError(f"KIS 잔고조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
 
-    return payload.get("output", []), (payload.get("output2") or [{}])[0], access_token
+    holdings = payload.get("output1") or payload.get("output") or []
+    summary_rows = payload.get("output2") or [{}]
+    summary = summary_rows[0] if isinstance(summary_rows, list) else summary_rows
+    return holdings, summary, access_token
 
 
 def fetch_kis_index_quote(index, access_token):
