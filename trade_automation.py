@@ -14,6 +14,7 @@ import portfolio_briefing as briefing
 
 
 CONFIG_FILE = Path("trading_config.json")
+KIS_REQUEST_MIN_INTERVAL_SECONDS = 2.0
 
 
 def load_config(path=CONFIG_FILE):
@@ -95,7 +96,7 @@ def wait_for_kis_request_slot(context):
     wait_seconds = context.get("next_kis_request_at", 0) - time.monotonic()
     if wait_seconds > 0:
         time.sleep(wait_seconds)
-    context["next_kis_request_at"] = time.monotonic() + 1.1
+    context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
 
 
 def fetch_kis_prices(codes, context):
@@ -159,29 +160,37 @@ def submit_cash_order(code, quantity, price, side, context):
         "SLL_TYPE": "01" if side == "sell" else "",
         "CNDT_PRIC": "",
     }
-    wait_for_kis_request_slot(context)
-    response = context["session"].post(
-        f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-cash",
-        headers={
-            **context["headers"],
-            "tr_id": kis_tr_id(
-                context,
-                "TTTC0012U" if side == "buy" else "TTTC0011U",
-                "VTTC0012U" if side == "buy" else "VTTC0011U",
-            ),
-            "content-type": "application/json; charset=utf-8",
-        },
-        json=payload,
-        timeout=20,
-    )
-    if response.status_code != 200:
-        raise ValueError(
-            f"KIS {side} 주문 HTTP {response.status_code}: {response.text[:500]}"
+    for attempt in range(2):
+        wait_for_kis_request_slot(context)
+        response = context["session"].post(
+            f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-cash",
+            headers={
+                **context["headers"],
+                "tr_id": kis_tr_id(
+                    context,
+                    "TTTC0012U" if side == "buy" else "TTTC0011U",
+                    "VTTC0012U" if side == "buy" else "VTTC0011U",
+                ),
+                "content-type": "application/json; charset=utf-8",
+            },
+            json=payload,
+            timeout=20,
         )
-    result = response.json()
-    if result.get("rt_cd") != "0":
-        raise ValueError(f"KIS {side} 주문 실패({code}): {result.get('msg1', '알 수 없는 오류')}")
-    return result.get("output") or {}
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("rt_cd") == "0":
+                return result.get("output") or {}
+            message = result.get("msg1", "알 수 없는 오류")
+        else:
+            message = response.text[:500]
+
+        if "EGW002" in message and attempt == 0:
+            time.sleep(KIS_REQUEST_MIN_INTERVAL_SECONDS)
+            context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
+            continue
+        if response.status_code != 200:
+            raise ValueError(f"KIS {side} 주문 HTTP {response.status_code}: {message}")
+        raise ValueError(f"KIS {side} 주문 실패({code}): {message}")
 
 
 def submit_cash_buy(code, quantity, price, context):

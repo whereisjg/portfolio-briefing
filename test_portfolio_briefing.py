@@ -566,7 +566,39 @@ class TradingPlanTests(unittest.TestCase):
 
         sleep.assert_called_once()
         self.assertAlmostEqual(sleep.call_args.args[0], 1.1)
-        self.assertAlmostEqual(context["next_kis_request_at"], 12.2)
+        self.assertAlmostEqual(context["next_kis_request_at"], 13.1)
+
+    def test_submit_order_retries_once_after_kis_rate_limit(self):
+        class RateLimitedResponse:
+            status_code = 500
+            text = '{"msg_cd":"EGW00201"}'
+
+        class SuccessResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"rt_cd": "0", "output": {"ODNO": "123"}}
+
+        class FakeSession:
+            def __init__(self):
+                self.responses = [RateLimitedResponse(), SuccessResponse()]
+
+            def post(self, *_args, **_kwargs):
+                return self.responses.pop(0)
+
+        context = {
+            "account_no": "12345678",
+            "product_code": "01",
+            "base_url": "https://example.test",
+            "headers": {"authorization": "Bearer token"},
+            "session": FakeSession(),
+            "next_kis_request_at": 0,
+        }
+        with patch.object(trading.time, "sleep"):
+            result = trading.submit_cash_buy("0015B0", 1, 21300, context)
+
+        self.assertEqual(result["ODNO"], "123")
 
 
 class ContentTests(unittest.TestCase):
