@@ -240,6 +240,9 @@ class TradingPlanTests(unittest.TestCase):
 
     def test_submit_cash_buy_uses_complete_kis_order_payload(self):
         class FakeResponse:
+            status_code = 200
+            text = ""
+
             def raise_for_status(self):
                 return None
 

@@ -146,7 +146,10 @@ def submit_cash_buy(code, quantity, price, context):
         json=payload,
         timeout=20,
     )
-    response.raise_for_status()
+    if response.status_code != 200:
+        raise ValueError(
+            f"KIS 매수주문 HTTP {response.status_code}: {response.text[:500]}"
+        )
     result = response.json()
     if result.get("rt_cd") != "0":
         raise ValueError(f"KIS 매수주문 실패({code}): {result.get('msg1', '알 수 없는 오류')}")
