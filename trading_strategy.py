@@ -189,27 +189,19 @@ def format_plan(plan, live=False, asset_labels=None):
     def label_for(code):
         return asset_labels.get(code, code)
 
+    def short_amount(amount):
+        return f"{round(float(amount) / 10000):,.0f}만"
+
     lines = ["자동매매 실주문" if live else "자동매매 dry-run"]
     if plan.get("daily_turnover_cap") is None:
-        lines[0] += f" · 한도 {plan['daily_turnover_limit']:,.0f}원"
+        lines[0] += f" · 한도 {short_amount(plan['daily_turnover_limit'])}"
     else:
-        lines[0] += f" · 잔여 한도 {plan.get('daily_turnover_limit', 0):,.0f}원"
-    trend = plan.get("trend")
-    if trend:
-        state_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
-        lines.append(f"추세: {state_labels.get(trend['state'], trend['state'])}")
-        if trend.get("latest_date"):
-            lines.append(
-                f"기준: {label_for(trend['signal_code'])} {trend['latest_close']:,.0f}원 "
-                f"/ 20일 {trend['short_average']:,.0f} / 60일 {trend['long_average']:,.0f}"
-            )
-        if trend.get("error"):
-            lines.append(f"추세 판단 오류로 중립 비중 적용: {trend['error']}")
+        lines[0] += f" · 잔여 {short_amount(plan.get('daily_turnover_limit', 0))}"
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         if orders:
-            lines.append(f"{label} 예정")
+            lines.append(f"{label} {'주문' if live else '예정'}")
             lines.extend(
-                f"  {label_for(order['code'])} {order['quantity']}주 · {order['value']:,.0f}원"
+                f"  {label_for(order['code'])} {order['quantity']}주 · {short_amount(order['value'])}"
                 for order in orders
             )
     for warning in plan.get("warnings", []):

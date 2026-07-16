@@ -347,6 +347,10 @@ def format_signed_amount(amount, currency):
     return f"{amount:+,.2f}"
 
 
+def format_krw_short(amount):
+    return f"{round(float(amount) / 10000):,.0f}만"
+
+
 def format_change_amount(item):
     amount = item.get("chg_amount", 0)
     return format_signed_amount(amount, item["currency"])
@@ -524,6 +528,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
     neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
     count_str = f"🔴{pos_count} 🔵{neg_count}"
+    trend_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
 
     def price_row(item):
         alert = "🚨" if abs(item["chg_pct"]) >= CRITICAL_MOVE_PCT else ("⚠️" if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT else "")
@@ -543,9 +548,10 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
             effect_str = ""
         weight = item.get("weight_pct")
         weight_str = f"비중 {float(weight):.1f}%" if weight not in (None, "") else ""
-        details = " · ".join(x for x in [format_average_price(item), effect_str, weight_str] if x)
-        first_line = f"{movement_emoji(item['chg_pct'])} {item['display']} {price_str} {item['chg_pct']:+.2f}%{alert}"
-        return f"{first_line}\n   {details}" if details else first_line
+        details = " · ".join(x for x in [weight_str, effect_str] if x)
+        first_line = f"{movement_emoji(item['chg_pct'])} {item['display']} {item['chg_pct']:+.2f}%{alert}"
+        second_line = " · ".join(x for x in [price_str, format_average_price(item), details] if x)
+        return f"{first_line}\n   {second_line}" if second_line else first_line
 
     compact_rows = [price_row(item) for item in quotes]
 
@@ -559,9 +565,9 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
                 action_text = claude_actions[item["ticker"]].split(": ", 1)[-1]
             else:
                 action_text = action_for(item).split(": ", 1)[-1]
-            alert_action_lines.append(f"{icon} {item['ticker']} {item['chg_pct']:+.2f}% → {action_text}")
+            alert_action_lines.append(f"{icon} {item['display']} {item['chg_pct']:+.2f}%\n{action_text}")
 
-    telegram_lines = [f"📈 포트폴리오 브리핑 {today_short}", ""]
+    telegram_lines = [f"📈 포트폴리오 {today_short} · 추세 {trend_labels.get(trend_state.get('state'), '중립') if trend_state else '중립'}", ""]
 
     if indexes:
         telegram_lines.append(index_summary)
@@ -569,18 +575,13 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     if account_summary:
         total = as_float(account_summary.get("tot_evlu_amt"))
         cash = as_float(account_summary.get("prvs_rcdl_excc_amt"))
-        telegram_lines.append(f"계좌: 평가금액 ₩{total:,.0f} · 출금가능 ₩{cash:,.0f}")
-
-    if trend_state:
-        labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
-        telegram_lines.append(f"추세 전략: {labels.get(trend_state.get('state'), '중립')}")
+        telegram_lines.append(f"자산 {format_krw_short(total)} · 예수금 {format_krw_short(cash)}")
 
     telegram_lines.extend([
         f"오늘 흐름: {pos_count} 상승 · {neg_count} 하락",
         "",
-        "─" * 20,
+        "📍 보유",
         *compact_rows,
-        "─" * 20,
     ])
 
     if alert_action_lines:
@@ -589,7 +590,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     if rebalancing_rows:
         changes = [f"{display} {action}" for display, _target, _current, action in rebalancing_rows if action != "목표 범위"]
         if changes:
-            telegram_lines.extend(["", "📊 리밸런싱", *changes])
+            telegram_lines.extend(["", "📊 조정", *changes])
 
     if errors:
         telegram_lines.extend(["", "⚠️ 오류", *[f"  • {e}" for e in errors]])
