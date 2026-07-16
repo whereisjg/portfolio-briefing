@@ -197,22 +197,21 @@ def format_plan(plan, live=False, asset_labels=None):
     trend = plan.get("trend")
     if trend:
         state_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
-        trend_line = f"추세: {state_labels.get(trend['state'], trend['state'])}"
+        lines.append(f"추세: {state_labels.get(trend['state'], trend['state'])}")
         if trend.get("latest_date"):
-            trend_line += (
-                f" · {label_for(trend['signal_code'])} {trend['latest_close']:,.0f}원 "
-                f"(20일 {trend['short_average']:,.0f} / 60일 {trend['long_average']:,.0f})"
+            lines.append(
+                f"기준: {label_for(trend['signal_code'])} {trend['latest_close']:,.0f}원 "
+                f"/ 20일 {trend['short_average']:,.0f} / 60일 {trend['long_average']:,.0f}"
             )
-        lines.append(trend_line)
         if trend.get("error"):
             lines.append(f"추세 판단 오류로 중립 비중 적용: {trend['error']}")
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         if orders:
-            details = " · ".join(
-                f"{label_for(order['code'])} {order['quantity']}주({order['value']:,.0f}원)"
+            lines.append(f"{label} 예정")
+            lines.extend(
+                f"  {label_for(order['code'])} {order['quantity']}주 · {order['value']:,.0f}원"
                 for order in orders
             )
-            lines.append(f"{label} 예정: {details}")
     for warning in plan.get("warnings", []):
         lines.append(f"주의: {warning}")
     if not plan["sells"] and not plan["buys"]:

@@ -86,7 +86,8 @@ class ConfigurationTests(unittest.TestCase):
 
         report = strategy.format_plan(plan, asset_labels={"0015B0": "KoAct나스닥성장"})
 
-        self.assertIn("추세: 중립 · KoAct나스닥성장", report)
+        self.assertIn("추세: 중립", report)
+        self.assertIn("기준: KoAct나스닥성장", report)
         self.assertIn("KoAct나스닥성장 1주", report)
         self.assertNotIn("0015B0 1주", report)
 
@@ -658,7 +659,7 @@ class ContentTests(unittest.TestCase):
 
         telegram, markdown = briefing.build_content([], quotes, [])
 
-        self.assertIn("📊 리밸런싱: 성장 신규 매수 우선 · 인컴 신규 매수 보류", telegram)
+        self.assertIn("📊 리밸런싱\n성장 신규 매수 우선\n인컴 신규 매수 보류", telegram)
         self.assertIn("## 📊 리밸런싱", markdown)
 
     def test_build_content_shows_zero_share_tracking_asset_without_position_values(self):

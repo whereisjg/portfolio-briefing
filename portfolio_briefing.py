@@ -519,7 +519,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     ]
     if usd_to_krw:
         index_lines_list.append(f"환율 ₩{usd_to_krw:,.0f}")
-    index_summary = " · ".join(index_lines_list)
+    index_summary = "\n".join(index_lines_list)
 
     pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
     neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
@@ -544,11 +544,8 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         weight = item.get("weight_pct")
         weight_str = f"비중 {float(weight):.1f}%" if weight not in (None, "") else ""
         details = " · ".join(x for x in [format_average_price(item), effect_str, weight_str] if x)
-        return (
-            f"{movement_emoji(item['chg_pct'])} {item['display']} {price_str} "
-            f"{item['chg_pct']:+.2f}%{alert}"
-            f" · {details}" if details else f"{movement_emoji(item['chg_pct'])} {item['display']} {price_str} {item['chg_pct']:+.2f}%{alert}"
-        )
+        first_line = f"{movement_emoji(item['chg_pct'])} {item['display']} {price_str} {item['chg_pct']:+.2f}%{alert}"
+        return f"{first_line}\n   {details}" if details else first_line
 
     compact_rows = [price_row(item) for item in quotes]
 
@@ -592,7 +589,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     if rebalancing_rows:
         changes = [f"{display} {action}" for display, _target, _current, action in rebalancing_rows if action != "목표 범위"]
         if changes:
-            telegram_lines.extend(["", "📊 리밸런싱: " + " · ".join(changes)])
+            telegram_lines.extend(["", "📊 리밸런싱", *changes])
 
     if errors:
         telegram_lines.extend(["", "⚠️ 오류", *[f"  • {e}" for e in errors]])
