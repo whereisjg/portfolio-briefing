@@ -36,6 +36,9 @@ def load_config(path=CONFIG_FILE):
     paper_test_order_limit = float(config.get("paper_test_order_limit_krw", 0))
     if paper_test_order_limit <= 0:
         raise ValueError("paper_test_order_limit_krw는 0보다 커야 합니다.")
+    rebalance_band_pct = float(config.get("rebalance_band_pct", 0))
+    if not 0 <= rebalance_band_pct < 100:
+        raise ValueError("rebalance_band_pct는 0 이상 100 미만이어야 합니다.")
     trend = config.get("trend_strategy", {})
     if trend.get("enabled"):
         if trend.get("signal_code") not in weights:
@@ -800,10 +803,11 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         else total * float(config.get("daily_turnover_limit_pct", 100)) / 100
     )
     remaining_turnover = daily_turnover_limit
+    rebalance_band = float(config.get("rebalance_band_pct", 0)) / 100
     sells = []
     for code, target_weight in targets.items():
         current_weight = values[code] / total
-        if current_weight <= config["sell_trigger_weight_pct"] / 100:
+        if current_weight <= target_weight + rebalance_band:
             continue
         price = prices.get(code, 0)
         if price <= 0:
@@ -814,7 +818,7 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
             else float(config["daily_sell_limit_per_asset_krw"])
         )
         sell_value = min(
-            values[code] - total * config["sell_target_weight_pct"] / 100,
+            values[code] - total * target_weight,
             sell_limit,
             remaining_turnover,
         )

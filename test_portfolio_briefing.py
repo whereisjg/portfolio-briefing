@@ -266,8 +266,7 @@ class TradingPlanTests(unittest.TestCase):
         self.config = {
             "mode": "dry-run",
             "daily_sell_limit_per_asset_krw": 1000000,
-            "sell_trigger_weight_pct": 30,
-            "sell_target_weight_pct": 27,
+            "rebalance_band_pct": 2,
             "target_weights": {"A": 25, "B": 25, "C": 25, "D": 25},
         }
         self.prices = {"A": 10000, "B": 10000, "C": 10000, "D": 10000}
@@ -282,24 +281,32 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(plan["daily_turnover_limit"], 660000)
         self.assertEqual(sum(order["value"] for order in plan["buys"]), 660000)
 
-    def test_sell_plan_triggers_above_thirty_percent_and_targets_twenty_seven(self):
+    def test_sell_plan_rebalances_to_the_active_target_weight(self):
+        config = {
+            **self.config,
+            "target_weights": {"A": 15, "B": 20, "C": 30, "D": 35},
+            "daily_sell_limit_per_asset_krw": 10000000,
+        }
         positions = {
-            "A": {"quantity": 682, "price": 10000},
-            "B": {"quantity": 506, "price": 10000},
-            "C": {"quantity": 506, "price": 10000},
-            "D": {"quantity": 506, "price": 10000},
+            "A": {"quantity": 500, "price": 10000},
+            "B": {"quantity": 500, "price": 10000},
+            "C": {"quantity": 500, "price": 10000},
+            "D": {"quantity": 500, "price": 10000},
         }
 
-        plan = trading.plan_orders(self.config, positions, self.prices, 0)
+        plan = trading.plan_orders(config, positions, self.prices, 0)
 
-        self.assertEqual(plan["sells"], [{"code": "A", "quantity": 88, "price": 10000, "value": 880000}])
+        self.assertEqual(plan["sells"], [
+            {"code": "A", "quantity": 200, "price": 10000, "value": 2000000},
+            {"code": "B", "quantity": 100, "price": 10000, "value": 1000000},
+        ])
 
-    def test_sell_plan_does_not_trigger_at_exactly_thirty_percent(self):
+    def test_sell_plan_does_not_trigger_within_target_band(self):
         positions = {
-            "A": {"quantity": 600, "price": 10000},
-            "B": {"quantity": 467, "price": 10000},
-            "C": {"quantity": 467, "price": 10000},
-            "D": {"quantity": 466, "price": 10000},
+            "A": {"quantity": 540, "price": 10000},
+            "B": {"quantity": 487, "price": 10000},
+            "C": {"quantity": 487, "price": 10000},
+            "D": {"quantity": 486, "price": 10000},
         }
 
         plan = trading.plan_orders(self.config, positions, self.prices, 0)
