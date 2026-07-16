@@ -27,9 +27,9 @@ def load_config(path=CONFIG_FILE):
         raise ValueError("현재 자동매매는 dry-run만 허용합니다.")
     if config.get("live_orders_enabled", False):
         raise ValueError("실주문 활성화는 아직 지원하지 않습니다.")
-    daily_buy_limit_pct = float(config.get("daily_buy_limit_pct", 0))
-    if not 0 < daily_buy_limit_pct <= 100:
-        raise ValueError("daily_buy_limit_pct는 0 초과 100 이하이어야 합니다.")
+    daily_buy_limit = float(config.get("daily_buy_limit_krw", 0))
+    if daily_buy_limit <= 0:
+        raise ValueError("daily_buy_limit_krw는 0보다 커야 합니다.")
     return config
 
 
@@ -196,7 +196,7 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None):
         if prices.get(code, 0) > 0
     }
     buyable_cash = cash if orderable_cash is None else min(cash, max(orderable_cash, 0))
-    daily_buy_limit = total * float(config["daily_buy_limit_pct"]) / 100
+    daily_buy_limit = float(config["daily_buy_limit_krw"])
     budget = min(buyable_cash, daily_buy_limit, sum(deficits.values()))
     buys = []
     if budget > 0 and deficits:
