@@ -549,9 +549,9 @@ class TradingPlanTests(unittest.TestCase):
         rising = [(f"20260{index:03}", float(100 + index)) for index in range(65)]
         falling = [(f"20260{index:03}", float(200 - index)) for index in range(65)]
 
-        self.assertEqual(
-            trading.calculate_trend_state(rising, 20, 60, 3)["state"], "risk_on"
-        )
+        rising_state = trading.calculate_trend_state(rising, 20, 60, 3)
+        self.assertEqual(rising_state["state"], "risk_on")
+        self.assertGreater(rising_state["short_average"], rising_state["long_average"])
         self.assertEqual(
             trading.calculate_trend_state(falling, 20, 60, 3)["state"], "risk_off"
         )

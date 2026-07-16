@@ -150,10 +150,14 @@ def calculate_trend_state(closes, short_window, long_window, confirmation_days):
         raise ValueError(f"추세 판단에 필요한 일봉이 부족합니다: {len(closes)}/{required}")
 
     signals = []
+    latest_short_average = None
+    latest_long_average = None
     for index in range(len(closes) - confirmation_days, len(closes)):
         price = closes[index][1]
         short_average = sum(close for _date, close in closes[index - short_window + 1:index + 1]) / short_window
         long_average = sum(close for _date, close in closes[index - long_window + 1:index + 1]) / long_window
+        latest_short_average = short_average
+        latest_long_average = long_average
         if price > long_average and short_average > long_average:
             signals.append("risk_on")
         elif price < long_average and short_average < long_average:
@@ -167,6 +171,8 @@ def calculate_trend_state(closes, short_window, long_window, confirmation_days):
         "state": state,
         "latest_date": latest_date,
         "latest_close": latest_close,
+        "short_average": latest_short_average,
+        "long_average": latest_long_average,
         "confirmation_days": confirmation_days,
         "signals": signals,
     }
@@ -885,6 +891,11 @@ def format_plan(plan, live=False):
     if trend:
         state_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
         lines.append(f"추세 전략: {state_labels.get(trend['state'], trend['state'])}")
+        if trend.get("latest_date"):
+            lines.append(
+                f"추세 기준: {trend['signal_code']} {trend['latest_date']} 종가 {trend['latest_close']:,.0f}원 / "
+                f"20일선 {trend['short_average']:,.0f}원 / 60일선 {trend['long_average']:,.0f}원"
+            )
         if trend.get("error"):
             lines.append(f"추세 판단 오류로 중립 비중 적용: {trend['error']}")
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
@@ -960,7 +971,27 @@ def main():
     except Exception as exc:
         orderable_cash = 0
         warnings.append(f"KIS 주문가능금액 조회 실패로 매수 계획을 만들지 않았습니다: {exc}")
-    plan = plan_orders(effective_config, positions, prices, cash, orderable_cash)
+    total_assets = cash + sum(
+        positions[code]["quantity"] * prices[code]
+        for code in effective_config["target_weights"]
+    )
+    daily_turnover_cap, daily_turnover_used, remaining_turnover = daily_turnover_budget(
+        effective_config,
+        total_assets,
+        [],
+        set(effective_config["target_weights"]),
+        kis_context,
+    )
+    plan = plan_orders(
+        effective_config,
+        positions,
+        prices,
+        cash,
+        orderable_cash,
+        turnover_limit=remaining_turnover,
+    )
+    plan["daily_turnover_cap"] = daily_turnover_cap
+    plan["daily_turnover_used"] = daily_turnover_used
     plan["trend"] = trend
     plan["warnings"] = warnings
     print(format_plan(plan))
