@@ -327,7 +327,9 @@ def main():
     args = parser.parse_args()
 
     if args.execute_test_buy:
-        context = get_kis_context()
+        snapshot = load_balance_snapshot()
+        access_token = snapshot[2] if snapshot else None
+        context = get_kis_context(access_token)
         results = execute_confirmed_test_buys(args.execute_test_buy, context)
         for result in results:
             print(f"실주문 접수: {result['code']} 1주 / 지정가 {result['price']:,.0f}원 / 주문번호 {result['order_no']}")

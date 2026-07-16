@@ -58,6 +58,7 @@ jobs:
           KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
           KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
           KIS_PRODUCT_CODE: ${{ secrets.KIS_TEST_PRODUCT_CODE }}
+          KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           CONFIRM_LIVE_TEST_BUY: CONFIRM
         run: python trade_automation.py --execute-test-buy 0015B0 486290
       - name: Add trading plan to Telegram message
