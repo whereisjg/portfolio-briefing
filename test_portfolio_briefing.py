@@ -59,6 +59,40 @@ class ConfigurationTests(unittest.TestCase):
         )
 
 class KisBalanceTests(unittest.TestCase):
+    def test_paper_balance_uses_virtual_tr_id_and_unpr_dvsn(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"rt_cd": "0", "output": [], "output2": [{}]}
+
+        class FakeSession:
+            def post(self, *args, **kwargs):
+                return type("TokenResponse", (), {
+                    "raise_for_status": lambda self: None,
+                    "json": lambda self: {"access_token": "token"},
+                })()
+
+            def get(self, *args, **kwargs):
+                self.kwargs = kwargs
+                return FakeResponse()
+
+        session = FakeSession()
+        environment = {
+            "KIS_APP_KEY": "key",
+            "KIS_APP_SECRET": "secret",
+            "KIS_ACCOUNT_NO": "12345678",
+            "KIS_PRODUCT_CODE": "01",
+            "KIS_ACCOUNT_MODE": "paper",
+        }
+        with patch.dict(briefing.os.environ, environment):
+            with patch.object(briefing, "get_http_session", return_value=session):
+                briefing.fetch_kis_balance()
+
+        self.assertEqual(session.kwargs["headers"]["tr_id"], "VTTC8434R")
+        self.assertEqual(session.kwargs["params"]["UNPR_DVSN"], "01")
+
     def test_kis_access_token_cache_reuses_token_within_six_hours(self):
         class FakeResponse:
             def raise_for_status(self):

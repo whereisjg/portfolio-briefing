@@ -204,7 +204,7 @@ def fetch_kis_balance():
         "AFHR_FLPR_YN": "N",
         "OFL_YN": "N",
         "INQR_DVSN": "01",
-        "UNPR": "01",
+        "UNPR_DVSN": "01",
         "FUND_STTL_ICLD_YN": "N",
         "FNCG_AMT_AUTO_RDPT_YN": "N",
         "PRCS_DVSN": "00",
