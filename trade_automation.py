@@ -447,6 +447,16 @@ def has_open_target_order(today_orders, target_codes):
     )
 
 
+def daily_turnover_budget(config, total_assets, today_orders, target_codes, context):
+    """Keep real-account daily turnover bounded while leaving paper tests unrestricted."""
+    if context.get("is_paper"):
+        return None, 0.0, math.inf
+
+    cap = total_assets * float(config["daily_turnover_limit_pct"]) / 100
+    used = filled_turnover_for_codes(today_orders, target_codes)
+    return cap, used, max(cap - used, 0)
+
+
 def format_execution_report(today_orders, submitted, cancelled):
     """Format KIS order status into a compact Telegram-friendly execution report."""
     if not submitted:
@@ -549,15 +559,16 @@ def execute_live_rebalance(config, holdings, summary, context):
         positions[code]["quantity"] * market_prices[code]
         for code in config["target_weights"]
     )
-    daily_turnover_cap = total_assets * float(config["daily_turnover_limit_pct"]) / 100
-    daily_turnover_used = filled_turnover_for_codes(today_orders, target_codes)
+    daily_turnover_cap, daily_turnover_used, remaining_turnover = daily_turnover_budget(
+        config, total_assets, today_orders, target_codes, context
+    )
     plan = plan_orders(
         config,
         positions,
         market_prices,
         cash,
         orderable_cash,
-        turnover_limit=max(daily_turnover_cap - daily_turnover_used, 0),
+        turnover_limit=remaining_turnover,
     )
     plan["daily_turnover_cap"] = daily_turnover_cap
     plan["daily_turnover_used"] = daily_turnover_used
@@ -737,9 +748,14 @@ def format_plan(plan, live=False):
         f"총 자산(예수금 포함): {plan['total_value']:,.0f}원",
         f"주문 전 예수금: {plan['cash']:,.0f}원",
         f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
-        f"일일 총 매매 한도: {plan.get('daily_turnover_cap', plan.get('daily_turnover_limit', 0)):,.0f}원",
-        f"오늘 체결: {plan.get('daily_turnover_used', 0):,.0f}원 · 잔여: {plan.get('daily_turnover_limit', 0):,.0f}원",
     ]
+    if plan.get("daily_turnover_cap") is None:
+        lines.append("일일 총 매매 한도: 모의투자 제한 없음")
+    else:
+        lines.extend([
+            f"일일 총 매매 한도: {plan['daily_turnover_cap']:,.0f}원",
+            f"오늘 체결: {plan.get('daily_turnover_used', 0):,.0f}원 · 잔여: {plan.get('daily_turnover_limit', 0):,.0f}원",
+        ])
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         lines.append(label + ":")
         if not orders:

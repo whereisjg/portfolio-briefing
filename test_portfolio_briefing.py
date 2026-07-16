@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+import math
 import tempfile
 import json
 
@@ -544,6 +545,19 @@ class TradingPlanTests(unittest.TestCase):
         ]
 
         self.assertEqual(trading.filled_turnover_for_codes(orders, {"A", "B"}), 20000)
+
+    def test_paper_account_has_no_daily_turnover_cap(self):
+        cap, used, remaining = trading.daily_turnover_budget(
+            self.config,
+            10000000,
+            [{"pdno": "A", "tot_ccld_amt": "300000"}],
+            {"A"},
+            {"is_paper": True},
+        )
+
+        self.assertIsNone(cap)
+        self.assertEqual(used, 0)
+        self.assertTrue(math.isinf(remaining))
 
     def test_kis_request_spacing_waits_until_the_next_slot(self):
         context = {"next_kis_request_at": 11.1}
