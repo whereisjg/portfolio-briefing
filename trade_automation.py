@@ -5,6 +5,7 @@ This module intentionally creates plans only. Live order placement remains disab
 until the ISA account is verified and a separate explicit activation is made.
 """
 
+import argparse
 import json
 import math
 import os
@@ -104,6 +105,63 @@ def fetch_kis_prices(codes, context):
             raise ValueError(f"KIS 현재가가 없습니다: {code}")
         prices[code] = price
     return prices
+
+
+def fetch_kis_best_ask(code, context):
+    response = context["session"].get(
+        f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
+        headers={**context["headers"], "tr_id": "FHKST01010200"},
+        params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 최우선 매도호가 조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
+    price = briefing.as_float((payload.get("output1") or {}).get("askp1"), None)
+    if price is None or price <= 0:
+        raise ValueError(f"KIS 최우선 매도호가가 없습니다: {code}")
+    return price
+
+
+def submit_cash_buy(code, quantity, price, context):
+    payload = {
+        "CANO": context["account_no"],
+        "ACNT_PRDT_CD": context["product_code"],
+        "PDNO": code,
+        "ORD_DVSN": "00",
+        "ORD_QTY": str(quantity),
+        "ORD_UNPR": str(round(price)),
+        "EXCG_ID_DVSN_CD": "KRX",
+    }
+    response = context["session"].post(
+        f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-cash",
+        headers={**context["headers"], "tr_id": "TTTC0012U"},
+        json=payload,
+        timeout=20,
+    )
+    response.raise_for_status()
+    result = response.json()
+    if result.get("rt_cd") != "0":
+        raise ValueError(f"KIS 매수주문 실패({code}): {result.get('msg1', '알 수 없는 오류')}")
+    return result.get("output") or {}
+
+
+def execute_confirmed_test_buys(codes, context):
+    if os.getenv("CONFIRM_LIVE_TEST_BUY") != "CONFIRM":
+        raise ValueError("실주문 확인값이 없습니다.")
+    asks = {code: fetch_kis_best_ask(code, context) for code in codes}
+    required_cash = sum(asks.values())
+    orderable_cash = fetch_kis_orderable_cash(asks, context)
+    if required_cash > orderable_cash:
+        raise ValueError(f"주문가능금액 부족: 필요 {required_cash:,.0f}원 / 가능 {orderable_cash:,.0f}원")
+
+    results = []
+    for code in codes:
+        price = asks[code]
+        result = submit_cash_buy(code, 1, price, context)
+        results.append({"code": code, "price": price, "order_no": result.get("ODNO", "")})
+    return results
 
 
 def fetch_kis_orderable_cash(prices, context):
@@ -264,6 +322,17 @@ def format_plan(plan):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--execute-test-buy", nargs="+", metavar="CODE")
+    args = parser.parse_args()
+
+    if args.execute_test_buy:
+        context = get_kis_context()
+        results = execute_confirmed_test_buys(args.execute_test_buy, context)
+        for result in results:
+            print(f"실주문 접수: {result['code']} 1주 / 지정가 {result['price']:,.0f}원 / 주문번호 {result['order_no']}")
+        return
+
     config = load_config()
     _indexes, assets = briefing.load_portfolio()
     snapshot = load_balance_snapshot()
