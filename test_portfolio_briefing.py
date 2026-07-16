@@ -297,6 +297,88 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(session.kwargs["json"]["CNDT_PRIC"], "")
         self.assertEqual(session.kwargs["headers"]["content-type"], "application/json; charset=utf-8")
 
+    def test_submit_cash_sell_uses_sell_transaction_id(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"rt_cd": "0", "output": {"ODNO": "123"}}
+
+        class FakeSession:
+            def post(self, _url, **kwargs):
+                self.kwargs = kwargs
+                return FakeResponse()
+
+        session = FakeSession()
+        context = {
+            "account_no": "12345678",
+            "product_code": "01",
+            "base_url": "https://example.test",
+            "headers": {"authorization": "Bearer token"},
+            "session": session,
+        }
+
+        trading.submit_cash_sell("0015B0", 1, 21300, context)
+
+        self.assertEqual(session.kwargs["headers"]["tr_id"], "TTTC0011U")
+        self.assertEqual(session.kwargs["json"]["SLL_TYPE"], "01")
+
+    def test_cancel_unfilled_order_uses_cancelable_quantity(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"rt_cd": "0", "output": {}}
+
+        class FakeSession:
+            def post(self, _url, **kwargs):
+                self.kwargs = kwargs
+                return FakeResponse()
+
+        session = FakeSession()
+        context = {
+            "account_no": "12345678",
+            "product_code": "01",
+            "base_url": "https://example.test",
+            "headers": {"authorization": "Bearer token"},
+            "session": session,
+        }
+        result = trading.cancel_unfilled_order(
+            {"order_no": "123", "price": 21300},
+            [{"odno": "123", "psbl_qty": "2", "ord_gno_brno": "00001", "ord_dvsn": "00", "ord_unpr": "21300"}],
+            context,
+        )
+
+        self.assertEqual(result, {"order_no": "123", "quantity": 2})
+        self.assertEqual(session.kwargs["headers"]["tr_id"], "TTTC0013U")
+        self.assertEqual(session.kwargs["json"]["QTY_ALL_ORD_YN"], "Y")
+
+    def test_reprice_orders_never_exceeds_live_cash_limit(self):
+        orders = [
+            {"code": "A", "quantity": 3, "price": 10000, "value": 30000},
+            {"code": "B", "quantity": 3, "price": 10000, "value": 30000},
+        ]
+
+        repriced = trading.reprice_orders(orders, {"A": 12000, "B": 11000}, 35000)
+
+        self.assertEqual(repriced, [{"code": "A", "quantity": 2, "price": 12000, "value": 24000}, {"code": "B", "quantity": 1, "price": 11000, "value": 11000}])
+
+    def test_live_rebalance_skips_when_target_order_exists_today(self):
+        config = {
+            "target_weights": {"A": 50, "B": 50},
+            "daily_buy_limit_krw": 500000,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "sell_trigger_weight_pct": 30,
+            "sell_target_weight_pct": 27,
+        }
+        with patch.object(trading, "fetch_today_orders", return_value=[{"pdno": "A"}]):
+            result = trading.execute_live_rebalance(config, [], {}, {})
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["orders"], [])
+
     def test_kis_request_spacing_waits_until_the_next_slot(self):
         context = {"next_kis_request_at": 11.1}
         with patch.object(trading.time, "monotonic", side_effect=[10.0, 11.1]):

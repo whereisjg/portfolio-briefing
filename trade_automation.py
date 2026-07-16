@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Build a guarded daily ETF trading plan from a KIS account balance.
-
-This module intentionally creates plans only. Live order placement remains disabled
-until the ISA account is verified and a separate explicit activation is made.
-"""
+"""Build and, when explicitly enabled, execute a guarded KIS ETF rebalance."""
 
 import argparse
+from copy import deepcopy
 import json
 import math
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 import portfolio_briefing as briefing
@@ -25,10 +23,11 @@ def load_config(path=CONFIG_FILE):
     weights = config.get("target_weights", {})
     if not weights or abs(sum(float(value) for value in weights.values()) - 100) > 0.01:
         raise ValueError("trading_config.json의 target_weights 합계는 100이어야 합니다.")
-    if config.get("mode") != "dry-run":
-        raise ValueError("현재 자동매매는 dry-run만 허용합니다.")
-    if config.get("live_orders_enabled", False):
-        raise ValueError("실주문 활성화는 아직 지원하지 않습니다.")
+    mode = config.get("mode")
+    if mode not in {"dry-run", "live"}:
+        raise ValueError("mode는 dry-run 또는 live여야 합니다.")
+    if mode == "live" and not config.get("live_orders_enabled", False):
+        raise ValueError("live 모드에는 live_orders_enabled: true가 필요합니다.")
     daily_buy_limit = float(config.get("daily_buy_limit_krw", 0))
     if daily_buy_limit <= 0:
         raise ValueError("daily_buy_limit_krw는 0보다 커야 합니다.")
@@ -112,7 +111,7 @@ def fetch_kis_prices(codes, context):
     return prices
 
 
-def fetch_kis_best_ask(code, context):
+def fetch_kis_best_quote(code, context, field, label):
     wait_for_kis_request_slot(context)
     response = context["session"].get(
         f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
@@ -124,13 +123,23 @@ def fetch_kis_best_ask(code, context):
     payload = response.json()
     if payload.get("rt_cd") != "0":
         raise ValueError(f"KIS 최우선 매도호가 조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
-    price = briefing.as_float((payload.get("output1") or {}).get("askp1"), None)
+    price = briefing.as_float((payload.get("output1") or {}).get(field), None)
     if price is None or price <= 0:
-        raise ValueError(f"KIS 최우선 매도호가가 없습니다: {code}")
+        raise ValueError(f"KIS 최우선 {label}호가가 없습니다: {code}")
     return price
 
 
-def submit_cash_buy(code, quantity, price, context):
+def fetch_kis_best_ask(code, context):
+    return fetch_kis_best_quote(code, context, "askp1", "매도")
+
+
+def fetch_kis_best_bid(code, context):
+    return fetch_kis_best_quote(code, context, "bidp1", "매수")
+
+
+def submit_cash_order(code, quantity, price, side, context):
+    if side not in {"buy", "sell"}:
+        raise ValueError("주문 방향은 buy 또는 sell이어야 합니다.")
     payload = {
         "CANO": context["account_no"],
         "ACNT_PRDT_CD": context["product_code"],
@@ -139,7 +148,7 @@ def submit_cash_buy(code, quantity, price, context):
         "ORD_QTY": str(quantity),
         "ORD_UNPR": str(round(price)),
         "EXCG_ID_DVSN_CD": "KRX",
-        "SLL_TYPE": "",
+        "SLL_TYPE": "01" if side == "sell" else "",
         "CNDT_PRIC": "",
     }
     wait_for_kis_request_slot(context)
@@ -147,7 +156,7 @@ def submit_cash_buy(code, quantity, price, context):
         f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-cash",
         headers={
             **context["headers"],
-            "tr_id": "TTTC0012U",
+            "tr_id": "TTTC0012U" if side == "buy" else "TTTC0011U",
             "content-type": "application/json; charset=utf-8",
         },
         json=payload,
@@ -155,12 +164,20 @@ def submit_cash_buy(code, quantity, price, context):
     )
     if response.status_code != 200:
         raise ValueError(
-            f"KIS 매수주문 HTTP {response.status_code}: {response.text[:500]}"
+            f"KIS {side} 주문 HTTP {response.status_code}: {response.text[:500]}"
         )
     result = response.json()
     if result.get("rt_cd") != "0":
-        raise ValueError(f"KIS 매수주문 실패({code}): {result.get('msg1', '알 수 없는 오류')}")
+        raise ValueError(f"KIS {side} 주문 실패({code}): {result.get('msg1', '알 수 없는 오류')}")
     return result.get("output") or {}
+
+
+def submit_cash_buy(code, quantity, price, context):
+    return submit_cash_order(code, quantity, price, "buy", context)
+
+
+def submit_cash_sell(code, quantity, price, context):
+    return submit_cash_order(code, quantity, price, "sell", context)
 
 
 def execute_confirmed_test_buys(codes, context):
@@ -214,6 +231,248 @@ def fetch_kis_orderable_cash(prices, context):
     return max(amount, 0)
 
 
+def fetch_today_orders(context):
+    """Read today's cash orders before placing anything to prevent duplicate runs."""
+    today = datetime.now(briefing.KST).strftime("%Y%m%d")
+    wait_for_kis_request_slot(context)
+    response = context["session"].get(
+        f"{context['base_url']}/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+        headers={**context["headers"], "tr_id": "TTTC0081R"},
+        params={
+            "CANO": context["account_no"],
+            "ACNT_PRDT_CD": context["product_code"],
+            "INQR_STRT_DT": today,
+            "INQR_END_DT": today,
+            "SLL_BUY_DVSN_CD": "00",
+            "PDNO": "",
+            "CCLD_DVSN": "00",
+            "INQR_DVSN": "00",
+            "INQR_DVSN_3": "01",
+            "ORD_GNO_BRNO": "",
+            "ODNO": "",
+            "INQR_DVSN_1": "",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+            "EXCG_ID_DVSN_CD": "KRX",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 당일 주문조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
+    return payload.get("output1") or []
+
+
+def fetch_cancelable_orders(context):
+    wait_for_kis_request_slot(context)
+    response = context["session"].get(
+        f"{context['base_url']}/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl",
+        headers={**context["headers"], "tr_id": "TTTC0084R"},
+        params={
+            "CANO": context["account_no"],
+            "ACNT_PRDT_CD": context["product_code"],
+            "INQR_DVSN_1": "0",
+            "INQR_DVSN_2": "0",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 취소가능주문조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
+    return payload.get("output") or []
+
+
+def cancel_unfilled_order(order, cancelable, context):
+    order_no = str(order.get("order_no", ""))
+    row = next((item for item in cancelable if str(item.get("odno", "")) == order_no), None)
+    if not row:
+        return None
+    quantity = int(briefing.as_float(row.get("psbl_qty"), 0))
+    if quantity < 1:
+        return None
+    org_no = str(row.get("ord_gno_brno", "")).strip()
+    if not org_no:
+        raise ValueError(f"KIS 취소가능주문에 주문조직번호가 없습니다: {order_no}")
+    payload = {
+        "CANO": context["account_no"],
+        "ACNT_PRDT_CD": context["product_code"],
+        "KRX_FWDG_ORD_ORGNO": org_no,
+        "ORGN_ODNO": order_no,
+        "ORD_DVSN": str(row.get("ord_dvsn", "00")),
+        "RVSE_CNCL_DVSN_CD": "02",
+        "ORD_QTY": str(quantity),
+        "ORD_UNPR": str(row.get("ord_unpr") or order["price"]),
+        "QTY_ALL_ORD_YN": "Y",
+        "EXCG_ID_DVSN_CD": "KRX",
+    }
+    wait_for_kis_request_slot(context)
+    response = context["session"].post(
+        f"{context['base_url']}/uapi/domestic-stock/v1/trading/order-rvsecncl",
+        headers={
+            **context["headers"],
+            "tr_id": "TTTC0013U",
+            "content-type": "application/json; charset=utf-8",
+        },
+        json=payload,
+        timeout=20,
+    )
+    if response.status_code != 200:
+        raise ValueError(f"KIS 주문취소 HTTP {response.status_code}: {response.text[:500]}")
+    result = response.json()
+    if result.get("rt_cd") != "0":
+        raise ValueError(f"KIS 주문취소 실패({order_no}): {result.get('msg1', '알 수 없는 오류')}")
+    return {"order_no": order_no, "quantity": quantity}
+
+
+def target_order_exists_today(orders, target_codes):
+    return any(str(order.get("pdno", "")).strip() in target_codes for order in orders)
+
+
+def reprice_orders(orders, prices, total_limit, per_order_limits=None):
+    """Keep quantity plans within real limit prices and the applicable cash cap."""
+    remaining = max(float(total_limit), 0)
+    repriced = []
+    for order in orders:
+        code = order["code"]
+        price = prices[code]
+        max_value = remaining
+        if per_order_limits is not None:
+            max_value = min(max_value, per_order_limits.get(code, max_value))
+        quantity = min(int(order["quantity"]), math.floor(max_value / price))
+        if quantity < 1:
+            continue
+        value = quantity * price
+        repriced.append({"code": code, "quantity": quantity, "price": price, "value": value})
+        remaining -= value
+    return repriced
+
+
+def filled_values_for_orders(today_orders, submitted):
+    submitted_by_no = {str(order.get("order_no", "")): order for order in submitted}
+    values = {"buy": 0.0, "sell": {}, "orders": set()}
+    for row in today_orders:
+        order = submitted_by_no.get(str(row.get("odno", "")))
+        if not order:
+            continue
+        value = briefing.as_float(row.get("tot_ccld_amt"), 0)
+        if value <= 0:
+            value = briefing.as_float(row.get("tot_ccld_qty"), 0) * briefing.as_float(row.get("avg_prvs"), 0)
+        if value <= 0:
+            continue
+        values["orders"].add(order["order_no"])
+        if order["side"] == "buy":
+            values["buy"] += value
+        else:
+            values["sell"][order["code"]] = values["sell"].get(order["code"], 0) + value
+    return values
+
+
+def live_orders_for_plan(plan, config, context, first_buy_prices=None):
+    bid_prices = {order["code"]: fetch_kis_best_bid(order["code"], context) for order in plan["sells"]}
+    sell_limits = {
+        order["code"]: order["value"]
+        for order in plan["sells"]
+    }
+    sell_orders = reprice_orders(plan["sells"], bid_prices, sum(sell_limits.values()), sell_limits)
+
+    ask_prices = {order["code"]: fetch_kis_best_ask(order["code"], context) for order in plan["buys"]}
+    if first_buy_prices is not None:
+        max_increase = float(config["order_policy"]["max_buy_price_increase_pct"]) / 100
+        ask_prices = {
+            code: price for code, price in ask_prices.items()
+            if code in first_buy_prices and price <= first_buy_prices[code] * (1 + max_increase)
+        }
+    buy_orders = reprice_orders(
+        [order for order in plan["buys"] if order["code"] in ask_prices],
+        ask_prices,
+        min(plan["orderable_cash"], float(config["daily_buy_limit_krw"])),
+    )
+    return sell_orders, buy_orders
+
+
+def submit_live_orders(sell_orders, buy_orders, context):
+    submitted = []
+    for side, orders in (("sell", sell_orders), ("buy", buy_orders)):
+        for order in orders:
+            result = submit_cash_order(order["code"], order["quantity"], order["price"], side, context)
+            submitted.append({
+                **order,
+                "side": side,
+                "order_no": result.get("ODNO", ""),
+                "order_org_no": result.get("KRX_FWDG_ORD_ORGNO", ""),
+            })
+    return submitted
+
+
+def execute_live_rebalance(config, holdings, summary, context):
+    """Submit one guarded live rebalance pass using limit orders only.
+
+    An existing target-ETF order today is treated as a completed or in-progress
+    run. This intentionally blocks a second workflow run from duplicating it.
+    """
+    target_codes = set(config["target_weights"])
+    today_orders = fetch_today_orders(context)
+    if target_order_exists_today(today_orders, target_codes):
+        return {
+            "status": "skipped",
+            "reason": "오늘 대상 ETF 주문 이력이 있어 중복 주문을 차단했습니다.",
+            "plan": None,
+            "orders": [],
+        }
+
+    positions = positions_from_holdings(holdings, config["target_weights"])
+    market_prices = fetch_kis_prices(config["target_weights"], context)
+    cash = cash_from_balance(summary)
+    orderable_cash = fetch_kis_orderable_cash(market_prices, context)
+    plan = plan_orders(config, positions, market_prices, cash, orderable_cash)
+
+    sell_orders, buy_orders = live_orders_for_plan(plan, config, context)
+    submitted = submit_live_orders(sell_orders, buy_orders, context)
+    if not submitted:
+        return {"status": "submitted", "plan": plan, "orders": [], "reason": ""}
+
+    time.sleep(int(config["order_policy"]["first_order_check_minutes"]) * 60)
+    cancelable = fetch_cancelable_orders(context)
+    cancelled = [
+        result for result in (cancel_unfilled_order(order, cancelable, context) for order in submitted)
+        if result is not None
+    ]
+
+    fresh_holdings, fresh_summary, _token = briefing.fetch_kis_balance()
+    fresh_positions = positions_from_holdings(fresh_holdings, config["target_weights"])
+    fresh_prices = fetch_kis_prices(config["target_weights"], context)
+    fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
+    filled = filled_values_for_orders(fetch_today_orders(context), submitted)
+    retry_config = deepcopy(config)
+    retry_config["daily_buy_limit_krw"] = max(float(config["daily_buy_limit_krw"]) - filled["buy"], 0)
+    retry_sell_limits = {
+        code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
+        for code in config["target_weights"]
+    }
+    retry_plan = plan_orders(
+        retry_config,
+        fresh_positions,
+        fresh_prices,
+        cash_from_balance(fresh_summary),
+        fresh_orderable_cash,
+        retry_sell_limits,
+    )
+    first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
+    retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
+    retried = submit_live_orders(retry_sells, retry_buys, context)
+    return {
+        "status": "submitted",
+        "plan": plan,
+        "orders": submitted + retried,
+        "cancelled": cancelled,
+        "reason": "",
+    }
+
+
 def positions_from_holdings(holdings, target_codes):
     positions = {code: {"quantity": 0.0, "price": 0.0} for code in target_codes}
     for holding in holdings:
@@ -238,7 +497,7 @@ def target_prices(configured_assets, positions, kis_prices):
     return prices
 
 
-def plan_orders(config, positions, prices, cash, orderable_cash=None):
+def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limits=None):
     """Return sell-first and cash-funded buy plans without placing an order."""
     targets = {code: float(weight) / 100 for code, weight in config["target_weights"].items()}
     values = {
@@ -257,9 +516,14 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None):
         price = prices.get(code, 0)
         if price <= 0:
             continue
+        sell_limit = (
+            float(sell_limits.get(code, 0))
+            if sell_limits is not None
+            else float(config["daily_sell_limit_per_asset_krw"])
+        )
         sell_value = min(
             values[code] - total * config["sell_target_weight_pct"] / 100,
-            float(config["daily_sell_limit_per_asset_krw"]),
+            sell_limit,
         )
         quantity = min(positions[code]["quantity"], math.floor(sell_value / price))
         if quantity >= 1:
@@ -315,9 +579,9 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None):
     }
 
 
-def format_plan(plan):
+def format_plan(plan, live=False):
     lines = [
-        "자동매매 dry-run",
+        "자동매매 실주문" if live else "자동매매 dry-run",
         f"총 자산(예수금 포함): {plan['total_value']:,.0f}원",
         f"주문 전 예수금: {plan['cash']:,.0f}원",
         f"주문가능금액: {plan.get('orderable_cash', plan['cash']):,.0f}원",
@@ -334,13 +598,14 @@ def format_plan(plan):
     for warning in plan.get("warnings", []):
         lines.append(f"주의: {warning}")
     lines.append(f"주문 후 남는 주문가능금액(추정): {plan['unallocated_cash']:,.0f}원")
-    lines.append("실제 주문은 전송하지 않았습니다.")
+    lines.append("지정가 주문을 전송합니다." if live else "실제 주문은 전송하지 않았습니다.")
     return "\n".join(lines)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--execute-test-buy", nargs="+", metavar="CODE")
+    parser.add_argument("--execute-live", action="store_true")
     args = parser.parse_args()
 
     if args.execute_test_buy:
@@ -361,6 +626,25 @@ def main():
         holdings, summary, access_token = snapshot
     positions = positions_from_holdings(holdings, config["target_weights"])
     kis_context = get_kis_context(access_token)
+    if args.execute_live:
+        if config.get("mode") != "live" or not config.get("live_orders_enabled"):
+            raise ValueError("실주문은 live 설정이 활성화된 경우에만 실행할 수 있습니다.")
+        execution = execute_live_rebalance(config, holdings, summary, kis_context)
+        if execution["status"] == "skipped":
+            print("자동매매 실주문\n" + execution["reason"])
+            return
+        print(format_plan(execution["plan"], live=True))
+        if not execution["orders"]:
+            print("주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
+            return
+        for order in execution["orders"]:
+            direction = "매수" if order["side"] == "buy" else "매도"
+            print(
+                f"실주문 접수: {direction} {order['code']} {order['quantity']}주 / "
+                f"지정가 {order['price']:,.0f}원 / 주문번호 {order['order_no']}"
+            )
+        return
+
     kis_prices = fetch_kis_prices(config["target_weights"], kis_context)
     prices = target_prices(assets, positions, kis_prices)
     cash = cash_from_balance(summary)

@@ -8,7 +8,7 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 - 실제 보유 종목의 비중, 시장 등락, 관련 뉴스, 리밸런싱 우선순위를 Telegram으로 보냅니다.
 - 결과는 `briefings/briefing_YYYYMMDD.md`에 저장하고 GitHub에 기록합니다.
 - 현재는 일반계좌용 `KIS_TEST_*` Secret을 사용합니다. ISA 이전이 완료되면 ISA Secret으로 전환합니다.
-- 자동매매 규칙은 `dry-run`으로 계산·검증합니다. 현재는 주문·정정·취소 API를 호출하지 않습니다.
+- 자동매매 규칙은 KIS 실계좌의 지정가 주문, 미체결 취소, 한 번의 재시도까지 실행합니다.
 
 ## 목표 비중
 
@@ -100,16 +100,16 @@ KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
 
 ## 자동매매 규칙
 
-[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. 현재 `live_orders_enabled: false`, `mode: dry-run`이므로 실주문은 불가능합니다.
+[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. 현재 `live_orders_enabled: true`, `mode: live`이며 기본 workflow 실행은 실주문 모드입니다. `execute_live_orders` 입력을 끄면 주문 없이 계획만 만듭니다.
 
 - 매일 10:00 KST 기준으로 잔고·예수금·가격을 조회합니다.
 - 목표 비중은 네 ETF 각각 25%입니다.
 - 매수는 KIS 주문가능금액 범위에서만, 하루 총 50만원까지 계산합니다. 1주를 살 수 없는 잔액은 다음 영업일로 이월합니다.
 - 매도는 한 ETF가 30% 초과일 때 27%까지 계산하며, 종목별 하루 100만원을 넘기지 않습니다.
-- 미래 실주문은 최우선 매수호가·최우선 매도호가의 지정가만 허용합니다. 5분 뒤 미체결분을 확인하고 취소한 뒤, 매수 가격이 최초 주문가보다 0.3% 이내일 때만 한 번 재시도합니다. 이후 잔량은 취소하고 다음 영업일로 넘깁니다.
-- 중복 주문 방지, 체결·미체결 조회, 정정·취소는 실주문 활성화 단계에서 KIS 주문번호와 취소가능수량을 기준으로 구현합니다.
+- 실주문은 최우선 매수호가·최우선 매도호가의 지정가만 허용합니다.
+- 같은 날 대상 ETF 주문 이력이 있으면 실행을 중단해 중복 주문을 막습니다. GitHub Actions concurrency도 동시에 두 실행이 겹치지 않게 합니다.
 
-브리핑 workflow는 KIS 잔고를 한 번만 조회하고, 같은 스냅샷으로 브리핑과 dry-run 계획을 함께 만듭니다. 매수 계획에는 KIS 주문가능금액 조회를 추가로 사용하며, 계획은 Telegram과 날짜별 Markdown 이력에 함께 남깁니다. ISA 이전이 완료된 뒤 잔고조회와 dry-run 결과를 확인한 후에만 별도의 실주문 활성화 작업을 진행합니다.
+브리핑 workflow는 KIS 잔고를 조회한 뒤 같은 계좌의 주문가능금액과 호가를 다시 확인해 리밸런싱 주문을 전송합니다. 실행 결과는 Telegram과 날짜별 Markdown 이력에 함께 남깁니다.
 
 ## cron-job.org Setup
 

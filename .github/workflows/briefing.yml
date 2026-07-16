@@ -3,11 +3,11 @@ name: Daily Portfolio Briefing
 on:
   workflow_dispatch:
     inputs:
-      execute_test_orders:
-        description: 'Submit the confirmed one-share test buys'
+      execute_live_orders:
+        description: 'Execute the configured live ETF rebalance'
         required: false
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
@@ -70,8 +70,18 @@ jobs:
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
           TELEGRAM_MESSAGE_FILE: /tmp/telegram-message.txt
         run: python portfolio_briefing.py
-      - name: Build trading plan from briefing balance (no orders)
-        if: inputs.execute_test_orders != true
+      - name: Run configured live rebalance
+        if: inputs.execute_live_orders == true
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_TEST_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
+          KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
+          KIS_PRODUCT_CODE: ${{ secrets.KIS_TEST_PRODUCT_CODE }}
+          KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
+          KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
+        run: python trade_automation.py --execute-live > /tmp/trading-plan.txt
+      - name: Build trading plan only
+        if: inputs.execute_live_orders != true
         env:
           KIS_APP_KEY: ${{ secrets.KIS_TEST_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
@@ -80,31 +90,17 @@ jobs:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
         run: python trade_automation.py > /tmp/trading-plan.txt
-      - name: Submit confirmed one-share test buys
-        if: inputs.execute_test_orders == true
-        env:
-          KIS_APP_KEY: ${{ secrets.KIS_TEST_APP_KEY }}
-          KIS_APP_SECRET: ${{ secrets.KIS_TEST_APP_SECRET }}
-          KIS_ACCOUNT_NO: ${{ secrets.KIS_TEST_ACCOUNT_NO }}
-          KIS_PRODUCT_CODE: ${{ secrets.KIS_TEST_PRODUCT_CODE }}
-          KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
-          KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
-          CONFIRM_LIVE_TEST_BUY: CONFIRM
-        run: python trade_automation.py --execute-test-buy 0015B0 486290
       - name: Add trading plan to Telegram message
-        if: inputs.execute_test_orders != true
         run: |
           printf '\n\n────────────────────\n' >> /tmp/telegram-message.txt
           cat /tmp/trading-plan.txt >> /tmp/telegram-message.txt
       - name: Save trading plan to briefing history
-        if: inputs.execute_test_orders != true
         run: |
           briefing_file="briefings/briefing_$(TZ=Asia/Seoul date +%Y%m%d).md"
-          printf '\n\n## 자동매매 계획 (dry-run)\n\n```text\n' >> "$briefing_file"
+          printf '\n\n## 자동매매 실행 결과\n\n```text\n' >> "$briefing_file"
           cat /tmp/trading-plan.txt >> "$briefing_file"
           printf '\n```\n' >> "$briefing_file"
       - name: Commit and push
-        if: inputs.execute_test_orders != true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -117,7 +113,6 @@ jobs:
           git pull --rebase origin main
           git push
       - name: Send Telegram
-        if: inputs.execute_test_orders != true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
