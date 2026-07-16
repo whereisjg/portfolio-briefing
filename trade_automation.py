@@ -48,7 +48,7 @@ def code_from_asset(asset):
 
 
 def cash_from_balance(summary):
-    for field in ("dnca_tot_amt", "nxdy_excc_amt", "prvs_rcdl_excc_amt"):
+    for field in ("prvs_rcdl_excc_amt", "nxdy_excc_amt", "dnca_tot_amt"):
         amount = briefing.as_float(summary.get(field), None)
         if amount is not None:
             return max(amount, 0)

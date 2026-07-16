@@ -337,6 +337,14 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(sum(order["value"] for order in plan["buys"]), 20000)
         self.assertEqual(plan["orderable_cash"], 25000)
 
+    def test_cash_from_balance_prefers_available_cash_after_orders(self):
+        summary = {
+            "dnca_tot_amt": "10000000",
+            "prvs_rcdl_excc_amt": "9500000",
+        }
+
+        self.assertEqual(trading.cash_from_balance(summary), 9500000)
+
     def test_load_balance_snapshot_reuses_briefing_response(self):
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as file:
             json.dump(
