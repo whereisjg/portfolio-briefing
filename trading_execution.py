@@ -3,10 +3,12 @@
 
 import argparse
 from copy import deepcopy
+import json
 import math
 import os
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import kis_client
 import run_state
@@ -22,6 +24,7 @@ from trading_strategy import (
 
 KIS_REQUEST_MIN_INTERVAL_SECONDS = 2.0
 TREND_STATE_FILE = os.getenv("KIS_TREND_STATE_FILE", "").strip()
+PORTFOLIO_FILE = Path("portfolio.json")
 
 
 def load_balance_snapshot():
@@ -29,6 +32,22 @@ def load_balance_snapshot():
     if not path:
         return None
     return run_state.load_balance_snapshot(path)
+
+
+def load_asset_labels(path=PORTFOLIO_FILE):
+    """Map KIS ETF codes to the short labels used in user-facing reports."""
+    try:
+        with open(path, encoding="utf-8") as file:
+            assets = json.load(file).get("assets", [])
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {
+        str(asset.get("symbol", "")).split(".")[0]: (
+            asset.get("display") or asset.get("name") or asset.get("ticker")
+        )
+        for asset in assets
+        if asset.get("symbol")
+    }
 
 
 def get_kis_context(access_token=None):
@@ -698,7 +717,7 @@ def main():
         if execution["status"] == "skipped":
             print("자동매매 실주문\n" + execution["reason"])
             return
-        print(format_plan(execution["plan"], live=True))
+        print(format_plan(execution["plan"], live=True, asset_labels=load_asset_labels()))
         if not execution["orders"]:
             print("주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
             return
@@ -747,7 +766,7 @@ def main():
     plan["daily_turnover_used"] = daily_turnover_used
     plan["trend"] = trend
     plan["warnings"] = warnings
-    print(format_plan(plan))
+    print(format_plan(plan, asset_labels=load_asset_labels()))
 
 
 if __name__ == "__main__":

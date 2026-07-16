@@ -71,6 +71,25 @@ class ConfigurationTests(unittest.TestCase):
     def test_execution_module_does_not_depend_on_briefing_module(self):
         self.assertNotIn("portfolio_briefing", trading.__dict__)
 
+    def test_plan_format_uses_asset_labels(self):
+        plan = {
+            "total_value": 100000,
+            "cash": 100000,
+            "orderable_cash": 100000,
+            "daily_turnover_limit": 100000,
+            "daily_turnover_cap": None,
+            "sells": [],
+            "buys": [{"code": "0015B0", "quantity": 1, "price": 21000, "value": 21000}],
+            "unallocated_cash": 79000,
+            "trend": {"state": "neutral", "signal_code": "0015B0", "latest_date": "20260716", "latest_close": 21335, "short_average": 23750, "long_average": 22881},
+        }
+
+        report = strategy.format_plan(plan, asset_labels={"0015B0": "KoAct나스닥성장"})
+
+        self.assertIn("추세 기준: KoAct나스닥성장", report)
+        self.assertIn("KoAct나스닥성장 1주", report)
+        self.assertNotIn("0015B0 1주", report)
+
 class KisBalanceTests(unittest.TestCase):
     def test_paper_balance_uses_virtual_tr_id_and_unpr_dvsn(self):
         class FakeResponse:
