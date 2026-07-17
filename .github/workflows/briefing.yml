@@ -82,24 +82,32 @@ jobs:
           PY
       - name: Build closed-market Telegram message
         if: steps.krx-market.outputs.open != 'true'
+        env:
+          KRX_CLOSED_REASON: ${{ steps.krx-market.outputs.reason }}
         run: |
-          today=$(TZ=Asia/Seoul date +%m/%d)
-          message=$(cat <<EOF
-📈 포트폴리오 $today · 휴장
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from pathlib import Path
 
-오늘은 KRX 휴장일입니다.
-사유: ${{ steps.krx-market.outputs.reason }}
+          import pytz
 
-자동매매: 실행 안 함
-잔고조회: 생략
-EOF
+          now = datetime.now(pytz.timezone("Asia/Seoul"))
+          reason = os.getenv("KRX_CLOSED_REASON", "휴장일")
+          message = (
+              f"📈 포트폴리오 {now:%m/%d} · 휴장\n\n"
+              "오늘은 KRX 휴장일입니다.\n"
+              f"사유: {reason}\n\n"
+              "자동매매: 실행 안 함\n"
+              "잔고조회: 생략"
           )
-          printf '%s\n' "$message" > /tmp/telegram-message.txt
-          briefing_file="briefings/briefing_$(TZ=Asia/Seoul date +%Y%m%d).md"
-          {
-            printf '# 포트폴리오 브리핑 %s\n\n' "$(TZ=Asia/Seoul date +%Y-%m-%d)"
-            printf '%s\n' "$message"
-          } > "$briefing_file"
+          Path("/tmp/telegram-message.txt").write_text(message + "\n", encoding="utf-8")
+          briefing_file = Path("briefings") / f"briefing_{now:%Y%m%d}.md"
+          briefing_file.write_text(
+              f"# 포트폴리오 브리핑 {now:%Y-%m-%d}\n\n{message}\n",
+              encoding="utf-8",
+          )
+          PY
       - name: Fetch pre-trade KIS balance
         if: steps.krx-market.outputs.open == 'true'
         env:
