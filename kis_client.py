@@ -13,6 +13,7 @@ from urllib3.util.retry import Retry
 KST = pytz.timezone("Asia/Seoul")
 TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 DEFAULT_BASE_URL = "https://openapi.koreainvestment.com:9443"
+BALANCE_MCI_RETRY_DELAYS_SECONDS = (2, 4)
 
 
 def env_value(name, default=""):
@@ -112,34 +113,44 @@ def fetch_balance(session_factory=get_http_session, cache_file=""):
     base_url = env_value("KIS_API_BASE_URL", DEFAULT_BASE_URL)
     tr_id = env_value("KIS_BALANCE_TR_ID", transaction_id("TTTC8434R", "VTTC8434R"))
     access_token = get_access_token(app_key, app_secret, base_url, cache_file, session_factory)
-    response = session_factory(retries=1).get(
-        f"{base_url}/uapi/domestic-stock/v1/trading/inquire-balance",
-        headers={
-            "authorization": f"Bearer {access_token}",
-            "appkey": app_key,
-            "appsecret": app_secret,
-            "tr_id": tr_id,
-            "custtype": "P",
-        },
-        params={
-            "CANO": account_no,
-            "ACNT_PRDT_CD": product_code,
-            "AFHR_FLPR_YN": "N",
-            "OFL_YN": "N",
-            "INQR_DVSN": "01",
-            "UNPR_DVSN": "01",
-            "FUND_STTL_ICLD_YN": "N",
-            "FNCG_AMT_AUTO_RDPT_YN": "N",
-            "PRCS_DVSN": "00",
-            "CTX_AREA_FK100": "",
-            "CTX_AREA_NK100": "",
-        },
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("rt_cd") != "0":
-        raise ValueError(f"KIS 잔고조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
+    session = session_factory(retries=1)
+    headers = {
+        "authorization": f"Bearer {access_token}",
+        "appkey": app_key,
+        "appsecret": app_secret,
+        "tr_id": tr_id,
+        "custtype": "P",
+    }
+    params = {
+        "CANO": account_no,
+        "ACNT_PRDT_CD": product_code,
+        "AFHR_FLPR_YN": "N",
+        "OFL_YN": "N",
+        "INQR_DVSN": "01",
+        "UNPR_DVSN": "01",
+        "FUND_STTL_ICLD_YN": "N",
+        "FNCG_AMT_AUTO_RDPT_YN": "N",
+        "PRCS_DVSN": "00",
+        "CTX_AREA_FK100": "",
+        "CTX_AREA_NK100": "",
+    }
+    for attempt, delay in enumerate((*BALANCE_MCI_RETRY_DELAYS_SECONDS, None)):
+        response = session.get(
+            f"{base_url}/uapi/domestic-stock/v1/trading/inquire-balance",
+            headers=headers,
+            params=params,
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        message = str(payload.get("msg1", ""))
+        if payload.get("rt_cd") == "0":
+            break
+        if "MCI전송" not in message or delay is None:
+            raise ValueError(f"KIS 잔고조회 실패: {message or '알 수 없는 오류'}")
+        print(f"KIS 잔고조회 MCI 오류, {delay}초 후 재시도합니다. ({attempt + 1}/2)")
+        time.sleep(delay)
+
     holdings = payload.get("output1") or payload.get("output") or []
     summary_rows = payload.get("output2") or [{}]
     summary = summary_rows[0] if isinstance(summary_rows, list) else summary_rows

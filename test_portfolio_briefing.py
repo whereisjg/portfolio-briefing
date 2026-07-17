@@ -4,6 +4,7 @@ import tempfile
 import json
 
 import portfolio_briefing as briefing
+import kis_client
 import trading_execution as trading
 import trading_strategy as strategy
 
@@ -125,6 +126,43 @@ class KisBalanceTests(unittest.TestCase):
         self.assertEqual(session.kwargs["headers"]["tr_id"], "VTTC8434R")
         self.assertEqual(session.kwargs["params"]["UNPR_DVSN"], "01")
         self.assertEqual(holdings, [{"pdno": "0015B0"}])
+
+    def test_balance_retries_transient_mci_error(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return self.payload
+
+        class FakeSession:
+            def __init__(self):
+                self.responses = [
+                    FakeResponse({"rt_cd": "1", "msg1": "호출 후처리(MCI전송) 오류 입니다."}),
+                    FakeResponse({"rt_cd": "0", "output1": [{"pdno": "0015B0"}], "output2": [{}]}),
+                ]
+
+            def post(self, *args, **kwargs):
+                return FakeResponse({"access_token": "token"})
+
+            def get(self, *args, **kwargs):
+                return self.responses.pop(0)
+
+        environment = {
+            "KIS_APP_KEY": "key",
+            "KIS_APP_SECRET": "secret",
+            "KIS_ACCOUNT_NO": "12345678",
+            "KIS_PRODUCT_CODE": "01",
+        }
+        with patch.dict(kis_client.os.environ, environment):
+            with patch.object(kis_client.time, "sleep") as sleep:
+                holdings, _summary, _token = kis_client.fetch_balance(lambda retries: FakeSession())
+
+        self.assertEqual(holdings, [{"pdno": "0015B0"}])
+        sleep.assert_called_once_with(2)
 
     def test_kis_access_token_cache_reuses_token_within_six_hours(self):
         class FakeResponse:
