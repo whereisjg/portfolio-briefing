@@ -13,7 +13,7 @@ from urllib3.util.retry import Retry
 KST = pytz.timezone("Asia/Seoul")
 TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 DEFAULT_BASE_URL = "https://openapi.koreainvestment.com:9443"
-BALANCE_MCI_RETRY_DELAYS_SECONDS = (2, 4)
+BALANCE_MCI_RETRY_DELAYS_SECONDS = (3, 7, 15, 30)
 
 
 def env_value(name, default=""):
@@ -148,7 +148,10 @@ def fetch_balance(session_factory=get_http_session, cache_file=""):
             break
         if "MCI전송" not in message or delay is None:
             raise ValueError(f"KIS 잔고조회 실패: {message or '알 수 없는 오류'}")
-        print(f"KIS 잔고조회 MCI 오류, {delay}초 후 재시도합니다. ({attempt + 1}/2)")
+        print(
+            f"KIS 잔고조회 MCI 오류, {delay}초 후 재시도합니다. "
+            f"({attempt + 1}/{len(BALANCE_MCI_RETRY_DELAYS_SECONDS)})"
+        )
         time.sleep(delay)
 
     holdings = payload.get("output1") or payload.get("output") or []

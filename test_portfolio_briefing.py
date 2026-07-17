@@ -162,7 +162,7 @@ class KisBalanceTests(unittest.TestCase):
                 holdings, _summary, _token = kis_client.fetch_balance(lambda retries: FakeSession())
 
         self.assertEqual(holdings, [{"pdno": "0015B0"}])
-        sleep.assert_called_once_with(2)
+        sleep.assert_called_once_with(3)
 
     def test_kis_access_token_cache_reuses_token_within_six_hours(self):
         class FakeResponse:
