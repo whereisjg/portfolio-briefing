@@ -5,6 +5,7 @@ import json
 
 import portfolio_briefing as briefing
 import kis_client
+import market_calendar
 import trading_execution as trading
 import trading_strategy as strategy
 
@@ -92,6 +93,15 @@ class ConfigurationTests(unittest.TestCase):
         self.assertNotIn("0015B0 1주", report)
 
 class KisBalanceTests(unittest.TestCase):
+    def test_krx_market_status_closes_constitution_day_and_weekends(self):
+        self.assertFalse(market_calendar.is_krx_trading_day(market_calendar.date(2026, 7, 17)))
+        self.assertEqual(
+            market_calendar.krx_market_status(market_calendar.date(2026, 7, 17))["reason"],
+            "제헌절",
+        )
+        self.assertFalse(market_calendar.is_krx_trading_day(market_calendar.date(2026, 7, 18)))
+        self.assertTrue(market_calendar.is_krx_trading_day(market_calendar.date(2026, 7, 20)))
+
     def test_paper_balance_uses_virtual_tr_id_and_unpr_dvsn(self):
         class FakeResponse:
             def raise_for_status(self):
