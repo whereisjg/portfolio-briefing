@@ -135,16 +135,20 @@ jobs:
       - name: Run closed-market briefing
         id: closed-briefing
         if: steps.krx-market.outputs.open != 'true'
-        continue-on-error: true
         env:
           KIS_BALANCE_ENABLED: 'true'
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
           KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
           KRX_MARKET_NOTICE: "📌 오늘은 KRX 휴장일입니다. 사유: ${{ steps.krx-market.outputs.reason }}. 자동매매는 실행하지 않습니다."
           TELEGRAM_MESSAGE_FILE: /tmp/telegram-message.txt
-        run: python portfolio_briefing.py
+        run: |
+          if python portfolio_briefing.py; then
+            echo "success=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "success=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build closed-market fallback message
-        if: steps.krx-market.outputs.open != 'true' && steps.closed-briefing.outcome != 'success'
+        if: steps.krx-market.outputs.open != 'true' && steps.closed-briefing.outputs.success != 'true'
         env:
           KRX_CLOSED_REASON: ${{ steps.krx-market.outputs.reason }}
         run: |
