@@ -779,6 +779,26 @@ class ContentTests(unittest.TestCase):
         self.assertNotIn("평단 ₩25,000", telegram)
         self.assertIn("## 💳 계좌 요약", markdown)
 
+    def test_build_content_includes_market_notice(self):
+        quotes = [{
+            "ticker": "ETF",
+            "display": "테스트 ETF",
+            "name": "테스트 ETF",
+            "currency": "KRW",
+            "price": 22000,
+            "prev_close": 21500,
+            "chg_amount": 500,
+            "chg_pct": 2.33,
+            "provider": "KIS",
+        }]
+
+        telegram, markdown = briefing.build_content(
+            [], quotes, [], market_notice="📌 오늘은 KRX 휴장일입니다."
+        )
+
+        self.assertIn("📌 오늘은 KRX 휴장일입니다.", telegram)
+        self.assertIn("## 📌 시장 상태", markdown)
+
     def test_telegram_keeps_usd_effect_as_usd_without_fx_rate(self):
         quotes = [
             {

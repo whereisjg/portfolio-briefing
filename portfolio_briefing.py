@@ -25,6 +25,7 @@ TELEGRAM_MESSAGE_FILE = env_value("TELEGRAM_MESSAGE_FILE")
 KIS_BALANCE_SNAPSHOT_FILE = env_value("KIS_BALANCE_SNAPSHOT_FILE")
 KIS_ACCESS_TOKEN_CACHE_FILE = env_value("KIS_ACCESS_TOKEN_CACHE_FILE")
 KIS_TREND_STATE_FILE = env_value("KIS_TREND_STATE_FILE")
+KRX_MARKET_NOTICE = env_value("KRX_MARKET_NOTICE")
 KIS_ACCESS_TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 
 PORTFOLIO_FILE = "portfolio.json"
@@ -491,7 +492,7 @@ def build_rebalancing_lines(quotes):
     return rows
 
 
-def build_content(indexes, quotes, errors, account_summary=None, trend_state=None):
+def build_content(indexes, quotes, errors, account_summary=None, trend_state=None, market_notice=""):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -567,7 +568,11 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
                 action_text = action_for(item).split(": ", 1)[-1]
             alert_action_lines.append(f"{icon} {item['display']} {item['chg_pct']:+.2f}%\n{action_text}")
 
-    telegram_lines = [f"📈 포트폴리오 {today_short} · 추세 {trend_labels.get(trend_state.get('state'), '중립') if trend_state else '중립'}", ""]
+    telegram_lines = [f"📈 포트폴리오 {today_short} · 추세 {trend_labels.get(trend_state.get('state'), '중립') if trend_state else '중립'}"]
+    if market_notice:
+        telegram_lines.extend([market_notice, ""])
+    else:
+        telegram_lines.append("")
 
     if indexes:
         telegram_lines.append(index_summary)
@@ -602,6 +607,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         f"- 분위기: {mood}",
         f"- 가격 출처: {provider_text}",
         "",
+        *(["## 📌 시장 상태", "", market_notice, ""] if market_notice else []),
         "## ⚠️ 먼저 볼 것",
         "",
         *[f"- {line}" for line in build_alert_lines(quotes, errors)],
@@ -780,7 +786,7 @@ def main():
         next_step = 3
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
         telegram_msg, md_content = build_content(
-            indexes, quotes, errors, account_summary, trend_state
+            indexes, quotes, errors, account_summary, trend_state, KRX_MARKET_NOTICE
         )
 
         next_step += 1
