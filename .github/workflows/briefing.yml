@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: true
+      refresh_kis_token:
+        description: 'Ignore cached KIS access token and issue a new one'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -49,6 +54,7 @@ jobs:
           echo "prefix=kis-token-v1-${scope}-" >> "$GITHUB_OUTPUT"
           echo "key=kis-token-v1-${scope}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
       - name: Restore encrypted KIS token cache
+        if: inputs.refresh_kis_token != true
         uses: actions/cache/restore@v4
         with:
           path: /tmp/kis-access-token.enc
@@ -56,6 +62,7 @@ jobs:
           restore-keys: |
             ${{ steps.kis-token-key.outputs.prefix }}
       - name: Decrypt cached KIS token
+        if: inputs.refresh_kis_token != true
         run: |
           rm -f /tmp/kis-access-token.json /tmp/kis-access-token.json.updated
           if [ -f /tmp/kis-access-token.enc ]; then
@@ -219,7 +226,7 @@ jobs:
             echo "save=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Save encrypted KIS token cache
-        if: always() && steps.seal-kis-token.outputs.save == 'true'
+        if: always() && inputs.refresh_kis_token != true && steps.seal-kis-token.outputs.save == 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/kis-access-token.enc
