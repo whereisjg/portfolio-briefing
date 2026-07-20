@@ -293,6 +293,8 @@ def fetch_kis_orderable_cash(prices, context):
     payload = response.json()
     if payload.get("rt_cd") != "0":
         raise ValueError(f"KIS 주문가능조회 실패: {payload.get('msg1', '알 수 없는 오류')}")
+    if kis_client.env_value("KIS_DEBUG_ORDERABLE_CASH").lower() == "true":
+        print(f"KIS 주문가능조회 응답: {json.dumps(payload.get('output') or {}, ensure_ascii=False)}")
     amount = kis_client.as_float((payload.get("output") or {}).get("nrcvb_buy_amt"), None)
     if amount is None:
         raise ValueError("KIS 주문가능금액이 없습니다.")

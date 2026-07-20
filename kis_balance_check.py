@@ -16,6 +16,8 @@ def main():
     print(f"evaluated amount: {summary.get('tot_evlu_amt', 'N/A')}")
     print(f"cash available: {summary.get('prvs_rcdl_excc_amt', 'N/A')}")
     context = trading.get_kis_context(access_token)
+    prices = trading.fetch_kis_prices(trading.load_config()["target_weights"], context)
+    print(f"orderable cash: {trading.fetch_kis_orderable_cash(prices, context):,.0f}")
     orders = trading.fetch_today_orders(context)
     open_orders = [order for order in orders if kis_client.as_float(order.get("rmn_qty"), 0) > 0]
     print(f"open orders today: {len(open_orders)}")

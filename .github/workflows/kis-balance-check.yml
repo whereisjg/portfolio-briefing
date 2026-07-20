@@ -12,6 +12,11 @@ on:
           - live
           - isa
         default: paper
+      debug_orderable_cash:
+        description: 'Print KIS orderable-cash response fields (read only)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,6 +31,7 @@ jobs:
       KIS_ACCOUNT_NO: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_ACCOUNT_NO || inputs.account_mode == 'isa' && secrets.KIS_ISA_ACCOUNT_NO || secrets.KIS_TEST_ACCOUNT_NO }}
       KIS_PRODUCT_CODE: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_PRODUCT_CODE || inputs.account_mode == 'isa' && secrets.KIS_ISA_PRODUCT_CODE || secrets.KIS_TEST_PRODUCT_CODE }}
       KIS_API_BASE_URL: ${{ inputs.account_mode == 'paper' && 'https://openapivts.koreainvestment.com:29443' || 'https://openapi.koreainvestment.com:9443' }}
+      KIS_DEBUG_ORDERABLE_CASH: ${{ inputs.debug_orderable_cash }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
