@@ -7,7 +7,7 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 - 매일 KIS 계좌의 실제 보유 종목·수량·평단가·평가손익·예수금을 조회합니다.
 - 실제 보유 종목의 비중, 시장 등락, 관련 뉴스, 리밸런싱 우선순위를 Telegram으로 보냅니다.
 - 결과는 `briefings/briefing_YYYYMMDD.md`에 저장하고 GitHub에 기록합니다.
-- 현재는 일반계좌용 `KIS_TEST_*` Secret을 사용합니다. ISA 이전이 완료되면 ISA Secret으로 전환합니다.
+- `paper`는 모의투자, `live`는 기존 일반계좌, `isa`는 ISA 계좌용 Secret을 각각 사용합니다.
 - 자동매매 규칙은 KIS 실계좌의 지정가 주문, 미체결 취소, 한 번의 재시도까지 실행합니다. Telegram에는 주문별 지정가, 체결수량, 평균 체결가, 미체결·취소 상태를 함께 기록합니다.
 
 ## 추세별 목표 비중
@@ -85,6 +85,10 @@ portfolio-briefing/
 | `KIS_TEST_APP_SECRET` | 현재 일반계좌 테스트용 App Secret |
 | `KIS_TEST_ACCOUNT_NO` | 현재 일반계좌 번호 앞 8자리 |
 | `KIS_TEST_PRODUCT_CODE` | 현재 일반계좌 상품코드 뒤 2자리 |
+| `KIS_ISA_APP_KEY` | ISA 계좌 App Key |
+| `KIS_ISA_APP_SECRET` | ISA 계좌 App Secret |
+| `KIS_ISA_ACCOUNT_NO` | ISA 계좌번호 앞 8자리 |
+| `KIS_ISA_PRODUCT_CODE` | ISA 계좌 상품코드 뒤 2자리 |
 
 Secret 값은 채팅, 코드, `portfolio.json`에 넣지 않습니다.
 
@@ -94,22 +98,13 @@ KIS 접근 토큰은 GitHub Actions cache에 암호화해서 저장합니다. �
 
 기본 workflow는 `paper` 모드이며, `KIS_PAPER_*` Secrets와 모의투자 URL, `VTTC...` TR ID만 사용합니다. `live`는 workflow 실행 화면에서 명시적으로 선택할 때만 실전 일반계좌를 사용합니다. 모의투자에서도 주문·5분 후 취소·한 번 재주문 흐름을 검증할 수 있습니다.
 
-## ISA 전환
+## ISA 계좌
 
-ISA 이전이 완료되고 KIS API에서 잔고조회가 성공하면 `.github/workflows/briefing.yml`의 `Run briefing` 단계에서 아래 네 환경변수를 ISA용 Secret으로 바꿉니다.
-
-```yaml
-KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
-KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
-KIS_ACCOUNT_NO: ${{ secrets.KIS_ACCOUNT_NO }}
-KIS_PRODUCT_CODE: ${{ secrets.KIS_PRODUCT_CODE }}
-```
-
-전환 후 `KIS Balance Check` workflow를 먼저 실행해 보유 종목과 예수금이 정상 조회되는지 확인합니다.
+`account_mode: isa`를 선택하면 `KIS_ISA_*` Secret을 사용합니다. 자동매매 전에는 `KIS Balance Check` workflow를 `isa` 모드로 실행해 보유 종목과 예수금이 정상 조회되는지 확인합니다.
 
 ## 자동매매 규칙
 
-[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. `live_orders_enabled: true`, `mode: live`는 주문 실행을 허용하는 설정입니다. workflow 기본 계좌는 `paper`이며, `account_mode: live`를 선택한 경우에만 일반계좌 주문을 사용합니다. `execute_live_orders` 입력을 끄면 어느 계좌에서도 주문 없이 계획만 만듭니다.
+[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. `live_orders_enabled: true`, `mode: live`는 주문 실행을 허용하는 설정입니다. workflow 기본 계좌는 `paper`이며, `account_mode: live` 또는 `isa`를 선택한 경우에만 해당 실계좌 주문을 사용합니다. `execute_live_orders` 입력을 끄면 어느 계좌에서도 주문 없이 계획만 만듭니다.
 
 - cron-job.org가 영업일 10:00 KST에 workflow를 실행하면 잔고·예수금·가격을 조회합니다.
 - 완료된 일봉의 20일·60일 이동평균 신호가 3거래일 연속 같을 때 목표 비중을 변경합니다. 상승 추세는 위험 선호, 하락 추세는 위험 회피, 그 외에는 중립 비중을 적용합니다.

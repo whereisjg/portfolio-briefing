@@ -10,6 +10,7 @@ on:
         options:
           - paper
           - live
+          - isa
         default: paper
 
 permissions:
@@ -20,10 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KIS_ACCOUNT_MODE: ${{ inputs.account_mode }}
-      KIS_APP_KEY: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_KEY || secrets.KIS_TEST_APP_KEY }}
-      KIS_APP_SECRET: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_SECRET || secrets.KIS_TEST_APP_SECRET }}
-      KIS_ACCOUNT_NO: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_ACCOUNT_NO || secrets.KIS_TEST_ACCOUNT_NO }}
-      KIS_PRODUCT_CODE: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_PRODUCT_CODE || secrets.KIS_TEST_PRODUCT_CODE }}
+      KIS_APP_KEY: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_KEY || inputs.account_mode == 'isa' && secrets.KIS_ISA_APP_KEY || secrets.KIS_TEST_APP_KEY }}
+      KIS_APP_SECRET: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_SECRET || inputs.account_mode == 'isa' && secrets.KIS_ISA_APP_SECRET || secrets.KIS_TEST_APP_SECRET }}
+      KIS_ACCOUNT_NO: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_ACCOUNT_NO || inputs.account_mode == 'isa' && secrets.KIS_ISA_ACCOUNT_NO || secrets.KIS_TEST_ACCOUNT_NO }}
+      KIS_PRODUCT_CODE: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_PRODUCT_CODE || inputs.account_mode == 'isa' && secrets.KIS_ISA_PRODUCT_CODE || secrets.KIS_TEST_PRODUCT_CODE }}
       KIS_API_BASE_URL: ${{ inputs.account_mode == 'paper' && 'https://openapivts.koreainvestment.com:29443' || 'https://openapi.koreainvestment.com:9443' }}
     steps:
       - uses: actions/checkout@v7
