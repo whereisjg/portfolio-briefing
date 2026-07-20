@@ -563,6 +563,17 @@ class TradingPlanTests(unittest.TestCase):
         self.assertIn("체결 2/2주 @ 9,900원 · 주문 대비 -100원 (-1.00%) · 전량 체결", report[1])
         self.assertIn("미체결 취소", report[2])
 
+    def test_execution_report_uses_asset_labels(self):
+        report = trading.format_execution_report(
+            [],
+            [{"order_no": "1", "side": "buy", "code": "0015B0", "quantity": 1, "price": 20000}],
+            [],
+            {"0015B0": "KoAct나스닥성장"},
+        )
+
+        self.assertIn("매수 KoAct나스닥성장", report[1])
+        self.assertNotIn("0015B0", report[1])
+
     def test_reprice_orders_never_exceeds_live_cash_limit(self):
         orders = [
             {"code": "A", "quantity": 3, "price": 10000, "value": 30000},

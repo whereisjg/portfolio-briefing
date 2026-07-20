@@ -516,11 +516,12 @@ def daily_turnover_budget(config, total_assets, today_orders, target_codes, cont
     return cap, used, max(cap - used, 0)
 
 
-def format_execution_report(today_orders, submitted, cancelled):
+def format_execution_report(today_orders, submitted, cancelled, asset_labels=None):
     """Format KIS order status into a compact Telegram-friendly execution report."""
     if not submitted:
         return []
 
+    asset_labels = asset_labels or {}
     rows_by_order_no = {str(row.get("odno", "")).strip(): row for row in today_orders}
     cancelled_order_nos = {str(item.get("order_no", "")).strip() for item in cancelled}
     lines = ["📋 체결 품질"]
@@ -528,10 +529,11 @@ def format_execution_report(today_orders, submitted, cancelled):
         order_no = str(order.get("order_no", "")).strip()
         row = rows_by_order_no.get(order_no)
         side = "매수" if order["side"] == "buy" else "매도"
+        label = asset_labels.get(order["code"], order["code"])
         requested = int(order["quantity"])
         if row is None:
             lines.append(
-                f"{side} {order['code']} · 지정가 {order['price']:,.0f}원 · 상태 조회 대기"
+                f"{side} {label} · 지정가 {order['price']:,.0f}원 · 상태 조회 대기"
             )
             continue
 
@@ -557,7 +559,7 @@ def format_execution_report(today_orders, submitted, cancelled):
                 f" @ {average_price:,.0f}원 · 주문 대비 {difference:+,.0f}원"
                 f" ({difference_pct:+.2f}%)"
             )
-        lines.append(f"{side} {order['code']} · 지정가 {order['price']:,.0f}원 · {details} · {status}")
+        lines.append(f"{side} {label} · 지정가 {order['price']:,.0f}원 · {details} · {status}")
     return lines
 
 
@@ -689,7 +691,9 @@ def execute_live_rebalance(config, holdings, summary, context):
         "plan": plan,
         "orders": all_orders,
         "cancelled": cancelled,
-        "execution_report": format_execution_report(final_today_orders, all_orders, cancelled),
+        "execution_report": format_execution_report(
+            final_today_orders, all_orders, cancelled, load_asset_labels()
+        ),
         "trend": trend,
         "reason": "",
     }
@@ -717,14 +721,16 @@ def main():
         if execution["status"] == "skipped":
             print("자동매매 실주문\n" + execution["reason"])
             return
-        print(format_plan(execution["plan"], live=True, asset_labels=load_asset_labels()))
+        asset_labels = load_asset_labels()
+        print(format_plan(execution["plan"], live=True, asset_labels=asset_labels))
         if not execution["orders"]:
             print("주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
             return
         for order in execution["orders"]:
             direction = "매수" if order["side"] == "buy" else "매도"
+            label = asset_labels.get(order["code"], order["code"])
             print(
-                f"실주문 접수: {direction} {order['code']} {order['quantity']}주 / "
+                f"실주문 접수: {direction} {label} {order['quantity']}주 / "
                 f"지정가 {order['price']:,.0f}원 / 주문번호 {order['order_no']}"
             )
         for line in execution.get("execution_report", []):
