@@ -11,7 +11,7 @@ on:
           - paper
           - live
           - isa
-        default: paper
+        default: isa
       execute_live_orders:
         description: 'Execute the configured live ETF rebalance'
         required: false

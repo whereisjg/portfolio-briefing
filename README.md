@@ -104,7 +104,7 @@ KIS 접근 토큰은 GitHub Actions cache에 암호화해서 저장합니다. �
 
 ## 자동매매 규칙
 
-[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. `live_orders_enabled: true`, `mode: live`는 주문 실행을 허용하는 설정입니다. workflow 기본 계좌는 `paper`이며, `account_mode: live` 또는 `isa`를 선택한 경우에만 해당 실계좌 주문을 사용합니다. `execute_live_orders` 입력을 끄면 어느 계좌에서도 주문 없이 계획만 만듭니다.
+[`trading_config.json`](trading_config.json)에 합의한 규칙을 저장했습니다. `live_orders_enabled: true`, `mode: live`는 주문 실행을 허용하는 설정입니다. workflow 기본 계좌는 `isa`이며, `account_mode: live` 또는 `isa`를 선택한 경우에만 해당 실계좌 주문을 사용합니다. `execute_live_orders` 입력을 끄면 어느 계좌에서도 주문 없이 계획만 만듭니다.
 
 - cron-job.org가 영업일 10:00 KST에 workflow를 실행하면 잔고·예수금·가격을 조회합니다.
 - 완료된 일봉의 20일·60일 이동평균 신호가 3거래일 연속 같을 때 목표 비중을 변경합니다. 상승 추세는 위험 선호, 하락 추세는 위험 회피, 그 외에는 중립 비중을 적용합니다.
@@ -126,7 +126,7 @@ Method: POST
 Headers:
   Authorization: Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}
   Content-Type: application/json
-Body:   {"ref":"main"}
+Body:   {"ref":"main","inputs":{"account_mode":"isa","execute_live_orders":"true"}}
 ```
 
 Required token permission: `Actions: Read and write` on this repository only.
