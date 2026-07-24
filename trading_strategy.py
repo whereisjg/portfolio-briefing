@@ -26,6 +26,11 @@ def load_config(path=CONFIG_FILE):
     weights = config.get("target_weights", {})
     if not weights or abs(sum(float(value) for value in weights.values()) - 100) > 0.01:
         raise ValueError("trading_config.json의 target_weights 합계는 100이어야 합니다.")
+    liquidation_codes = config.get("liquidation_codes", [])
+    if not isinstance(liquidation_codes, list) or any(not isinstance(code, str) or not code for code in liquidation_codes):
+        raise ValueError("liquidation_codes는 종목코드 목록이어야 합니다.")
+    if set(liquidation_codes) & set(weights):
+        raise ValueError("liquidation_codes는 target_weights 종목과 겹칠 수 없습니다.")
     mode = config.get("mode")
     if mode not in {"dry-run", "live"}:
         raise ValueError("mode는 dry-run 또는 live여야 합니다.")
@@ -110,7 +115,12 @@ def positions_from_holdings(holdings, target_codes):
 def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limits=None, turnover_limit=None):
     """Return sell-first and cash-funded buy plans without placing an order."""
     targets = {code: float(weight) / 100 for code, weight in config["target_weights"].items()}
-    values = {code: positions[code]["quantity"] * prices.get(code, 0) for code in targets}
+    liquidation_codes = config.get("liquidation_codes", [])
+    managed_codes = [*targets, *liquidation_codes]
+    values = {
+        code: positions.get(code, {"quantity": 0})["quantity"] * prices.get(code, 0)
+        for code in managed_codes
+    }
     total = cash + sum(values.values())
     if total <= 0:
         return {"total_value": 0, "cash": cash, "sells": [], "buys": [], "unallocated_cash": cash}
@@ -123,6 +133,18 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
     remaining_turnover = daily_turnover_limit
     rebalance_band = float(config.get("rebalance_band_pct", 0)) / 100
     sells = []
+    for code in liquidation_codes:
+        price = prices.get(code, 0)
+        if price <= 0:
+            continue
+        sell_limit = float(sell_limits.get(code, 0)) if sell_limits is not None else float(config["daily_sell_limit_per_asset_krw"])
+        sell_value = min(values[code], sell_limit, remaining_turnover)
+        quantity = min(positions.get(code, {"quantity": 0})["quantity"], math.floor(sell_value / price))
+        if quantity >= 1:
+            value = quantity * price
+            sells.append({"code": code, "quantity": int(quantity), "price": price, "value": value})
+            remaining_turnover -= value
+
     for code, target_weight in targets.items():
         current_weight = values[code] / total
         if current_weight <= target_weight + rebalance_band:

@@ -368,6 +368,24 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(plan["sells"], [])
 
+    def test_liquidation_code_is_sold_within_the_daily_turnover_limit(self):
+        config = {
+            **self.config,
+            "daily_turnover_limit_pct": 100,
+            "liquidation_codes": ["LEGACY"],
+        }
+        positions = {
+            **{code: {"quantity": 1, "price": 10000} for code in self.prices},
+            "LEGACY": {"quantity": 10, "price": 10000},
+        }
+        prices = {**self.prices, "LEGACY": 10000}
+
+        plan = trading.plan_orders(config, positions, prices, 0)
+
+        self.assertEqual(plan["sells"], [
+            {"code": "LEGACY", "quantity": 10, "price": 10000, "value": 100000},
+        ])
+
     def test_turnover_limit_caps_combined_daily_buys_and_sells(self):
         config = {**self.config, "daily_turnover_limit_pct": 3}
         positions = {

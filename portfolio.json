@@ -46,13 +46,22 @@
       "target_weight_pct": 25
     },
     {
+      "ticker": "KODEX단기채권",
+      "symbol": "153130.KS",
+      "name": "KODEX 단기채권",
+      "display": "KODEX단기채권",
+      "currency": "KRW",
+      "shares": null,
+      "target_weight_pct": 25
+    },
+    {
       "ticker": "KODEX미국머니마켓액티브",
       "symbol": "0048J0.KS",
       "name": "KODEX 미국머니마켓액티브",
       "display": "KODEX머니마켓",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 25
+      "target_weight_pct": null
     }
   ]
 }

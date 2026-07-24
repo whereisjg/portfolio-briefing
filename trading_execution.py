@@ -605,11 +605,12 @@ def submit_live_orders(sell_orders, buy_orders, context):
 def execute_live_rebalance(config, holdings, summary, context):
     """Submit one guarded live rebalance pass using limit orders only."""
     target_codes = set(config["target_weights"])
+    managed_codes = target_codes | set(config.get("liquidation_codes", []))
     trend = resolve_trend_strategy(config, context)
     effective_config = deepcopy(config)
     effective_config["target_weights"] = trend["weights"]
     today_orders = fetch_today_orders(context)
-    if has_open_target_order(today_orders, target_codes):
+    if has_open_target_order(today_orders, managed_codes):
         return {
             "status": "skipped",
             "reason": "대상 ETF의 미체결 주문이 남아 있어 추가 주문을 보류했습니다.",
@@ -618,16 +619,16 @@ def execute_live_rebalance(config, holdings, summary, context):
             "trend": trend,
         }
 
-    positions = positions_from_holdings(holdings, effective_config["target_weights"])
-    market_prices = fetch_kis_prices(effective_config["target_weights"], context)
+    positions = positions_from_holdings(holdings, managed_codes)
+    market_prices = fetch_kis_prices(managed_codes, context)
     cash = cash_from_balance(summary)
     orderable_cash = fetch_kis_orderable_cash(market_prices, context)
     total_assets = cash + sum(
         positions[code]["quantity"] * market_prices[code]
-        for code in config["target_weights"]
+        for code in managed_codes
     )
     daily_turnover_cap, daily_turnover_used, remaining_turnover = daily_turnover_budget(
-        effective_config, total_assets, today_orders, target_codes, context
+        effective_config, total_assets, today_orders, managed_codes, context
     )
     plan = plan_orders(
         effective_config,
@@ -664,14 +665,14 @@ def execute_live_rebalance(config, holdings, summary, context):
         cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
     )
     context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
-    fresh_positions = positions_from_holdings(fresh_holdings, effective_config["target_weights"])
-    fresh_prices = fetch_kis_prices(effective_config["target_weights"], context)
+    fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
+    fresh_prices = fetch_kis_prices(managed_codes, context)
     fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
     filled = filled_values_for_orders(fetch_today_orders(context), submitted)
     retry_config = deepcopy(effective_config)
     retry_sell_limits = {
         code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
-        for code in effective_config["target_weights"]
+        for code in managed_codes
     }
     filled_turnover = filled["buy"] + sum(filled["sell"].values())
     retry_plan = plan_orders(
@@ -714,7 +715,8 @@ def main():
         )
     else:
         holdings, summary, access_token = snapshot
-    positions = positions_from_holdings(holdings, config["target_weights"])
+    managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
+    positions = positions_from_holdings(holdings, managed_codes)
     kis_context = get_kis_context(access_token)
     if args.execute_live:
         if config.get("mode") != "live" or not config.get("live_orders_enabled"):
@@ -742,8 +744,8 @@ def main():
     trend = resolve_trend_strategy(config, kis_context)
     effective_config = deepcopy(config)
     effective_config["target_weights"] = trend["weights"]
-    positions = positions_from_holdings(holdings, effective_config["target_weights"])
-    prices = fetch_kis_prices(effective_config["target_weights"], kis_context)
+    positions = positions_from_holdings(holdings, managed_codes)
+    prices = fetch_kis_prices(managed_codes, kis_context)
     cash = cash_from_balance(summary)
     warnings = []
     try:
@@ -753,13 +755,13 @@ def main():
         warnings.append(f"KIS 주문가능금액 조회 실패로 매수 계획을 만들지 않았습니다: {exc}")
     total_assets = cash + sum(
         positions[code]["quantity"] * prices[code]
-        for code in effective_config["target_weights"]
+        for code in managed_codes
     )
     daily_turnover_cap, daily_turnover_used, remaining_turnover = daily_turnover_budget(
         effective_config,
         total_assets,
         [],
-        set(effective_config["target_weights"]),
+        managed_codes,
         kis_context,
     )
     plan = plan_orders(
