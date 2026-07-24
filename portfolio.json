@@ -28,13 +28,22 @@
       "target_weight_pct": 25
     },
     {
+      "ticker": "TIGER미국나스닥100타겟데일리커버드콜",
+      "symbol": "486290.KS",
+      "name": "TIGER 미국나스닥100타겟데일리커버드콜",
+      "display": "TIGER나스닥커버드콜",
+      "currency": "KRW",
+      "shares": null,
+      "target_weight_pct": 25
+    },
+    {
       "ticker": "KODEX미국S&P500데일리커버드콜OTM",
       "symbol": "0005A0.KS",
       "name": "KODEX 미국S&P500데일리커버드콜OTM",
       "display": "KODEX S&P커버드콜",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 50
+      "target_weight_pct": 25
     },
     {
       "ticker": "KODEX미국머니마켓액티브",
