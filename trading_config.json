@@ -1,7 +1,7 @@
 {
   "live_orders_enabled": true,
   "mode": "live",
-  "daily_turnover_limit_pct": 3,
+  "daily_turnover_limit_pct": 2,
   "paper_test_order_limit_krw": 100000,
   "daily_sell_limit_per_asset_krw": 1000000,
   "rebalance_band_pct": 2,
