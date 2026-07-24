@@ -487,17 +487,18 @@ def filled_values_for_orders(today_orders, submitted):
     return values
 
 
-def filled_turnover_for_codes(today_orders, target_codes):
-    """Return today's actual filled turnover for the managed ETF set."""
-    turnover = 0.0
+def filled_trade_values_for_codes(today_orders, target_codes):
+    """Return today's actual filled buy and sell values for the managed ETF set."""
+    values = {"buy": 0.0, "sell": 0.0}
     for row in today_orders:
         if str(row.get("pdno", "")).strip() not in target_codes:
             continue
         value = kis_client.as_float(row.get("tot_ccld_amt"), 0)
         if value <= 0:
             value = kis_client.as_float(row.get("tot_ccld_qty"), 0) * kis_client.as_float(row.get("avg_prvs"), 0)
-        turnover += max(value, 0)
-    return turnover
+        side = "sell" if str(row.get("sll_buy_dvsn_cd", "")).strip() == "01" else "buy"
+        values[side] += max(value, 0)
+    return values
 
 
 def has_open_target_order(today_orders, target_codes):
@@ -508,14 +509,34 @@ def has_open_target_order(today_orders, target_codes):
     )
 
 
-def daily_turnover_budget(config, total_assets, today_orders, target_codes, context):
-    """Keep real-account daily turnover bounded while leaving paper tests unrestricted."""
+def daily_trade_budgets(config, total_assets, today_orders, target_codes, context):
+    """Keep real-account buy and sell values independently bounded."""
     if context.get("is_paper"):
-        return None, 0.0, float(config["paper_test_order_limit_krw"])
+        limit = float(config["paper_test_order_limit_krw"])
+        return {
+            "buy_cap": None,
+            "buy_used": 0.0,
+            "buy_remaining": limit,
+            "sell_cap": None,
+            "sell_used": 0.0,
+            "sell_remaining": limit,
+        }
 
-    cap = total_assets * float(config["daily_turnover_limit_pct"]) / 100
-    used = filled_turnover_for_codes(today_orders, target_codes)
-    return cap, used, max(cap - used, 0)
+    buy_cap = total_assets * float(
+        config.get("daily_buy_limit_pct", config.get("daily_turnover_limit_pct", 100))
+    ) / 100
+    sell_cap = total_assets * float(
+        config.get("daily_sell_limit_pct", config.get("daily_turnover_limit_pct", 100))
+    ) / 100
+    used = filled_trade_values_for_codes(today_orders, target_codes)
+    return {
+        "buy_cap": buy_cap,
+        "buy_used": used["buy"],
+        "buy_remaining": max(buy_cap - used["buy"], 0),
+        "sell_cap": sell_cap,
+        "sell_used": used["sell"],
+        "sell_remaining": max(sell_cap - used["sell"], 0),
+    }
 
 
 def format_execution_report(today_orders, submitted, cancelled, asset_labels=None):
@@ -627,7 +648,7 @@ def execute_live_rebalance(config, holdings, summary, context):
         positions[code]["quantity"] * market_prices[code]
         for code in managed_codes
     )
-    daily_turnover_cap, daily_turnover_used, remaining_turnover = daily_turnover_budget(
+    daily_budgets = daily_trade_budgets(
         effective_config, total_assets, today_orders, managed_codes, context
     )
     plan = plan_orders(
@@ -636,10 +657,11 @@ def execute_live_rebalance(config, holdings, summary, context):
         market_prices,
         cash,
         orderable_cash,
-        turnover_limit=remaining_turnover,
+        buy_limit=daily_budgets["buy_remaining"],
+        sell_turnover_limit=daily_budgets["sell_remaining"],
     )
-    plan["daily_turnover_cap"] = daily_turnover_cap
-    plan["daily_turnover_used"] = daily_turnover_used
+    plan["daily_buy_cap"] = daily_budgets["buy_cap"]
+    plan["daily_sell_cap"] = daily_budgets["sell_cap"]
     plan["trend"] = trend
 
     sell_orders, buy_orders = live_orders_for_plan(plan, effective_config, context)
@@ -674,7 +696,6 @@ def execute_live_rebalance(config, holdings, summary, context):
         code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
         for code in managed_codes
     }
-    filled_turnover = filled["buy"] + sum(filled["sell"].values())
     retry_plan = plan_orders(
         retry_config,
         fresh_positions,
@@ -682,7 +703,8 @@ def execute_live_rebalance(config, holdings, summary, context):
         cash_from_balance(fresh_summary),
         fresh_orderable_cash,
         retry_sell_limits,
-        max(plan["daily_turnover_limit"] - filled_turnover, 0),
+        buy_limit=max(plan["daily_buy_limit"] - filled["buy"], 0),
+        sell_turnover_limit=max(plan["daily_sell_limit"] - sum(filled["sell"].values()), 0),
     )
     first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
     retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
@@ -757,7 +779,7 @@ def main():
         positions[code]["quantity"] * prices[code]
         for code in managed_codes
     )
-    daily_turnover_cap, daily_turnover_used, remaining_turnover = daily_turnover_budget(
+    daily_budgets = daily_trade_budgets(
         effective_config,
         total_assets,
         [],
@@ -770,10 +792,11 @@ def main():
         prices,
         cash,
         orderable_cash,
-        turnover_limit=remaining_turnover,
+        buy_limit=daily_budgets["buy_remaining"],
+        sell_turnover_limit=daily_budgets["sell_remaining"],
     )
-    plan["daily_turnover_cap"] = daily_turnover_cap
-    plan["daily_turnover_used"] = daily_turnover_used
+    plan["daily_buy_cap"] = daily_budgets["buy_cap"]
+    plan["daily_sell_cap"] = daily_budgets["sell_cap"]
     plan["trend"] = trend
     plan["warnings"] = warnings
     print(format_plan(plan, asset_labels=load_asset_labels()))

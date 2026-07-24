@@ -36,9 +36,10 @@ def load_config(path=CONFIG_FILE):
         raise ValueError("mode는 dry-run 또는 live여야 합니다.")
     if mode == "live" and not config.get("live_orders_enabled", False):
         raise ValueError("live 모드에는 live_orders_enabled: true가 필요합니다.")
-    daily_turnover_limit_pct = float(config.get("daily_turnover_limit_pct", 100))
-    if not 0 < daily_turnover_limit_pct <= 100:
-        raise ValueError("daily_turnover_limit_pct는 0 초과 100 이하여야 합니다.")
+    for side in ("buy", "sell"):
+        limit_pct = float(config.get(f"daily_{side}_limit_pct", config.get("daily_turnover_limit_pct", 100)))
+        if not 0 < limit_pct <= 100:
+            raise ValueError(f"daily_{side}_limit_pct는 0 초과 100 이하여야 합니다.")
     paper_test_order_limit = float(config.get("paper_test_order_limit_krw", 0))
     if paper_test_order_limit <= 0:
         raise ValueError("paper_test_order_limit_krw는 0보다 커야 합니다.")
@@ -112,7 +113,17 @@ def positions_from_holdings(holdings, target_codes):
     return positions
 
 
-def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limits=None, turnover_limit=None):
+def plan_orders(
+    config,
+    positions,
+    prices,
+    cash,
+    orderable_cash=None,
+    sell_limits=None,
+    turnover_limit=None,
+    buy_limit=None,
+    sell_turnover_limit=None,
+):
     """Return sell-first and cash-funded buy plans without placing an order."""
     targets = {code: float(weight) / 100 for code, weight in config["target_weights"].items()}
     liquidation_codes = config.get("liquidation_codes", [])
@@ -125,12 +136,18 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
     if total <= 0:
         return {"total_value": 0, "cash": cash, "sells": [], "buys": [], "unallocated_cash": cash}
 
-    daily_turnover_limit = (
-        float(turnover_limit)
-        if turnover_limit is not None
-        else total * float(config.get("daily_turnover_limit_pct", 100)) / 100
-    )
-    remaining_turnover = daily_turnover_limit
+    default_buy_limit = total * float(
+        config.get("daily_buy_limit_pct", config.get("daily_turnover_limit_pct", 100))
+    ) / 100
+    default_sell_limit = total * float(
+        config.get("daily_sell_limit_pct", config.get("daily_turnover_limit_pct", 100))
+    ) / 100
+    if turnover_limit is not None:
+        default_buy_limit = float(turnover_limit)
+        default_sell_limit = float(turnover_limit)
+    daily_buy_limit = float(buy_limit) if buy_limit is not None else default_buy_limit
+    daily_sell_limit = float(sell_turnover_limit) if sell_turnover_limit is not None else default_sell_limit
+    remaining_sell_limit = daily_sell_limit
     rebalance_band = float(config.get("rebalance_band_pct", 0)) / 100
     sells = []
     for code in liquidation_codes:
@@ -138,12 +155,12 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         if price <= 0:
             continue
         sell_limit = float(sell_limits.get(code, 0)) if sell_limits is not None else float(config["daily_sell_limit_per_asset_krw"])
-        sell_value = min(values[code], sell_limit, remaining_turnover)
+        sell_value = min(values[code], sell_limit, remaining_sell_limit)
         quantity = min(positions.get(code, {"quantity": 0})["quantity"], math.floor(sell_value / price))
         if quantity >= 1:
             value = quantity * price
             sells.append({"code": code, "quantity": int(quantity), "price": price, "value": value})
-            remaining_turnover -= value
+            remaining_sell_limit -= value
 
     for code, target_weight in targets.items():
         current_weight = values[code] / total
@@ -153,12 +170,12 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         if price <= 0:
             continue
         sell_limit = float(sell_limits.get(code, 0)) if sell_limits is not None else float(config["daily_sell_limit_per_asset_krw"])
-        sell_value = min(values[code] - total * target_weight, sell_limit, remaining_turnover)
+        sell_value = min(values[code] - total * target_weight, sell_limit, remaining_sell_limit)
         quantity = min(positions[code]["quantity"], math.floor(sell_value / price))
         if quantity >= 1:
             value = quantity * price
             sells.append({"code": code, "quantity": int(quantity), "price": price, "value": value})
-            remaining_turnover -= value
+            remaining_sell_limit -= value
 
     deficits = {
         code: max(total * target_weight - values[code], 0)
@@ -166,7 +183,7 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         if prices.get(code, 0) > 0
     }
     buyable_cash = cash if orderable_cash is None else min(cash, max(orderable_cash, 0))
-    budget = min(buyable_cash, remaining_turnover, sum(deficits.values()))
+    budget = min(buyable_cash, daily_buy_limit, sum(deficits.values()))
     buys = []
     if budget > 0 and deficits:
         total_deficit = sum(deficits.values())
@@ -198,7 +215,9 @@ def plan_orders(config, positions, prices, cash, orderable_cash=None, sell_limit
         "total_value": total,
         "cash": cash,
         "orderable_cash": buyable_cash,
-        "daily_turnover_limit": daily_turnover_limit,
+        "daily_buy_limit": daily_buy_limit,
+        "daily_sell_limit": daily_sell_limit,
+        "daily_turnover_limit": daily_buy_limit,
         "sells": sells,
         "buys": buys,
         "unallocated_cash": buyable_cash - sum(order["value"] for order in buys),
@@ -216,10 +235,13 @@ def format_plan(plan, live=False, asset_labels=None):
         return f"{value:,.1f}".rstrip("0").rstrip(".") + "만"
 
     lines = ["🤖 자동매매 실주문" if live else "🤖 자동매매 dry-run"]
-    if plan.get("daily_turnover_cap") is None:
-        lines[0] += f" · 한도 {short_amount(plan['daily_turnover_limit'])}"
+    legacy_limit = plan.get("daily_turnover_limit", 0)
+    buy_limit = plan.get("daily_buy_limit", legacy_limit)
+    sell_limit = plan.get("daily_sell_limit", legacy_limit)
+    if plan.get("daily_buy_cap") is None:
+        lines[0] += f" · 매수 {short_amount(buy_limit)} · 매도 {short_amount(sell_limit)}"
     else:
-        lines[0] += f" · 잔여 {short_amount(plan.get('daily_turnover_limit', 0))}"
+        lines[0] += f" · 잔여 매수 {short_amount(buy_limit)} · 매도 {short_amount(sell_limit)}"
     for label, orders in (("매도", plan["sells"]), ("매수", plan["buys"])):
         if orders:
             lines.append(f"{label} {'주문' if live else '예정'}")

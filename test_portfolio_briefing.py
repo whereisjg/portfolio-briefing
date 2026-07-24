@@ -78,8 +78,9 @@ class ConfigurationTests(unittest.TestCase):
             "total_value": 100000,
             "cash": 100000,
             "orderable_cash": 100000,
-            "daily_turnover_limit": 100000,
-            "daily_turnover_cap": None,
+            "daily_buy_limit": 100000,
+            "daily_sell_limit": 100000,
+            "daily_buy_cap": None,
             "sells": [],
             "buys": [{"code": "0015B0", "quantity": 1, "price": 21000, "value": 21000}],
             "unallocated_cash": 79000,
@@ -88,7 +89,7 @@ class ConfigurationTests(unittest.TestCase):
 
         report = strategy.format_plan(plan, asset_labels={"0015B0": "KoAct나스닥성장"})
 
-        self.assertIn("🤖 자동매매 dry-run · 한도 10만", report)
+        self.assertIn("🤖 자동매매 dry-run · 매수 10만 · 매도 10만", report)
         self.assertIn("KoAct나스닥성장 1주", report)
         self.assertNotIn("0015B0 1주", report)
 
@@ -386,8 +387,8 @@ class TradingPlanTests(unittest.TestCase):
             {"code": "LEGACY", "quantity": 10, "price": 10000, "value": 100000},
         ])
 
-    def test_turnover_limit_caps_combined_daily_buys_and_sells(self):
-        config = {**self.config, "daily_turnover_limit_pct": 3}
+    def test_buy_and_sell_limits_are_independent(self):
+        config = {**self.config, "daily_buy_limit_pct": 3, "daily_sell_limit_pct": 3}
         positions = {
             "A": {"quantity": 682, "price": 10000},
             "B": {"quantity": 506, "price": 10000},
@@ -395,11 +396,12 @@ class TradingPlanTests(unittest.TestCase):
             "D": {"quantity": 506, "price": 10000},
         }
 
-        plan = trading.plan_orders(config, positions, self.prices, 0)
+        plan = trading.plan_orders(config, positions, self.prices, 660000)
 
-        self.assertEqual(plan["daily_turnover_limit"], 660000)
-        self.assertEqual(sum(order["value"] for order in plan["sells"]), 660000)
-        self.assertEqual(plan["buys"], [])
+        self.assertEqual(plan["daily_buy_limit"], 679800)
+        self.assertEqual(plan["daily_sell_limit"], 679800)
+        self.assertGreater(sum(order["value"] for order in plan["sells"]), 0)
+        self.assertGreater(sum(order["value"] for order in plan["buys"]), 0)
 
     def test_buy_plan_does_not_exceed_available_cash(self):
         positions = {code: {"quantity": 0, "price": 0} for code in self.prices}
@@ -612,14 +614,14 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertTrue(trading.has_open_target_order(orders, {"A"}))
 
-    def test_filled_turnover_counts_only_managed_etfs(self):
+    def test_filled_trade_values_count_only_managed_etfs(self):
         orders = [
-            {"pdno": "A", "tot_ccld_amt": "10000"},
-            {"pdno": "B", "tot_ccld_qty": "2", "avg_prvs": "5000"},
-            {"pdno": "OTHER", "tot_ccld_amt": "90000"},
+            {"pdno": "A", "sll_buy_dvsn_cd": "02", "tot_ccld_amt": "10000"},
+            {"pdno": "B", "sll_buy_dvsn_cd": "01", "tot_ccld_qty": "2", "avg_prvs": "5000"},
+            {"pdno": "OTHER", "sll_buy_dvsn_cd": "01", "tot_ccld_amt": "90000"},
         ]
 
-        self.assertEqual(trading.filled_turnover_for_codes(orders, {"A", "B"}), 20000)
+        self.assertEqual(trading.filled_trade_values_for_codes(orders, {"A", "B"}), {"buy": 10000, "sell": 10000})
 
     def test_trend_state_requires_confirmed_moving_average_direction(self):
         rising = [(f"20260{index:03}", float(100 + index)) for index in range(65)]
@@ -633,7 +635,7 @@ class TradingPlanTests(unittest.TestCase):
         )
 
     def test_paper_account_uses_per_run_test_limit(self):
-        cap, used, remaining = trading.daily_turnover_budget(
+        budgets = trading.daily_trade_budgets(
             {**self.config, "paper_test_order_limit_krw": 100000},
             10000000,
             [{"pdno": "A", "tot_ccld_amt": "300000"}],
@@ -641,9 +643,22 @@ class TradingPlanTests(unittest.TestCase):
             {"is_paper": True},
         )
 
-        self.assertIsNone(cap)
-        self.assertEqual(used, 0)
-        self.assertEqual(remaining, 100000)
+        self.assertIsNone(budgets["buy_cap"])
+        self.assertEqual(budgets["buy_used"], 0)
+        self.assertEqual(budgets["buy_remaining"], 100000)
+        self.assertEqual(budgets["sell_remaining"], 100000)
+
+    def test_daily_buy_and_sell_budgets_are_independent(self):
+        budgets = trading.daily_trade_budgets(
+            {**self.config, "daily_buy_limit_pct": 2, "daily_sell_limit_pct": 2},
+            10000000,
+            [{"pdno": "A", "sll_buy_dvsn_cd": "02", "tot_ccld_amt": "100000"}],
+            {"A"},
+            {"is_paper": False},
+        )
+
+        self.assertEqual(budgets["buy_remaining"], 100000)
+        self.assertEqual(budgets["sell_remaining"], 200000)
 
     def test_kis_request_spacing_waits_until_the_next_slot(self):
         context = {"next_kis_request_at": 11.1}
