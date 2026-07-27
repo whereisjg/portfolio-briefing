@@ -530,6 +530,13 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
     count_str = f"🔴{pos_count} 🔵{neg_count}"
     trend_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
+    trend_marks = {"risk_on": "↑", "neutral": "↔", "risk_off": "↓"}
+    composite_signal_line = ""
+    if trend_state and trend_state.get("components"):
+        composite_signal_line = "신호: " + " · ".join(
+            f"{component['label']}{trend_marks.get(component.get('state'), '↔')}"
+            for component in trend_state["components"]
+        )
 
     def price_row(item):
         alert = "🚨" if abs(item["chg_pct"]) >= CRITICAL_MOVE_PCT else ("⚠️" if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT else "")
@@ -582,6 +589,9 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         cash = as_float(account_summary.get("prvs_rcdl_excc_amt"))
         telegram_lines.append(f"자산 {format_krw_short(total)} · 예수금 {format_krw_short(cash)}")
 
+    if composite_signal_line:
+        telegram_lines.append(composite_signal_line)
+
     telegram_lines.extend([
         f"오늘 흐름: {pos_count} 상승 · {neg_count} 하락",
         "",
@@ -606,6 +616,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         "",
         f"- 분위기: {mood}",
         f"- 가격 출처: {provider_text}",
+        *([f"- {composite_signal_line}"] if composite_signal_line else []),
         "",
         *(["## 📌 시장 상태", "", market_notice, ""] if market_notice else []),
         "## ⚠️ 먼저 볼 것",
