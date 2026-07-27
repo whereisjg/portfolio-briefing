@@ -634,6 +634,101 @@ class TradingPlanTests(unittest.TestCase):
             trading.calculate_trend_state(falling, 20, 60, 3)["state"], "risk_off"
         )
 
+    def test_weighted_close_series_builds_an_equal_weight_risk_sleeve(self):
+        closes = strategy.weighted_close_series({
+            "A": [("20260720", 100), ("20260721", 110)],
+            "B": [("20260720", 200), ("20260721", 220)],
+        })
+
+        self.assertEqual([date for date, _close in closes], ["20260720", "20260721"])
+        self.assertAlmostEqual(closes[0][1], 100)
+        self.assertAlmostEqual(closes[1][1], 110)
+
+    def test_composite_trend_requires_all_three_daily_scores_to_confirm(self):
+        components = [
+            {
+                "label": "계좌 위험자산",
+                "weight_pct": 50,
+                "daily_states": [
+                    {"date": "20260720", "state": "risk_on"},
+                    {"date": "20260721", "state": "risk_on"},
+                    {"date": "20260722", "state": "risk_on"},
+                ],
+            },
+            {
+                "label": "나스닥100",
+                "weight_pct": 25,
+                "daily_states": [
+                    {"date": "20260720", "state": "risk_on"},
+                    {"date": "20260721", "state": "risk_on"},
+                    {"date": "20260722", "state": "risk_on"},
+                ],
+            },
+            {
+                "label": "S&P500",
+                "weight_pct": 25,
+                "daily_states": [
+                    {"date": "20260720", "state": "risk_off"},
+                    {"date": "20260721", "state": "risk_on"},
+                    {"date": "20260722", "state": "risk_on"},
+                ],
+            },
+        ]
+
+        result = strategy.calculate_composite_trend_state(components, 3)
+
+        self.assertEqual(result["state"], "risk_on")
+        self.assertEqual(result["signals"], ["risk_on", "risk_on", "risk_on"])
+
+    def test_fetch_kis_index_daily_closes_parses_completed_candles(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "rt_cd": "0",
+                    "output2": [
+                        {"stck_bsop_date": "20260724", "ovrs_nmix_prpr": "28000"},
+                        {"stck_bsop_date": "20260727", "ovrs_nmix_prpr": "28100"},
+                    ],
+                }
+
+        class FakeSession:
+            def get(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        context = {
+            "base_url": "https://example.test",
+            "headers": {},
+            "session": FakeSession(),
+            "next_kis_request_at": 0,
+        }
+        closes = trading.fetch_kis_index_daily_closes("NDX", context)
+
+        self.assertEqual(closes, [("20260724", 28000)])
+
+    def test_composite_strategy_uses_portfolio_and_both_market_indexes(self):
+        rising = [(f"20260{index:03}", float(100 + index)) for index in range(65)]
+        trend = {
+            "short_window_days": 20,
+            "long_window_days": 60,
+            "confirmation_days": 3,
+            "composite_threshold": 0.5,
+            "signals": [
+                {"kind": "portfolio", "label": "계좌 위험자산", "weight_pct": 50, "codes": ["A", "B", "C"]},
+                {"kind": "index", "label": "나스닥100", "weight_pct": 25, "symbol": "NDX"},
+                {"kind": "index", "label": "S&P500", "weight_pct": 25, "symbol": "SPX"},
+            ],
+        }
+        with patch.object(trading, "fetch_kis_daily_closes", return_value=rising) as domestic:
+            with patch.object(trading, "fetch_kis_index_daily_closes", return_value=rising) as index:
+                result = trading.resolve_composite_trend_strategy(trend, {})
+
+        self.assertEqual(result["state"], "risk_on")
+        self.assertEqual(domestic.call_count, 3)
+        self.assertEqual([call.args[0] for call in index.call_args_list], ["NDX", "SPX"])
+
     def test_paper_account_uses_per_run_test_limit(self):
         budgets = trading.daily_trade_budgets(
             {**self.config, "paper_test_order_limit_krw": 100000},

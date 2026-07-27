@@ -48,7 +48,21 @@ def load_config(path=CONFIG_FILE):
         raise ValueError("rebalance_band_pct는 0 이상 100 미만이어야 합니다.")
     trend = config.get("trend_strategy", {})
     if trend.get("enabled"):
-        if trend.get("signal_code") not in weights:
+        signals = trend.get("signals")
+        if signals:
+            if not isinstance(signals, list) or abs(sum(float(signal.get("weight_pct", 0)) for signal in signals) - 100) > 0.01:
+                raise ValueError("trend_strategy.signals의 weight_pct 합계는 100이어야 합니다.")
+            for signal in signals:
+                if signal.get("kind") == "portfolio":
+                    codes = signal.get("codes", [])
+                    if not isinstance(codes, list) or not codes or not set(codes) <= set(weights):
+                        raise ValueError("portfolio 추세 신호는 target_weights 종목만 사용해야 합니다.")
+                elif signal.get("kind") == "index":
+                    if not signal.get("symbol"):
+                        raise ValueError("index 추세 신호에는 symbol이 필요합니다.")
+                else:
+                    raise ValueError("trend_strategy.signals.kind는 portfolio 또는 index여야 합니다.")
+        elif trend.get("signal_code") not in weights:
             raise ValueError("trend_strategy.signal_code는 target_weights에 있어야 합니다.")
         for state in ("risk_on", "neutral", "risk_off"):
             state_weights = trend.get("weights", {}).get(state, {})
@@ -65,38 +79,105 @@ def cash_from_balance(summary):
     return 0.0
 
 
-def calculate_trend_state(closes, short_window, long_window, confirmation_days):
-    """Classify a confirmed moving-average regime from completed closing prices."""
+def trend_signal_states(closes, short_window, long_window, confirmation_days):
+    """Return the latest daily moving-average states from completed closing prices."""
     required = long_window + confirmation_days - 1
     if len(closes) < required:
         raise ValueError(f"추세 판단에 필요한 일봉이 부족합니다: {len(closes)}/{required}")
 
-    signals = []
-    latest_short_average = None
-    latest_long_average = None
+    states = []
     for index in range(len(closes) - confirmation_days, len(closes)):
         price = closes[index][1]
         short_average = sum(close for _date, close in closes[index - short_window + 1:index + 1]) / short_window
         long_average = sum(close for _date, close in closes[index - long_window + 1:index + 1]) / long_window
-        latest_short_average = short_average
-        latest_long_average = long_average
         if price > long_average and short_average > long_average:
-            signals.append("risk_on")
+            state = "risk_on"
         elif price < long_average and short_average < long_average:
-            signals.append("risk_off")
+            state = "risk_off"
         else:
-            signals.append("neutral")
+            state = "neutral"
+        states.append({
+            "date": closes[index][0],
+            "state": state,
+            "close": price,
+            "short_average": short_average,
+            "long_average": long_average,
+        })
+    return states
 
-    state = signals[0] if len(set(signals)) == 1 else "neutral"
-    latest_date, latest_close = closes[-1]
+
+def calculate_trend_state(closes, short_window, long_window, confirmation_days):
+    """Classify a confirmed moving-average regime from completed closing prices."""
+    states = trend_signal_states(closes, short_window, long_window, confirmation_days)
+    signals = [item["state"] for item in states]
+    latest = states[-1]
     return {
-        "state": state,
-        "latest_date": latest_date,
-        "latest_close": latest_close,
-        "short_average": latest_short_average,
-        "long_average": latest_long_average,
+        "state": signals[0] if len(set(signals)) == 1 else "neutral",
+        "latest_date": latest["date"],
+        "latest_close": latest["close"],
+        "short_average": latest["short_average"],
+        "long_average": latest["long_average"],
         "confirmation_days": confirmation_days,
         "signals": signals,
+        "daily_states": states,
+    }
+
+
+def weighted_close_series(component_closes):
+    """Build an equal-weight synthetic close series from matching component dates."""
+    if not component_closes:
+        raise ValueError("합성 추세 신호에 종목이 없습니다.")
+    closes_by_code = {
+        code: {date: close for date, close in closes if close > 0}
+        for code, closes in component_closes.items()
+    }
+    common_dates = set.intersection(*(set(closes) for closes in closes_by_code.values()))
+    if not common_dates:
+        raise ValueError("합성 추세 신호의 공통 거래일이 없습니다.")
+    ordered_dates = sorted(common_dates)
+    base_prices = {code: closes[ordered_dates[0]] for code, closes in closes_by_code.items()}
+    return [
+        (
+            date,
+            sum(closes[date] / base_prices[code] for code, closes in closes_by_code.items())
+            / len(closes_by_code)
+            * 100,
+        )
+        for date in ordered_dates
+    ]
+
+
+def calculate_composite_trend_state(component_states, confirmation_days, threshold=0.5):
+    """Combine dated component states into one confirmed portfolio trend state."""
+    if not component_states:
+        raise ValueError("복합 추세 신호가 없습니다.")
+    states_by_component = {
+        component["label"]: {item["date"]: item for item in component["daily_states"]}
+        for component in component_states
+    }
+    common_dates = set.intersection(*(set(states) for states in states_by_component.values()))
+    if len(common_dates) < confirmation_days:
+        raise ValueError("복합 추세 신호의 공통 거래일이 부족합니다.")
+
+    score_for = {"risk_on": 1, "neutral": 0, "risk_off": -1}
+    daily_states = []
+    for date in sorted(common_dates)[-confirmation_days:]:
+        score = sum(
+            float(component["weight_pct"]) / 100
+            * score_for[states_by_component[component["label"]][date]["state"]]
+            for component in component_states
+        )
+        state = "risk_on" if score >= threshold else "risk_off" if score <= -threshold else "neutral"
+        daily_states.append({"date": date, "state": state, "score": score})
+
+    latest = daily_states[-1]
+    return {
+        "state": latest["state"] if len({item["state"] for item in daily_states}) == 1 else "neutral",
+        "latest_date": latest["date"],
+        "score": latest["score"],
+        "confirmation_days": confirmation_days,
+        "signals": [item["state"] for item in daily_states],
+        "daily_states": daily_states,
     }
 
 

@@ -13,12 +13,14 @@ from pathlib import Path
 import kis_client
 import run_state
 from trading_strategy import (
+    calculate_composite_trend_state,
     calculate_trend_state,
     cash_from_balance,
     format_plan,
     load_config,
     plan_orders,
     positions_from_holdings,
+    weighted_close_series,
 )
 
 
@@ -130,6 +132,40 @@ def fetch_kis_daily_closes(code, context):
     return closes
 
 
+def fetch_kis_index_daily_closes(symbol, context):
+    """Fetch completed Nasdaq100 or S&P500 closes from KIS's overseas index API."""
+    now = datetime.now(kis_client.KST)
+    start = (now - timedelta(days=140)).strftime("%Y%m%d")
+    end = now.strftime("%Y%m%d")
+    wait_for_kis_request_slot(context)
+    response = context["session"].get(
+        f"{context['base_url']}/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+        headers={**context["headers"], "tr_id": "FHKST03030100"},
+        params={
+            "FID_COND_MRKT_DIV_CODE": "N",
+            "FID_INPUT_ISCD": symbol,
+            "FID_INPUT_DATE_1": start,
+            "FID_INPUT_DATE_2": end,
+            "FID_PERIOD_DIV_CODE": "D",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 지수 일봉조회 실패({symbol}): {payload.get('msg1', '알 수 없는 오류')}")
+
+    today = now.strftime("%Y%m%d")
+    closes = []
+    for row in payload.get("output2") or []:
+        date = str(row.get("stck_bsop_date", "")).strip()
+        close = kis_client.as_float(row.get("ovrs_nmix_prpr"), 0)
+        if date and date < today and close > 0:
+            closes.append((date, close))
+    closes.sort(key=lambda item: item[0])
+    return closes
+
+
 def resolve_trend_strategy(config, context):
     """Resolve effective target weights and persist them for the post-trade briefing."""
     trend = config.get("trend_strategy", {})
@@ -138,18 +174,22 @@ def resolve_trend_strategy(config, context):
         result = {"state": "neutral", "weights": default_weights, "enabled": False}
     else:
         try:
-            closes = fetch_kis_daily_closes(trend["signal_code"], context)
-            result = calculate_trend_state(
-                closes,
-                int(trend["short_window_days"]),
-                int(trend["long_window_days"]),
-                int(trend["confirmation_days"]),
-            )
+            if trend.get("signals"):
+                result = resolve_composite_trend_strategy(trend, context)
+            else:
+                closes = fetch_kis_daily_closes(trend["signal_code"], context)
+                result = calculate_trend_state(
+                    closes,
+                    int(trend["short_window_days"]),
+                    int(trend["long_window_days"]),
+                    int(trend["confirmation_days"]),
+                )
             result.update({
                 "enabled": True,
-                "signal_code": trend["signal_code"],
                 "weights": trend["weights"][result["state"]],
             })
+            if trend.get("signal_code"):
+                result["signal_code"] = trend["signal_code"]
         except Exception as exc:
             result = {
                 "state": "neutral",
@@ -160,6 +200,40 @@ def resolve_trend_strategy(config, context):
 
     if TREND_STATE_FILE:
         run_state.save_json(TREND_STATE_FILE, result)
+    return result
+
+
+def resolve_composite_trend_strategy(trend, context):
+    """Resolve a portfolio, Nasdaq100, and S&P500 composite trend signal."""
+    short_window = int(trend["short_window_days"])
+    long_window = int(trend["long_window_days"])
+    confirmation_days = int(trend["confirmation_days"])
+    components = []
+    for signal in trend["signals"]:
+        if signal["kind"] == "portfolio":
+            closes = weighted_close_series({
+                code: fetch_kis_daily_closes(code, context)
+                for code in signal["codes"]
+            })
+        else:
+            closes = fetch_kis_index_daily_closes(signal["symbol"], context)
+        state = calculate_trend_state(closes, short_window, long_window, confirmation_days)
+        components.append({
+            "label": signal["label"],
+            "weight_pct": float(signal["weight_pct"]),
+            "kind": signal["kind"],
+            "state": state["daily_states"][-1]["state"],
+            "latest_close": state["latest_close"],
+            "short_average": state["short_average"],
+            "long_average": state["long_average"],
+            "daily_states": state["daily_states"],
+        })
+    result = calculate_composite_trend_state(
+        components,
+        confirmation_days,
+        float(trend.get("composite_threshold", 0.5)),
+    )
+    result.update({"signal_type": "composite", "components": components})
     return result
 
 

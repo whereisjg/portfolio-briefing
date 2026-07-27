@@ -17,10 +17,30 @@
   },
   "trend_strategy": {
     "enabled": true,
-    "signal_code": "0015B0",
     "short_window_days": 20,
     "long_window_days": 60,
     "confirmation_days": 3,
+    "composite_threshold": 0.5,
+    "signals": [
+      {
+        "kind": "portfolio",
+        "label": "계좌 위험자산",
+        "weight_pct": 50,
+        "codes": ["0015B0", "486290", "0005A0"]
+      },
+      {
+        "kind": "index",
+        "label": "나스닥100",
+        "weight_pct": 25,
+        "symbol": "NDX"
+      },
+      {
+        "kind": "index",
+        "label": "S&P500",
+        "weight_pct": 25,
+        "symbol": "SPX"
+      }
+    ],
     "weights": {
       "risk_on": {
         "0015B0": 30,
