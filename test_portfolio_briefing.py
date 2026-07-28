@@ -681,6 +681,8 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(result["signals"], ["risk_on", "risk_on", "risk_on"])
 
     def test_fetch_kis_index_daily_closes_parses_completed_candles(self):
+        today = trading.datetime.now(kis_client.KST).strftime("%Y%m%d")
+
         class FakeResponse:
             def raise_for_status(self):
                 return None
@@ -690,7 +692,7 @@ class TradingPlanTests(unittest.TestCase):
                     "rt_cd": "0",
                     "output2": [
                         {"stck_bsop_date": "20260724", "ovrs_nmix_prpr": "28000"},
-                        {"stck_bsop_date": "20260727", "ovrs_nmix_prpr": "28100"},
+                        {"stck_bsop_date": today, "ovrs_nmix_prpr": "28100"},
                     ],
                 }
 
