@@ -103,6 +103,17 @@ class KisBalanceTests(unittest.TestCase):
         self.assertFalse(market_calendar.is_krx_trading_day(market_calendar.date(2026, 7, 18)))
         self.assertTrue(market_calendar.is_krx_trading_day(market_calendar.date(2026, 7, 20)))
 
+    def test_krx_order_status_closes_holidays_and_outside_regular_hours(self):
+        holiday = market_calendar.KST.localize(market_calendar.datetime(2026, 9, 24, 10))
+        before_open = market_calendar.KST.localize(market_calendar.datetime(2026, 7, 20, 8, 59))
+        trading = market_calendar.KST.localize(market_calendar.datetime(2026, 7, 20, 10))
+        after_cutoff = market_calendar.KST.localize(market_calendar.datetime(2026, 7, 20, 15, 20))
+
+        self.assertFalse(market_calendar.krx_order_status(holiday)["orderable"])
+        self.assertFalse(market_calendar.krx_order_status(before_open)["orderable"])
+        self.assertTrue(market_calendar.krx_order_status(trading)["orderable"])
+        self.assertFalse(market_calendar.krx_order_status(after_cutoff)["orderable"])
+
     def test_paper_balance_uses_virtual_tr_id_and_unpr_dvsn(self):
         class FakeResponse:
             def raise_for_status(self):
@@ -634,7 +645,7 @@ class TradingPlanTests(unittest.TestCase):
             trading.calculate_trend_state(falling, 20, 60, 3)["state"], "risk_off"
         )
 
-    def test_weighted_close_series_builds_an_equal_weight_risk_sleeve(self):
+    def test_weighted_close_series_uses_equal_weights_by_default(self):
         closes = strategy.weighted_close_series({
             "A": [("20260720", 100), ("20260721", 110)],
             "B": [("20260720", 200), ("20260721", 220)],
@@ -643,6 +654,17 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual([date for date, _close in closes], ["20260720", "20260721"])
         self.assertAlmostEqual(closes[0][1], 100)
         self.assertAlmostEqual(closes[1][1], 110)
+
+    def test_weighted_close_series_uses_supplied_target_weights(self):
+        closes = strategy.weighted_close_series({
+            "A": [("20260720", 100), ("20260721", 120)],
+            "B": [("20260720", 100), ("20260721", 100)],
+        }, {"A": 75, "B": 25})
+
+        self.assertEqual(
+            [(day, round(close)) for day, close in closes],
+            [("20260720", 100), ("20260721", 115)],
+        )
 
     def test_composite_trend_requires_all_three_daily_scores_to_confirm(self):
         components = [

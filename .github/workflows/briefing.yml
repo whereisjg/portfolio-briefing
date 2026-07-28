@@ -83,8 +83,9 @@ jobs:
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import market_calendar
 
-          status = market_calendar.krx_market_status()
+          status = market_calendar.krx_order_status()
           print(f"open={'true' if status['open'] else 'false'}")
+          print(f"orderable={'true' if status['orderable'] else 'false'}")
           print(f"date={status['date'].strftime('%Y-%m-%d')}")
           print(f"reason={status['reason']}")
           PY
@@ -103,14 +104,14 @@ jobs:
           print(f"KIS pre-trade balance snapshot saved: {len(holdings)} holding(s)")
           PY
       - name: Run configured live rebalance
-        if: steps.krx-market.outputs.open == 'true' && inputs.execute_live_orders == true
+        if: steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
           KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
         run: python trading_execution.py --execute-live > /tmp/trading-plan.txt
       - name: Build trading plan only
-        if: steps.krx-market.outputs.open == 'true' && inputs.execute_live_orders != true
+        if: steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders != true
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
@@ -128,6 +129,21 @@ jobs:
           reason = os.getenv("KRX_CLOSED_REASON", "휴장일")
           Path("/tmp/trading-plan.txt").write_text(
               f"🤖 자동매매 휴장\n오늘은 KRX 휴장일이라 주문하지 않습니다.\n사유: {reason}\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Build outside-hours trading note
+        if: steps.krx-market.outputs.open == 'true' && steps.krx-market.outputs.orderable != 'true'
+        env:
+          KRX_ORDER_REASON: ${{ steps.krx-market.outputs.reason }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          reason = os.getenv("KRX_ORDER_REASON", "정규장 주문 가능 시간 아님")
+          Path("/tmp/trading-plan.txt").write_text(
+              f"🤖 자동매매 대기\n오늘은 거래일이지만 주문을 보내지 않습니다.\n사유: {reason}\n",
               encoding="utf-8",
           )
           PY

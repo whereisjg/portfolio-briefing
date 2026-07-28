@@ -175,7 +175,7 @@ def resolve_trend_strategy(config, context):
     else:
         try:
             if trend.get("signals"):
-                result = resolve_composite_trend_strategy(trend, context)
+                result = resolve_composite_trend_strategy(trend, context, default_weights)
             else:
                 closes = fetch_kis_daily_closes(trend["signal_code"], context)
                 result = calculate_trend_state(
@@ -203,7 +203,7 @@ def resolve_trend_strategy(config, context):
     return result
 
 
-def resolve_composite_trend_strategy(trend, context):
+def resolve_composite_trend_strategy(trend, context, target_weights=None):
     """Resolve a portfolio, Nasdaq100, and S&P500 composite trend signal."""
     short_window = int(trend["short_window_days"])
     long_window = int(trend["long_window_days"])
@@ -211,10 +211,14 @@ def resolve_composite_trend_strategy(trend, context):
     components = []
     for signal in trend["signals"]:
         if signal["kind"] == "portfolio":
-            closes = weighted_close_series({
-                code: fetch_kis_daily_closes(code, context)
-                for code in signal["codes"]
-            })
+            closes = weighted_close_series(
+                {
+                    code: fetch_kis_daily_closes(code, context)
+                    for code in signal["codes"]
+                },
+                ({code: target_weights[code] for code in signal["codes"]}
+                 if target_weights is not None else None),
+            )
         else:
             closes = fetch_kis_index_daily_closes(signal["symbol"], context)
         state = calculate_trend_state(closes, short_window, long_window, confirmation_days)

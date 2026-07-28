@@ -123,8 +123,8 @@ def calculate_trend_state(closes, short_window, long_window, confirmation_days):
     }
 
 
-def weighted_close_series(component_closes):
-    """Build an equal-weight synthetic close series from matching component dates."""
+def weighted_close_series(component_closes, weights=None):
+    """Build a weighted synthetic close series from matching component dates."""
     if not component_closes:
         raise ValueError("합성 추세 신호에 종목이 없습니다.")
     closes_by_code = {
@@ -136,12 +136,17 @@ def weighted_close_series(component_closes):
         raise ValueError("합성 추세 신호의 공통 거래일이 없습니다.")
     ordered_dates = sorted(common_dates)
     base_prices = {code: closes[ordered_dates[0]] for code, closes in closes_by_code.items()}
+    raw_weights = weights or {code: 1 for code in closes_by_code}
+    if set(raw_weights) != set(closes_by_code) or any(float(weight) <= 0 for weight in raw_weights.values()):
+        raise ValueError("합성 추세 신호의 비중이 올바르지 않습니다.")
+    total_weight = sum(float(weight) for weight in raw_weights.values())
     return [
         (
             date,
-            sum(closes[date] / base_prices[code] for code, closes in closes_by_code.items())
-            / len(closes_by_code)
-            * 100,
+            sum(
+                closes[date] / base_prices[code] * float(raw_weights[code]) / total_weight
+                for code, closes in closes_by_code.items()
+            ) * 100,
         )
         for date in ordered_dates
     ]

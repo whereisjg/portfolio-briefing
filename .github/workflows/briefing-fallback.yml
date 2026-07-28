@@ -1,0 +1,29 @@
+name: Daily Briefing Fallback
+
+on:
+  schedule:
+    - cron: '12 1 * * 1-5'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-if-needed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch only when today's briefing did not succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          today=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          completed=$(gh run list --repo "$REPOSITORY" --workflow briefing.yml --limit 20 \
+            --json createdAt,status,conclusion --jq \
+            ".[] | select(.createdAt | startswith(\"${today}\")) | select(.status != \"completed\" or .conclusion == \"success\")")
+          if [ -n "$completed" ]; then
+            echo "Today's briefing is already running or succeeded."
+            exit 0
+          fi
+          gh workflow run briefing.yml --repo "$REPOSITORY" --ref main \
+            -f account_mode=isa -f execute_live_orders=true
