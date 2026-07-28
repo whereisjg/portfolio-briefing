@@ -25,7 +25,7 @@
       "display": "KoAct나스닥성장",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 15
+      "target_weight_pct": 20
     },
     {
       "ticker": "TIGER미국나스닥100타겟데일리커버드콜",
@@ -34,7 +34,7 @@
       "display": "TIGER나스닥커버드콜",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 20
+      "target_weight_pct": 15
     },
     {
       "ticker": "KODEX미국S&P500데일리커버드콜OTM",
@@ -43,7 +43,7 @@
       "display": "KODEX S&P커버드콜",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 20
+      "target_weight_pct": 15
     },
     {
       "ticker": "TIME미국배당다우존스액티브",
@@ -52,7 +52,7 @@
       "display": "TIME배당다우존스",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 15
+      "target_weight_pct": 20
     },
     {
       "ticker": "KODEX단기채권",
