@@ -645,6 +645,17 @@ class TradingPlanTests(unittest.TestCase):
             trading.calculate_trend_state(falling, 20, 60, 3)["state"], "risk_off"
         )
 
+    def test_hma_trend_state_uses_shorter_confirmation(self):
+        rising = [(f"20260{index:03}", float(100 + index)) for index in range(50)]
+        falling = [(f"20260{index:03}", float(200 - index)) for index in range(50)]
+
+        rising_state = trading.calculate_trend_state(rising, 20, 40, 2, "hma")
+        self.assertEqual(rising_state["state"], "risk_on")
+        self.assertEqual(rising_state["average_type"], "hma")
+        self.assertEqual(
+            trading.calculate_trend_state(falling, 20, 40, 2, "hma")["state"], "risk_off"
+        )
+
     def test_weighted_close_series_uses_equal_weights_by_default(self):
         closes = strategy.weighted_close_series({
             "A": [("20260720", 100), ("20260721", 110)],

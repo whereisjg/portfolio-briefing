@@ -183,6 +183,7 @@ def resolve_trend_strategy(config, context):
                     int(trend["short_window_days"]),
                     int(trend["long_window_days"]),
                     int(trend["confirmation_days"]),
+                    trend.get("average_type", "sma"),
                 )
             result.update({
                 "enabled": True,
@@ -208,6 +209,7 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
     short_window = int(trend["short_window_days"])
     long_window = int(trend["long_window_days"])
     confirmation_days = int(trend["confirmation_days"])
+    average_type = trend.get("average_type", "sma")
     components = []
     for signal in trend["signals"]:
         if signal["kind"] == "portfolio":
@@ -221,7 +223,9 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
             )
         else:
             closes = fetch_kis_index_daily_closes(signal["symbol"], context)
-        state = calculate_trend_state(closes, short_window, long_window, confirmation_days)
+        state = calculate_trend_state(
+            closes, short_window, long_window, confirmation_days, average_type
+        )
         components.append({
             "label": signal["label"],
             "weight_pct": float(signal["weight_pct"]),
@@ -230,6 +234,7 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
             "latest_close": state["latest_close"],
             "short_average": state["short_average"],
             "long_average": state["long_average"],
+            "average_type": state["average_type"],
             "daily_states": state["daily_states"],
         })
     result = calculate_composite_trend_state(
@@ -237,7 +242,7 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
         confirmation_days,
         float(trend.get("composite_threshold", 0.5)),
     )
-    result.update({"signal_type": "composite", "components": components})
+    result.update({"signal_type": "composite", "average_type": average_type, "components": components})
     return result
 
 
