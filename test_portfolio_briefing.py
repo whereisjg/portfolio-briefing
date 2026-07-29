@@ -646,15 +646,27 @@ class TradingPlanTests(unittest.TestCase):
         )
 
     def test_hma_trend_state_uses_shorter_confirmation(self):
-        rising = [(f"20260{index:03}", float(100 + index)) for index in range(50)]
-        falling = [(f"20260{index:03}", float(200 - index)) for index in range(50)]
+        rising = [(f"20260{index:03}", float(100 + index)) for index in range(220)]
+        falling = [(f"20260{index:03}", float(400 - index)) for index in range(220)]
 
-        rising_state = trading.calculate_trend_state(rising, 20, 40, 2, "hma")
+        rising_state = trading.calculate_trend_state(rising, 20, 40, 2, "hma", 200)
         self.assertEqual(rising_state["state"], "risk_on")
         self.assertEqual(rising_state["average_type"], "hma")
+        self.assertIsNotNone(rising_state["filter_average"])
         self.assertEqual(
-            trading.calculate_trend_state(falling, 20, 40, 2, "hma")["state"], "risk_off"
+            trading.calculate_trend_state(falling, 20, 40, 2, "hma", 200)["state"], "risk_off"
         )
+
+    def test_hma_200_filter_blocks_risk_on_during_a_bear_market_rebound(self):
+        closes = [(f"2026{index:04}", 200.0) for index in range(210)]
+        closes.extend((f"2027{index:04}", 200.0 - 5 * (index + 1)) for index in range(10))
+        bottom = closes[-1][1]
+        closes.extend((f"2028{index:04}", bottom + 3 * (index + 1)) for index in range(10))
+
+        self.assertEqual(trading.calculate_trend_state(closes, 20, 40, 2, "hma")["state"], "risk_on")
+        filtered = trading.calculate_trend_state(closes, 20, 40, 2, "hma", 200)
+        self.assertEqual(filtered["state"], "neutral")
+        self.assertLess(filtered["latest_close"], filtered["filter_average"])
 
     def test_weighted_close_series_uses_equal_weights_by_default(self):
         closes = strategy.weighted_close_series({

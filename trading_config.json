@@ -21,6 +21,7 @@
     "average_type": "hma",
     "short_window_days": 20,
     "long_window_days": 40,
+    "long_filter_window_days": 200,
     "confirmation_days": 2,
     "composite_threshold": 0.5,
     "signals": [

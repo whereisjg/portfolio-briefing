@@ -100,7 +100,7 @@ def wait_for_kis_request_slot(context):
 def fetch_kis_daily_closes(code, context):
     """Fetch completed daily closes for a domestic ETF trend signal."""
     now = datetime.now(kis_client.KST)
-    start = (now - timedelta(days=180)).strftime("%Y%m%d")
+    start = (now - timedelta(days=400)).strftime("%Y%m%d")
     end = now.strftime("%Y%m%d")
     wait_for_kis_request_slot(context)
     response = context["session"].get(
@@ -135,7 +135,7 @@ def fetch_kis_daily_closes(code, context):
 def fetch_kis_index_daily_closes(symbol, context):
     """Fetch completed Nasdaq100 or S&P500 closes from KIS's overseas index API."""
     now = datetime.now(kis_client.KST)
-    start = (now - timedelta(days=140)).strftime("%Y%m%d")
+    start = (now - timedelta(days=400)).strftime("%Y%m%d")
     end = now.strftime("%Y%m%d")
     wait_for_kis_request_slot(context)
     response = context["session"].get(
@@ -184,6 +184,7 @@ def resolve_trend_strategy(config, context):
                     int(trend["long_window_days"]),
                     int(trend["confirmation_days"]),
                     trend.get("average_type", "sma"),
+                    trend.get("long_filter_window_days"),
                 )
             result.update({
                 "enabled": True,
@@ -210,6 +211,7 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
     long_window = int(trend["long_window_days"])
     confirmation_days = int(trend["confirmation_days"])
     average_type = trend.get("average_type", "sma")
+    long_filter_window = trend.get("long_filter_window_days")
     components = []
     for signal in trend["signals"]:
         if signal["kind"] == "portfolio":
@@ -224,7 +226,12 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
         else:
             closes = fetch_kis_index_daily_closes(signal["symbol"], context)
         state = calculate_trend_state(
-            closes, short_window, long_window, confirmation_days, average_type
+            closes,
+            short_window,
+            long_window,
+            confirmation_days,
+            average_type,
+            long_filter_window,
         )
         components.append({
             "label": signal["label"],
@@ -234,6 +241,8 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
             "latest_close": state["latest_close"],
             "short_average": state["short_average"],
             "long_average": state["long_average"],
+            "filter_average": state["filter_average"],
+            "long_filter_window": state["long_filter_window"],
             "average_type": state["average_type"],
             "daily_states": state["daily_states"],
         })

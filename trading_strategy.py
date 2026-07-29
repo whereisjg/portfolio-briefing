@@ -50,6 +50,9 @@ def load_config(path=CONFIG_FILE):
     if trend.get("enabled"):
         if trend.get("average_type", "sma") not in {"sma", "hma"}:
             raise ValueError("trend_strategy.average_type은 sma 또는 hma여야 합니다.")
+        long_filter_window = trend.get("long_filter_window_days")
+        if long_filter_window is not None and int(long_filter_window) < int(trend["long_window_days"]):
+            raise ValueError("long_filter_window_days는 long_window_days 이상이어야 합니다.")
         signals = trend.get("signals")
         if signals:
             if not isinstance(signals, list) or abs(sum(float(signal.get("weight_pct", 0)) for signal in signals) - 100) > 0.01:
@@ -98,11 +101,21 @@ def hull_average(closes, index, window):
     return weighted_average(raw_values)
 
 
-def trend_signal_states(closes, short_window, long_window, confirmation_days, average_type="sma"):
+def trend_signal_states(
+    closes,
+    short_window,
+    long_window,
+    confirmation_days,
+    average_type="sma",
+    long_filter_window=None,
+):
     """Return the latest daily moving-average states from completed closing prices."""
-    required = long_window + confirmation_days - 1
+    windows = [short_window, long_window]
+    if long_filter_window:
+        windows.append(int(long_filter_window))
+    required = max(windows) + confirmation_days - 1
     if average_type == "hma":
-        required += math.isqrt(long_window) - 1
+        required += math.isqrt(max(windows)) - 1
     if len(closes) < required:
         raise ValueError(f"추세 판단에 필요한 일봉이 부족합니다: {len(closes)}/{required}")
 
@@ -115,11 +128,18 @@ def trend_signal_states(closes, short_window, long_window, confirmation_days, av
         else:
             short_average = sum(close for _date, close in closes[index - short_window + 1:index + 1]) / short_window
             long_average = sum(close for _date, close in closes[index - long_window + 1:index + 1]) / long_window
+        filter_average = (
+            hull_average(closes, index, int(long_filter_window))
+            if average_type == "hma" and long_filter_window
+            else None
+        )
         if price > long_average and short_average > long_average:
             state = "risk_on"
         elif price < long_average and short_average < long_average:
             state = "risk_off"
         else:
+            state = "neutral"
+        if filter_average is not None and state == "risk_on" and price <= filter_average:
             state = "neutral"
         states.append({
             "date": closes[index][0],
@@ -127,13 +147,28 @@ def trend_signal_states(closes, short_window, long_window, confirmation_days, av
             "close": price,
             "short_average": short_average,
             "long_average": long_average,
+            "filter_average": filter_average,
         })
     return states
 
 
-def calculate_trend_state(closes, short_window, long_window, confirmation_days, average_type="sma"):
+def calculate_trend_state(
+    closes,
+    short_window,
+    long_window,
+    confirmation_days,
+    average_type="sma",
+    long_filter_window=None,
+):
     """Classify a confirmed moving-average regime from completed closing prices."""
-    states = trend_signal_states(closes, short_window, long_window, confirmation_days, average_type)
+    states = trend_signal_states(
+        closes,
+        short_window,
+        long_window,
+        confirmation_days,
+        average_type,
+        long_filter_window,
+    )
     signals = [item["state"] for item in states]
     latest = states[-1]
     return {
@@ -142,6 +177,8 @@ def calculate_trend_state(closes, short_window, long_window, confirmation_days, 
         "latest_close": latest["close"],
         "short_average": latest["short_average"],
         "long_average": latest["long_average"],
+        "filter_average": latest["filter_average"],
+        "long_filter_window": long_filter_window,
         "average_type": average_type,
         "confirmation_days": confirmation_days,
         "signals": signals,
