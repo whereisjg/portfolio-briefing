@@ -639,7 +639,7 @@ def format_execution_report(today_orders, submitted, cancelled, asset_labels=Non
     asset_labels = asset_labels or {}
     rows_by_order_no = {str(row.get("odno", "")).strip(): row for row in today_orders}
     cancelled_order_nos = {str(item.get("order_no", "")).strip() for item in cancelled}
-    lines = ["📋 체결 품질"]
+    lines = ["🤖 자동매매 결과"]
     for order in submitted:
         order_no = str(order.get("order_no", "")).strip()
         row = rows_by_order_no.get(order_no)
@@ -666,15 +666,15 @@ def format_execution_report(today_orders, submitted, cancelled, asset_labels=Non
         else:
             status = "미체결"
 
-        details = f"체결 {filled}/{requested}주"
-        if filled > 0 and average_price > 0:
-            difference = average_price - order["price"]
-            difference_pct = difference / order["price"] * 100 if order["price"] else 0
-            details += (
-                f" @ {average_price:,.0f}원 · 주문 대비 {difference:+,.0f}원"
-                f" ({difference_pct:+.2f}%)"
-            )
-        lines.append(f"{side} {label} · 지정가 {order['price']:,.0f}원 · {details} · {status}")
+        if filled > 0:
+            amount = filled * (average_price or order["price"])
+            amount_text = f"{amount / 10000:,.1f}".rstrip("0").rstrip(".") + "만"
+            quantity_text = f"{filled}주" if filled == requested else f"{filled}/{requested}주"
+            lines.append(f"{side} {label} {quantity_text} · {amount_text} 체결")
+            if filled < requested:
+                lines[-1] += f" · {status}"
+        else:
+            lines.append(f"{side} {label} · {status}")
     return lines
 
 
@@ -839,18 +839,9 @@ def main():
         if execution["status"] == "skipped":
             print("자동매매 실주문\n" + execution["reason"])
             return
-        asset_labels = load_asset_labels()
-        print(format_plan(execution["plan"], live=True, asset_labels=asset_labels))
         if not execution["orders"]:
-            print("주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
+            print("🤖 자동매매 결과\n주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
             return
-        for order in execution["orders"]:
-            direction = "매수" if order["side"] == "buy" else "매도"
-            label = asset_labels.get(order["code"], order["code"])
-            print(
-                f"실주문 접수: {direction} {label} {order['quantity']}주 / "
-                f"지정가 {order['price']:,.0f}원 / 주문번호 {order['order_no']}"
-            )
         for line in execution.get("execution_report", []):
             print(line)
         return

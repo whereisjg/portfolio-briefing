@@ -577,7 +577,7 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(orders, [{"order_no": "1", "quantity": 2}])
 
-    def test_execution_report_includes_fill_slippage_and_cancellation(self):
+    def test_execution_report_shows_compact_fill_and_cancellation_status(self):
         report = trading.format_execution_report(
             [
                 {"odno": "1", "tot_ccld_qty": "2", "rmn_qty": "0", "avg_prvs": "9900"},
@@ -590,9 +590,10 @@ class TradingPlanTests(unittest.TestCase):
             [{"order_no": "2", "quantity": 3}],
         )
 
-        self.assertEqual(report[0], "📋 체결 품질")
-        self.assertIn("체결 2/2주 @ 9,900원 · 주문 대비 -100원 (-1.00%) · 전량 체결", report[1])
+        self.assertEqual(report[0], "🤖 자동매매 결과")
+        self.assertEqual(report[1], "매수 A 2주 · 2만 체결")
         self.assertIn("미체결 취소", report[2])
+        self.assertNotIn("지정가", "\n".join(report))
 
     def test_execution_report_uses_asset_labels(self):
         report = trading.format_execution_report(

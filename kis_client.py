@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import time
 
 import pytz
@@ -71,7 +72,7 @@ def load_cached_access_token(cache_file, max_age_seconds=TOKEN_MAX_AGE_SECONDS):
         return None
     if not token or time.time() - issued_at >= max_age_seconds:
         return None
-    print("KIS access token cache hit (issued within 6 hours)")
+    print("KIS access token cache hit (issued within 6 hours)", file=sys.stderr)
     return token
 
 
@@ -100,7 +101,7 @@ def get_access_token(app_key, app_secret, base_url, cache_file="", session_facto
     if not access_token:
         raise ValueError("KIS 접근 토큰을 받지 못했습니다.")
     save_access_token(cache_file, access_token)
-    print("KIS access token issued")
+    print("KIS access token issued", file=sys.stderr)
     return access_token
 
 
@@ -150,7 +151,8 @@ def fetch_balance(session_factory=get_http_session, cache_file=""):
             raise ValueError(f"KIS 잔고조회 실패: {message or '알 수 없는 오류'}")
         print(
             f"KIS 잔고조회 MCI 오류, {delay}초 후 재시도합니다. "
-            f"({attempt + 1}/{len(BALANCE_MCI_RETRY_DELAYS_SECONDS)})"
+            f"({attempt + 1}/{len(BALANCE_MCI_RETRY_DELAYS_SECONDS)})",
+            file=sys.stderr,
         )
         time.sleep(delay)
 
