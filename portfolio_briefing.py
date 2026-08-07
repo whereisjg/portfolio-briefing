@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 import kis_client
+import performance_tracking
 import run_state
 
 
@@ -29,6 +30,7 @@ KRX_MARKET_NOTICE = env_value("KRX_MARKET_NOTICE")
 KIS_ACCESS_TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 
 PORTFOLIO_FILE = "portfolio.json"
+TRADING_CONFIG_FILE = "trading_config.json"
 SIGNIFICANT_MOVE_PCT = 3.0
 CRITICAL_MOVE_PCT = 5.0
 
@@ -76,6 +78,38 @@ def load_portfolio():
         print(f"WARNING: target_weight_pct 변환 오류, 비중 검증 건너뜀: {exc}")
 
     return indexes, assets
+
+
+def load_trading_config():
+    try:
+        with open(TRADING_CONFIG_FILE, encoding="utf-8") as file:
+            return json.load(file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{TRADING_CONFIG_FILE}을 읽지 못했습니다: {exc}") from exc
+
+
+def update_strategy_performance(config, market_quotes, trend_state):
+    comparison = config.get("strategy_comparison", {})
+    if not comparison.get("enabled") or not trend_state or not trend_state.get("weights"):
+        return None
+    fixed_weights = config.get("trend_strategy", {}).get("weights", {}).get(
+        "neutral", config["target_weights"]
+    )
+    prices = {
+        code: market_quotes[code]["price"]
+        for code in fixed_weights
+        if code in market_quotes
+    }
+    missing = sorted(set(fixed_weights) - set(prices))
+    if missing:
+        raise ValueError(f"전략 성과 가격 누락: {', '.join(missing)}")
+    return performance_tracking.update_strategy_comparison(
+        comparison.get("history_file", "performance/strategy_twr.json"),
+        datetime.now(KST).date().isoformat(),
+        prices,
+        trend_state["weights"],
+        fixed_weights,
+    )
 
 
 def now_kst():
@@ -515,7 +549,15 @@ def build_rebalancing_lines(quotes):
     return rows
 
 
-def build_content(indexes, quotes, errors, account_summary=None, trend_state=None, market_notice=""):
+def build_content(
+    indexes,
+    quotes,
+    errors,
+    account_summary=None,
+    trend_state=None,
+    market_notice="",
+    performance_summary=None,
+):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -623,6 +665,16 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         telegram_lines.append(composite_signal_line)
     if trend_error_line:
         telegram_lines.append(trend_error_line)
+    if performance_summary:
+        if performance_summary["periods"] == 0:
+            telegram_lines.append("📐 전략 TWR · 오늘부터 HMA/고정 비중 비교")
+        else:
+            telegram_lines.append(
+                "📐 전략 TWR · "
+                f"HMA {performance_summary['hma_twr_pct']:+.2f}% · "
+                f"고정 {performance_summary['fixed_twr_pct']:+.2f}% · "
+                f"차이 {performance_summary['difference_pct_points']:+.2f}%p"
+            )
 
     telegram_lines.extend([
         f"오늘 흐름: {pos_count} 상승 · {neg_count} 하락",
@@ -728,6 +780,20 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         if profit_loss is not None and return_pct is not None:
             md_lines.append(f"- 평가손익: {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)")
 
+    if performance_summary:
+        md_lines.extend([
+            "",
+            "## 📐 전략 TWR 비교",
+            "",
+            f"- 기간: {performance_summary['start_date']} ~ {performance_summary['end_date']}",
+            f"- HMA 목표전략: {performance_summary['hma_twr_pct']:+.2f}%",
+            f"- 중립 고정 비중: {performance_summary['fixed_twr_pct']:+.2f}%",
+            f"- 전략 차이: {performance_summary['difference_pct_points']:+.2f}%p",
+            f"- 최대낙폭: HMA {performance_summary['hma_mdd_pct']:.2f}% / 고정 {performance_summary['fixed_mdd_pct']:.2f}%",
+            f"- HMA 목표비중 누적 회전율: {performance_summary['hma_turnover_pct']:.1f}%",
+            "- 산식: 입출금을 배제한 일별 목표비중 가격 TWR이며, 분배금과 거래비용은 별도로 반영하지 않습니다.",
+        ])
+
     if rebalancing_rows:
         md_lines.extend(["", "## 📊 리밸런싱", ""])
         md_lines.extend(
@@ -807,6 +873,8 @@ def main():
 
         print(f"[1/{total_steps}] Loading portfolio...")
         indexes_config, assets_config = load_portfolio()
+        trading_config = load_trading_config()
+        comparison_codes = set(trading_config.get("target_weights", {}))
 
         if not kis_enabled():
             raise ValueError("KIS_BALANCE_ENABLED=true 설정이 필요합니다.")
@@ -816,8 +884,13 @@ def main():
         save_kis_balance_snapshot(holdings, account_summary, access_token)
         print(f"[2/{total_steps}] Fetching KIS indexes...")
         indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
+        holding_codes = {
+            str(holding.get("pdno", "")).strip()
+            for holding in holdings
+            if holding.get("hldg_qty")
+        }
         market_quotes, market_quote_errors = fetch_kis_domestic_quotes(
-            [str(holding.get("pdno", "")).strip() for holding in holdings if holding.get("hldg_qty")],
+            sorted(holding_codes | comparison_codes),
             access_token,
         )
         assets_config = assets_from_kis_balance(assets_config, holdings, market_quotes)
@@ -829,11 +902,24 @@ def main():
         print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
 
         errors = index_errors + market_quote_errors + quote_errors
+        performance_summary = None
+        try:
+            performance_summary = update_strategy_performance(
+                trading_config, market_quotes, trend_state
+            )
+        except Exception as exc:
+            errors.append(f"전략 TWR 기록 실패: {exc}")
 
         next_step = 3
         print(f"[{next_step}/{total_steps}] Building rule-based briefing...")
         telegram_msg, md_content = build_content(
-            indexes, quotes, errors, account_summary, trend_state, KRX_MARKET_NOTICE
+            indexes,
+            quotes,
+            errors,
+            account_summary,
+            trend_state,
+            KRX_MARKET_NOTICE,
+            performance_summary,
         )
 
         next_step += 1

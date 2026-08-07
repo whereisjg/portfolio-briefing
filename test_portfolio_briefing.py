@@ -6,6 +6,7 @@ import json
 import portfolio_briefing as briefing
 import kis_client
 import market_calendar
+import performance_tracking as performance
 import trading_execution as trading
 import trading_strategy as strategy
 
@@ -31,6 +32,106 @@ class FormattingTests(unittest.TestCase):
         quotes = [{"ticker": "SCHD", "chg_pct": 0.5}]
 
         self.assertEqual(briefing.build_alert_lines(quotes, []), ["특이사항 없음"])
+
+
+class PerformanceTrackingTests(unittest.TestCase):
+    def test_strategy_twr_compares_hma_with_fixed_weights(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/strategy_twr.json"
+            first = performance.update_strategy_comparison(
+                path,
+                "2026-08-07",
+                {"A": 100, "B": 100},
+                {"A": 50, "B": 50},
+                {"A": 25, "B": 75},
+            )
+            second = performance.update_strategy_comparison(
+                path,
+                "2026-08-08",
+                {"A": 110, "B": 100},
+                {"A": 25, "B": 75},
+                {"A": 25, "B": 75},
+            )
+
+            self.assertEqual(first["periods"], 0)
+            self.assertAlmostEqual(second["hma_twr_pct"], 5.0)
+            self.assertAlmostEqual(second["fixed_twr_pct"], 2.5)
+            self.assertAlmostEqual(second["difference_pct_points"], 2.5)
+            self.assertAlmostEqual(second["hma_turnover_pct"], 25.0)
+
+    def test_strategy_twr_replaces_same_day_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/strategy_twr.json"
+            performance.update_strategy_comparison(
+                path,
+                "2026-08-07",
+                {"A": 100},
+                {"A": 100},
+                {"A": 100},
+            )
+            performance.update_strategy_comparison(
+                path,
+                "2026-08-08",
+                {"A": 110},
+                {"A": 100},
+                {"A": 100},
+            )
+            summary = performance.update_strategy_comparison(
+                path,
+                "2026-08-08",
+                {"A": 120},
+                {"A": 100},
+                {"A": 100},
+            )
+
+            history = performance.load_history(path)
+            self.assertEqual(len(history["records"]), 2)
+            self.assertAlmostEqual(summary["hma_twr_pct"], 20.0)
+
+    def test_strategy_twr_geometrically_links_returns_and_tracks_drawdown(self):
+        records = [
+            {"date": "2026-08-07", "prices": {"A": 100}, "hma_weights": {"A": 100}, "fixed_weights": {"A": 100}},
+            {"date": "2026-08-08", "prices": {"A": 110}, "hma_weights": {"A": 100}, "fixed_weights": {"A": 100}},
+            {"date": "2026-08-09", "prices": {"A": 99}, "hma_weights": {"A": 100}, "fixed_weights": {"A": 100}},
+        ]
+
+        summary = performance.calculate_summary(records)
+
+        self.assertAlmostEqual(summary["hma_twr_pct"], -1.0)
+        self.assertAlmostEqual(summary["hma_mdd_pct"], -10.0)
+
+    def test_briefing_shows_compact_strategy_twr(self):
+        quotes = [{
+            "ticker": "ETF",
+            "display": "ETF",
+            "name": "ETF",
+            "currency": "KRW",
+            "price": 10000,
+            "prev_close": 10000,
+            "chg_amount": 0,
+            "chg_pct": 0,
+            "provider": "KIS",
+        }]
+        performance_summary = {
+            "start_date": "2026-08-07",
+            "end_date": "2026-08-08",
+            "observations": 2,
+            "periods": 1,
+            "hma_twr_pct": 1.25,
+            "fixed_twr_pct": 1.0,
+            "difference_pct_points": 0.25,
+            "hma_mdd_pct": -0.5,
+            "fixed_mdd_pct": -0.8,
+            "hma_turnover_pct": 10.0,
+        }
+
+        telegram, markdown = briefing.build_content(
+            [], quotes, [], performance_summary=performance_summary
+        )
+
+        self.assertIn("📐 전략 TWR · HMA +1.25% · 고정 +1.00% · 차이 +0.25%p", telegram)
+        self.assertIn("## 📐 전략 TWR 비교", markdown)
+        self.assertIn("최대낙폭: HMA -0.50% / 고정 -0.80%", markdown)
 
 
 class ConfigurationTests(unittest.TestCase):

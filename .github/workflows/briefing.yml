@@ -74,7 +74,7 @@ jobs:
           fi
       - name: Validate config and script
         run: |
-          python -m py_compile portfolio_briefing.py kis_client.py market_calendar.py trading_execution.py trading_strategy.py run_state.py trade_automation.py
+          python -m py_compile portfolio_briefing.py kis_client.py market_calendar.py performance_tracking.py trading_execution.py trading_strategy.py run_state.py trade_automation.py
           python -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'trading_config.json')]"
           python -m unittest
       - name: Check KRX trading day
@@ -220,6 +220,7 @@ jobs:
           git config user.name "Portfolio Bot"
           git config user.email "bot@portfolio.local"
           git add briefings/*.md 2>/dev/null || true
+          git add performance/*.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "Daily briefing - $(TZ=Asia/Seoul date +%Y-%m-%d)"
           fi

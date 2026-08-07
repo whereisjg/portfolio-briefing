@@ -6,6 +6,10 @@
   "paper_test_order_limit_krw": 100000,
   "daily_sell_limit_per_asset_krw": 1000000,
   "rebalance_band_pct": 2,
+  "strategy_comparison": {
+    "enabled": true,
+    "history_file": "performance/strategy_twr.json"
+  },
   "liquidation_codes": [
     "0048J0"
   ],

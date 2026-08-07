@@ -9,6 +9,7 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 - 결과는 `briefings/briefing_YYYYMMDD.md`에 저장하고 GitHub에 기록합니다.
 - `paper`는 모의투자, `live`는 기존 일반계좌, `isa`는 ISA 계좌용 Secret을 각각 사용합니다.
 - 자동매매 규칙은 KIS 실계좌의 지정가 주문, 미체결 취소, 한 번의 재시도까지 실행합니다. Telegram에는 최종 체결수량·금액과 미체결·취소 상태만 간결하게 기록합니다.
+- 매일 같은 ETF 가격으로 HMA 목표전략과 중립 고정 비중을 가상 운용하고, 입출금 영향을 배제한 누적 TWR과 최대낙폭을 비교합니다.
 
 ## 추세별 목표 비중
 
@@ -26,6 +27,7 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 
 - KIS 기반 보유 종목·평단가·평가손익·예수금·나스닥100·S&P500
 - HMA20·40 및 HMA200 장기 필터 기반 복합 추세
+- HMA 목표전략과 중립 고정 비중의 일별 가격 TWR 비교
 - 목표 비중 대비 리밸런싱 우선순위
 - Telegram 전송 및 Markdown 이력 저장
 
@@ -40,6 +42,7 @@ portfolio-briefing/
 ├─ kis_client.py             # KIS 인증, 토큰, 계좌 잔고 공통 계층
 ├─ trading_strategy.py       # 목표 비중, 추세 판단, 주문 계획
 ├─ trading_execution.py      # KIS 주문, 취소, 체결 확인
+├─ performance_tracking.py   # 전략 TWR 이력과 성과 비교
 ├─ run_state.py              # workflow 단계 간 임시 상태
 ├─ portfolio_briefing.py
 ├─ trade_automation.py       # 이전 실행 명령 호환용 진입점
@@ -47,7 +50,7 @@ portfolio-briefing/
 └─ README.md
 ```
 
-`kis_client.py`는 KIS 인증, 토큰 cache, 계좌 정보, 잔고조회를 공통으로 담당합니다. `trading_strategy.py`는 KIS 호출이나 주문 전송을 하지 않고 잔고·가격 Snapshot에서 매수·매도 계획만 반환합니다. `trading_execution.py`는 KIS client와 전략 계획을 사용해 지정가 주문·취소·체결 확인을 실행합니다. `portfolio_briefing.py`는 실행 후 실제 잔고와 결과를 Telegram 및 Markdown으로 전달합니다. `trade_automation.py`는 이전 실행 명령을 유지하기 위한 호환용 진입점입니다.
+`kis_client.py`는 KIS 인증, 토큰 cache, 계좌 정보, 잔고조회를 공통으로 담당합니다. `trading_strategy.py`는 KIS 호출이나 주문 전송을 하지 않고 잔고·가격 Snapshot에서 매수·매도 계획만 반환합니다. `trading_execution.py`는 KIS client와 전략 계획을 사용해 지정가 주문·취소·체결 확인을 실행합니다. `performance_tracking.py`는 날짜별 가격과 당시 목표비중을 `performance/strategy_twr.json`에 기록하고 두 전략의 TWR을 계산합니다. `portfolio_briefing.py`는 실행 후 실제 잔고와 결과를 Telegram 및 Markdown으로 전달합니다. `trade_automation.py`는 이전 실행 명령을 유지하기 위한 호환용 진입점입니다.
 
 ## 종목 설정
 
@@ -97,7 +100,7 @@ KIS 접근 토큰은 GitHub Actions cache에 암호화해서 저장합니다. �
 
 ## 모의투자
 
-기본 workflow는 `paper` 모드이며, `KIS_PAPER_*` Secrets와 모의투자 URL, `VTTC...` TR ID만 사용합니다. `live`는 workflow 실행 화면에서 명시적으로 선택할 때만 실전 일반계좌를 사용합니다. 모의투자에서도 주문·5분 후 취소·한 번 재주문 흐름을 검증할 수 있습니다.
+`paper` 모드는 `KIS_PAPER_*` Secrets와 모의투자 URL, `VTTC...` TR ID만 사용합니다. 현재 수동 workflow 기본값은 `isa`이므로 모의투자 테스트 시 `account_mode: paper`를 명시합니다. 모의투자에서도 주문·5분 후 취소·한 번 재주문 흐름을 검증할 수 있습니다.
 
 ## ISA 계좌
 
@@ -116,6 +119,7 @@ KIS 접근 토큰은 GitHub Actions cache에 암호화해서 저장합니다. �
 - 목표 종목에서 제외된 ETF는 `liquidation_codes`에 등록해, 하루 매매 한도 안에서 우선 매도합니다. 현재 `KODEX 미국머니마켓액티브`는 `KODEX 단기채권`으로 전환 중입니다.
 - 실주문은 최우선 매수호가·최우선 매도호가의 지정가만 허용합니다.
 - 같은 날 이미 체결된 대상 ETF 주문은 일일 총 매매 한도에서 차감합니다. 미체결 주문이 남은 경우에만 추가 주문을 보류합니다. GitHub Actions concurrency도 동시에 두 실행이 겹치지 않게 합니다.
+- 전략 성과 비교는 당일 HMA 목표비중과 중립 고정 비중을 동일한 ETF 가격에 적용하고 일별 수익률을 기하연결합니다. 입금·출금은 계산에 들어가지 않습니다. 현재 지표는 분배금과 거래비용을 제외한 가격 TWR이며, 실제 계좌 평가손익과 별도로 표시합니다. 같은 날짜 workflow를 다시 실행하면 해당 날짜 기록을 교체합니다.
 
 브리핑 workflow는 KIS 잔고를 조회한 뒤 같은 계좌의 주문가능금액과 호가를 다시 확인해 리밸런싱 주문을 전송합니다. 실행 결과는 Telegram과 날짜별 Markdown 이력에 함께 남깁니다.
 
@@ -144,7 +148,7 @@ Verify before pushing:
 
 ```bash
 python3 -m py_compile portfolio_briefing.py
-python3 -m py_compile portfolio_briefing.py kis_client.py trading_execution.py trading_strategy.py run_state.py
+python3 -m py_compile portfolio_briefing.py kis_client.py performance_tracking.py trading_execution.py trading_strategy.py run_state.py
 python3 -m unittest
 python3 -c "import json; [json.load(open(path, encoding='utf-8')) for path in ('portfolio.json', 'trading_config.json')]"
 ```
