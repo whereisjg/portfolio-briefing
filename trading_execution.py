@@ -97,73 +97,76 @@ def wait_for_kis_request_slot(context):
     context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
 
 
+def historical_date_ranges(now, lookback_days=400, chunk_days=120):
+    """Yield bounded ranges so KIS's per-call row cap cannot truncate HMA history."""
+    cursor = now - timedelta(days=lookback_days)
+    while cursor <= now:
+        chunk_end = min(cursor + timedelta(days=chunk_days - 1), now)
+        yield cursor.strftime("%Y%m%d"), chunk_end.strftime("%Y%m%d")
+        cursor = chunk_end + timedelta(days=1)
+
+
 def fetch_kis_daily_closes(code, context):
     """Fetch completed daily closes for a domestic ETF trend signal."""
     now = datetime.now(kis_client.KST)
-    start = (now - timedelta(days=400)).strftime("%Y%m%d")
-    end = now.strftime("%Y%m%d")
-    wait_for_kis_request_slot(context)
-    response = context["session"].get(
-        f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
-        headers={**context["headers"], "tr_id": "FHKST03010100"},
-        params={
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD": code,
-            "FID_INPUT_DATE_1": start,
-            "FID_INPUT_DATE_2": end,
-            "FID_PERIOD_DIV_CODE": "D",
-            "FID_ORG_ADJ_PRC": "1",
-        },
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("rt_cd") != "0":
-        raise ValueError(f"KIS 일봉조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
-
-    closes = []
+    closes_by_date = {}
     today = now.strftime("%Y%m%d")
-    for row in payload.get("output2") or []:
-        date = str(row.get("stck_bsop_date", "")).strip()
-        close = kis_client.as_float(row.get("stck_clpr"), 0)
-        if date and date < today and close > 0:
-            closes.append((date, close))
-    closes.sort(key=lambda item: item[0])
-    return closes
+    for start, end in historical_date_ranges(now):
+        wait_for_kis_request_slot(context)
+        response = context["session"].get(
+            f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+            headers={**context["headers"], "tr_id": "FHKST03010100"},
+            params={
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": code,
+                "FID_INPUT_DATE_1": start,
+                "FID_INPUT_DATE_2": end,
+                "FID_PERIOD_DIV_CODE": "D",
+                "FID_ORG_ADJ_PRC": "1",
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("rt_cd") != "0":
+            raise ValueError(f"KIS 일봉조회 실패({code}): {payload.get('msg1', '알 수 없는 오류')}")
+        for row in payload.get("output2") or []:
+            date = str(row.get("stck_bsop_date", "")).strip()
+            close = kis_client.as_float(row.get("stck_clpr"), 0)
+            if date and date < today and close > 0:
+                closes_by_date[date] = close
+    return sorted(closes_by_date.items())
 
 
 def fetch_kis_index_daily_closes(symbol, context):
     """Fetch completed Nasdaq100 or S&P500 closes from KIS's overseas index API."""
     now = datetime.now(kis_client.KST)
-    start = (now - timedelta(days=400)).strftime("%Y%m%d")
-    end = now.strftime("%Y%m%d")
-    wait_for_kis_request_slot(context)
-    response = context["session"].get(
-        f"{context['base_url']}/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
-        headers={**context["headers"], "tr_id": "FHKST03030100"},
-        params={
-            "FID_COND_MRKT_DIV_CODE": "N",
-            "FID_INPUT_ISCD": symbol,
-            "FID_INPUT_DATE_1": start,
-            "FID_INPUT_DATE_2": end,
-            "FID_PERIOD_DIV_CODE": "D",
-        },
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("rt_cd") != "0":
-        raise ValueError(f"KIS 지수 일봉조회 실패({symbol}): {payload.get('msg1', '알 수 없는 오류')}")
-
     today = now.strftime("%Y%m%d")
-    closes = []
-    for row in payload.get("output2") or []:
-        date = str(row.get("stck_bsop_date", "")).strip()
-        close = kis_client.as_float(row.get("ovrs_nmix_prpr"), 0)
-        if date and date < today and close > 0:
-            closes.append((date, close))
-    closes.sort(key=lambda item: item[0])
-    return closes
+    closes_by_date = {}
+    for start, end in historical_date_ranges(now):
+        wait_for_kis_request_slot(context)
+        response = context["session"].get(
+            f"{context['base_url']}/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+            headers={**context["headers"], "tr_id": "FHKST03030100"},
+            params={
+                "FID_COND_MRKT_DIV_CODE": "N",
+                "FID_INPUT_ISCD": symbol,
+                "FID_INPUT_DATE_1": start,
+                "FID_INPUT_DATE_2": end,
+                "FID_PERIOD_DIV_CODE": "D",
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("rt_cd") != "0":
+            raise ValueError(f"KIS 지수 일봉조회 실패({symbol}): {payload.get('msg1', '알 수 없는 오류')}")
+        for row in payload.get("output2") or []:
+            date = str(row.get("stck_bsop_date", "")).strip()
+            close = kis_client.as_float(row.get("ovrs_nmix_prpr"), 0)
+            if date and date < today and close > 0:
+                closes_by_date[date] = close
+    return sorted(closes_by_date.items())
 
 
 def resolve_trend_strategy(config, context):
@@ -647,9 +650,7 @@ def format_execution_report(today_orders, submitted, cancelled, asset_labels=Non
         label = asset_labels.get(order["code"], order["code"])
         requested = int(order["quantity"])
         if row is None:
-            lines.append(
-                f"{side} {label} · 지정가 {order['price']:,.0f}원 · 상태 조회 대기"
-            )
+            lines.append(f"{side} {label} · 상태 조회 대기")
             continue
 
         filled = int(kis_client.as_float(row.get("tot_ccld_qty"), 0))

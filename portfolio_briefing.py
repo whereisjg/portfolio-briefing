@@ -555,11 +555,14 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     trend_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
     trend_marks = {"risk_on": "↑", "neutral": "↔", "risk_off": "↓"}
     composite_signal_line = ""
+    trend_error_line = ""
     if trend_state and trend_state.get("components"):
         composite_signal_line = "신호: " + " · ".join(
             f"{component['label']}{trend_marks.get(component.get('state'), '↔')}"
             for component in trend_state["components"]
         )
+    if trend_state and trend_state.get("error"):
+        trend_error_line = f"⚠️ 추세 계산 실패 · 중립 적용\n사유: {trend_state['error']}"
 
     def price_row(item):
         alert = "🚨" if abs(item["chg_pct"]) >= CRITICAL_MOVE_PCT else ("⚠️" if abs(item["chg_pct"]) >= SIGNIFICANT_MOVE_PCT else "")
@@ -618,6 +621,8 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
 
     if composite_signal_line:
         telegram_lines.append(composite_signal_line)
+    if trend_error_line:
+        telegram_lines.append(trend_error_line)
 
     telegram_lines.extend([
         f"오늘 흐름: {pos_count} 상승 · {neg_count} 하락",
@@ -644,6 +649,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
         f"- 분위기: {mood}",
         f"- 가격 출처: {provider_text}",
         *([f"- {composite_signal_line}"] if composite_signal_line else []),
+        *([f"- 추세 계산 실패로 중립 적용: {trend_state['error']}"] if trend_error_line else []),
         "",
         *(["## 📌 시장 상태", "", market_notice, ""] if market_notice else []),
         "## ⚠️ 먼저 볼 것",

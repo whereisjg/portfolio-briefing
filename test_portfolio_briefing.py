@@ -605,6 +605,7 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertIn("매수 KoAct나스닥성장", report[1])
         self.assertNotIn("0015B0", report[1])
+        self.assertNotIn("지정가", report[1])
 
     def test_reprice_orders_never_exceeds_live_cash_limit(self):
         orders = [
@@ -743,18 +744,47 @@ class TradingPlanTests(unittest.TestCase):
                 }
 
         class FakeSession:
+            def __init__(self):
+                self.calls = []
+
             def get(self, *_args, **_kwargs):
+                self.calls.append(_kwargs["params"])
                 return FakeResponse()
 
+        session = FakeSession()
         context = {
             "base_url": "https://example.test",
             "headers": {},
-            "session": FakeSession(),
+            "session": session,
             "next_kis_request_at": 0,
         }
-        closes = trading.fetch_kis_index_daily_closes("NDX", context)
+        with patch.object(trading, "wait_for_kis_request_slot"):
+            closes = trading.fetch_kis_index_daily_closes("NDX", context)
 
         self.assertEqual(closes, [("20260724", 28000)])
+        self.assertEqual(len(session.calls), 4)
+        self.assertLessEqual(
+            max(
+                (
+                    trading.datetime.strptime(call["FID_INPUT_DATE_2"], "%Y%m%d")
+                    - trading.datetime.strptime(call["FID_INPUT_DATE_1"], "%Y%m%d")
+                ).days
+                for call in session.calls
+            ),
+            119,
+        )
+
+    def test_trend_error_is_exposed_in_telegram(self):
+        telegram, markdown = briefing.build_content(
+            [],
+            [],
+            [],
+            trend_state={"state": "neutral", "weights": {}, "error": "일봉 100/214"},
+        )
+
+        self.assertIn("추세 계산 실패 · 중립 적용", telegram)
+        self.assertIn("일봉 100/214", telegram)
+        self.assertIn("추세 계산 실패로 중립 적용", markdown)
 
     def test_composite_strategy_uses_portfolio_and_both_market_indexes(self):
         rising = [(f"20260{index:03}", float(100 + index)) for index in range(65)]
