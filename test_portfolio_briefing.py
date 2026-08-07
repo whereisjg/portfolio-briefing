@@ -962,8 +962,10 @@ class ContentTests(unittest.TestCase):
         )
 
         self.assertIn("자산 22만 · 예수금 5만", telegram)
+        self.assertIn("평가손익 -30,000원 (-12.00%)", telegram)
         self.assertIn("₩22,000 · -30,000원", telegram)
         self.assertNotIn("평단 ₩25,000", telegram)
+        self.assertIn("- 평가손익: -30,000원 (-12.00%)", markdown)
         self.assertIn("## 💳 계좌 요약", markdown)
 
     def test_build_content_includes_market_notice(self):

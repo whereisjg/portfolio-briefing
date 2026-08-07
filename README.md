@@ -4,7 +4,7 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 
 ## 현재 동작
 
-- 매일 KIS 계좌의 실제 보유 종목·수량·평단가·평가손익·예수금을 조회합니다.
+- 매일 KIS 계좌의 실제 보유 종목·수량·평단가·평가손익·예수금과 보유 종목 합산 평가손익을 조회합니다.
 - 실제 보유 종목의 비중, 시장 등락, 관련 뉴스, 리밸런싱 우선순위를 Telegram으로 보냅니다.
 - 결과는 `briefings/briefing_YYYYMMDD.md`에 저장하고 GitHub에 기록합니다.
 - `paper`는 모의투자, `live`는 기존 일반계좌, `isa`는 ISA 계좌용 Secret을 각각 사용합니다.

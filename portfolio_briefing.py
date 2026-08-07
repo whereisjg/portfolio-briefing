@@ -352,6 +352,29 @@ def format_krw_short(amount):
     return f"{round(float(amount) / 10000):,.0f}만"
 
 
+def account_evaluation_performance(account_summary, quotes):
+    """Return the combined unrealized profit/loss and return for current holdings."""
+    profit_loss = as_float(account_summary.get("evlu_pfls_smtl_amt"), None)
+    purchase_amount = as_float(account_summary.get("pchs_amt_smtl_amt"), None)
+    if profit_loss is not None and purchase_amount and purchase_amount > 0:
+        return profit_loss, profit_loss / purchase_amount * 100
+
+    positions = [
+        item for item in quotes
+        if item.get("evaluation_profit_loss_amount") not in (None, "")
+        and item.get("shares") not in (None, "")
+        and float(item["shares"]) > 0
+    ]
+    if not positions:
+        return None, None
+    profit_loss = sum(float(item["evaluation_profit_loss_amount"]) for item in positions)
+    purchase_amount = sum(
+        float(item["shares"]) * float(item["price"]) - float(item["evaluation_profit_loss_amount"])
+        for item in positions
+    )
+    return profit_loss, profit_loss / purchase_amount * 100 if purchase_amount > 0 else None
+
+
 def format_change_amount(item):
     amount = item.get("chg_amount", 0)
     return format_signed_amount(amount, item["currency"])
@@ -587,7 +610,11 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     if account_summary:
         total = as_float(account_summary.get("tot_evlu_amt"))
         cash = as_float(account_summary.get("prvs_rcdl_excc_amt"))
-        telegram_lines.append(f"자산 {format_krw_short(total)} · 예수금 {format_krw_short(cash)}")
+        profit_loss, return_pct = account_evaluation_performance(account_summary, quotes)
+        account_line = f"자산 {format_krw_short(total)} · 예수금 {format_krw_short(cash)}"
+        if profit_loss is not None and return_pct is not None:
+            account_line += f"\n평가손익 {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)"
+        telegram_lines.append(account_line)
 
     if composite_signal_line:
         telegram_lines.append(composite_signal_line)
@@ -684,6 +711,7 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
     if account_summary:
         total = as_float(account_summary.get("tot_evlu_amt"))
         cash = as_float(account_summary.get("prvs_rcdl_excc_amt"))
+        profit_loss, return_pct = account_evaluation_performance(account_summary, quotes)
         md_lines.extend([
             "",
             "## 💳 계좌 요약",
@@ -691,6 +719,8 @@ def build_content(indexes, quotes, errors, account_summary=None, trend_state=Non
             f"- 평가금액: ₩{total:,.0f}",
             f"- 출금가능 예수금: ₩{cash:,.0f}",
         ])
+        if profit_loss is not None and return_pct is not None:
+            md_lines.append(f"- 평가손익: {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)")
 
     if rebalancing_rows:
         md_lines.extend(["", "## 📊 리밸런싱", ""])
