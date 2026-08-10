@@ -135,25 +135,31 @@ class PerformanceTrackingTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
-    def test_repository_config_replaces_time_with_unhedged_topix(self):
+    def test_repository_config_replaces_topix_with_unhedged_nikkei225(self):
         config = strategy.load_config()
 
-        self.assertEqual(config["target_weights"]["101280"], 20)
+        self.assertEqual(config["target_weights"]["241180"], 20)
+        self.assertNotIn("101280", config["target_weights"])
         self.assertNotIn("0036D0", config["target_weights"])
         self.assertIn("0036D0", config["liquidation_codes"])
+        self.assertIn("101280", config["liquidation_codes"])
         portfolio_signal = next(
             signal for signal in config["trend_strategy"]["signals"]
             if signal["kind"] == "portfolio"
         )
-        self.assertIn("101280", portfolio_signal["codes"])
+        self.assertIn("241180", portfolio_signal["codes"])
+        self.assertNotIn("101280", portfolio_signal["codes"])
         self.assertNotIn("0036D0", portfolio_signal["codes"])
         for state in ("risk_on", "neutral", "risk_off"):
-            self.assertEqual(config["trend_strategy"]["weights"][state]["101280"], 20)
+            self.assertEqual(config["trend_strategy"]["weights"][state]["241180"], 20)
 
         _indexes, assets = briefing.load_portfolio()
+        nikkei = next(asset for asset in assets if asset["symbol"] == "241180.KS")
+        self.assertEqual(nikkei["name"], "TIGER 일본니케이225")
+        self.assertEqual(nikkei["target_weight_pct"], 20)
         topix = next(asset for asset in assets if asset["symbol"] == "101280.KS")
         self.assertEqual(topix["name"], "KODEX 일본TOPIX100")
-        self.assertEqual(topix["target_weight_pct"], 20)
+        self.assertIsNone(topix["target_weight_pct"])
         time_dividend = next(asset for asset in assets if asset["symbol"] == "0036D0.KS")
         self.assertIsNone(time_dividend["target_weight_pct"])
 

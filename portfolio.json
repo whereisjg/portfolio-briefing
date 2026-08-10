@@ -46,13 +46,22 @@
       "target_weight_pct": 15
     },
     {
+      "ticker": "TIGER일본니케이225",
+      "symbol": "241180.KS",
+      "name": "TIGER 일본니케이225",
+      "display": "TIGER일본니케이225",
+      "currency": "KRW",
+      "shares": null,
+      "target_weight_pct": 20
+    },
+    {
       "ticker": "KODEX일본TOPIX100",
       "symbol": "101280.KS",
       "name": "KODEX 일본TOPIX100",
       "display": "KODEX일본TOPIX100",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 20
+      "target_weight_pct": null
     },
     {
       "ticker": "TIME미국배당다우존스액티브",
