@@ -46,13 +46,22 @@
       "target_weight_pct": 15
     },
     {
+      "ticker": "KODEX일본TOPIX100",
+      "symbol": "101280.KS",
+      "name": "KODEX 일본TOPIX100",
+      "display": "KODEX일본TOPIX100",
+      "currency": "KRW",
+      "shares": null,
+      "target_weight_pct": 20
+    },
+    {
       "ticker": "TIME미국배당다우존스액티브",
       "symbol": "0036D0.KS",
       "name": "TIME 미국배당다우존스액티브",
       "display": "TIME배당다우존스",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 20
+      "target_weight_pct": null
     },
     {
       "ticker": "KODEX단기채권",

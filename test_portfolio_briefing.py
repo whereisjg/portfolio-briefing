@@ -135,6 +135,28 @@ class PerformanceTrackingTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_repository_config_replaces_time_with_unhedged_topix(self):
+        config = strategy.load_config()
+
+        self.assertEqual(config["target_weights"]["101280"], 20)
+        self.assertNotIn("0036D0", config["target_weights"])
+        self.assertIn("0036D0", config["liquidation_codes"])
+        portfolio_signal = next(
+            signal for signal in config["trend_strategy"]["signals"]
+            if signal["kind"] == "portfolio"
+        )
+        self.assertIn("101280", portfolio_signal["codes"])
+        self.assertNotIn("0036D0", portfolio_signal["codes"])
+        for state in ("risk_on", "neutral", "risk_off"):
+            self.assertEqual(config["trend_strategy"]["weights"][state]["101280"], 20)
+
+        _indexes, assets = briefing.load_portfolio()
+        topix = next(asset for asset in assets if asset["symbol"] == "101280.KS")
+        self.assertEqual(topix["name"], "KODEX 일본TOPIX100")
+        self.assertEqual(topix["target_weight_pct"], 20)
+        time_dividend = next(asset for asset in assets if asset["symbol"] == "0036D0.KS")
+        self.assertIsNone(time_dividend["target_weight_pct"])
+
     def test_env_value_uses_default_for_empty_environment_value(self):
         with patch.dict(briefing.os.environ, {"EMPTY_SETTING": ""}):
             self.assertEqual(
