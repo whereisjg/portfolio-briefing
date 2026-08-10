@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "method": "cash-flow-neutral daily target-weight TWR",
+  "records": [
+    {
+      "date": "2026-08-10",
+      "prices": {
+        "0015B0": 19390.0,
+        "486290": 10975.0,
+        "0005A0": 9795.0,
+        "101280": 31350.0,
+        "153130": 113360.0
+      },
+      "hma_weights": {
+        "0015B0": 20.0,
+        "486290": 15.0,
+        "0005A0": 15.0,
+        "101280": 20.0,
+        "153130": 30.0
+      },
+      "fixed_weights": {
+        "0015B0": 20.0,
+        "486290": 15.0,
+        "0005A0": 15.0,
+        "101280": 20.0,
+        "153130": 30.0
+      }
+    }
+  ],
+  "summary": {
+    "start_date": "2026-08-10",
+    "end_date": "2026-08-10",
+    "observations": 1,
+    "periods": 0,
+    "hma_twr_pct": 0.0,
+    "fixed_twr_pct": 0.0,
+    "difference_pct_points": 0.0,
+    "hma_mdd_pct": 0.0,
+    "fixed_mdd_pct": 0.0,
+    "hma_turnover_pct": 0.0
+  }
+}
