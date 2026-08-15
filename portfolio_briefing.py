@@ -348,8 +348,8 @@ def apply_trend_weights(assets, trend_state):
     ]
 
 
-def compute_weights(quotes):
-    """KIS 국내주식 잔고의 현재가 기준으로 비중을 재계산한다."""
+def compute_weights(quotes, account_summary=None):
+    """Recalculate position weights against total account assets, including cash."""
     values = []
     for q in quotes:
         shares = q.get("shares")
@@ -357,7 +357,9 @@ def compute_weights(quotes):
             values.append(None)
             continue
         values.append(float(shares) * q["price"])
-    total = sum(v for v in values if v is not None)
+    invested_total = sum(v for v in values if v is not None)
+    account_total = as_float((account_summary or {}).get("tot_evlu_amt"), None)
+    total = account_total if account_total is not None and account_total > 0 else invested_total
     if not total:
         return
     for q, v in zip(quotes, values):
@@ -898,7 +900,7 @@ def main():
         assets_config = apply_trend_weights(assets_config, trend_state)
         quotes = assets_config
         quote_errors = []
-        compute_weights(quotes)
+        compute_weights(quotes, account_summary)
         print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
 
         errors = index_errors + market_quote_errors + quote_errors

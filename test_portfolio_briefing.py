@@ -136,6 +136,39 @@ class PerformanceTrackingTests(unittest.TestCase):
 
 
 class QuantBacktestTests(unittest.TestCase):
+    def test_backtest_executes_a_close_signal_on_the_next_trading_day(self):
+        config = {
+            "target_weights": {"A": 50, "B": 50},
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 10000,
+            "rebalance_band_pct": 0,
+            "trend_strategy": {
+                "weights": {
+                    "risk_on": {"A": 100, "B": 0},
+                    "neutral": {"A": 50, "B": 50},
+                    "risk_off": {"A": 0, "B": 100},
+                },
+            },
+        }
+        asset_maps = {
+            "A": {"20260101": 100, "20260102": 200, "20260103": 200},
+            "B": {"20260101": 100, "20260102": 100, "20260103": 100},
+        }
+        states = {"20260101": "risk_on", "20260102": "risk_on", "20260103": "risk_on"}
+
+        result = quant_backtest.simulate_strategy(
+            config,
+            asset_maps,
+            ["20260101", "20260102", "20260103"],
+            states,
+            transaction_cost_bps=0,
+            initial_capital=1000,
+            dynamic=True,
+        )
+
+        self.assertAlmostEqual(result["twr_pct"], 50.0)
+
     def test_backtest_uses_confirmed_signal_without_future_prices(self):
         config = {
             "target_weights": {"A": 50, "B": 25, "C": 25},
@@ -166,7 +199,14 @@ class QuantBacktestTests(unittest.TestCase):
         self.assertEqual(no_cost["periods"], 7)
         self.assertGreater(no_cost["state_changes"], 0)
         self.assertLess(with_cost["hma_twr_pct"], no_cost["hma_twr_pct"])
-        self.assertEqual(with_cost["fixed_twr_pct"], no_cost["fixed_twr_pct"])
+        self.assertLess(with_cost["fixed_twr_pct"], no_cost["fixed_twr_pct"])
+        self.assertGreater(with_cost["fixed_turnover_pct"], 0)
+
+    def test_hma_warmup_is_added_before_the_requested_evaluation_period(self):
+        config = strategy.load_config()
+
+        self.assertEqual(quant_backtest.required_trend_closes(config), 214)
+        self.assertGreater(quant_backtest.warmup_calendar_days(config), 300)
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -277,6 +317,65 @@ class KisBalanceTests(unittest.TestCase):
         self.assertFalse(market_calendar.krx_order_status(before_open)["orderable"])
         self.assertTrue(market_calendar.krx_order_status(trading)["orderable"])
         self.assertFalse(market_calendar.krx_order_status(after_cutoff)["orderable"])
+
+    def test_static_calendar_fails_closed_for_an_unregistered_year(self):
+        status = market_calendar.krx_market_status(market_calendar.date(2027, 1, 4))
+
+        self.assertFalse(status["open"])
+        self.assertEqual(status["reason"], "KRX 휴장일 정보 미등록")
+
+    def test_kis_market_status_uses_official_open_flag(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "rt_cd": "0",
+                    "output": [{"bass_dt": "20260720", "opnd_yn": "Y"}],
+                }
+
+        class FakeSession:
+            def __init__(self):
+                self.get_kwargs = None
+
+            def post(self, *_args, **_kwargs):
+                return type("TokenResponse", (), {
+                    "raise_for_status": lambda self: None,
+                    "json": lambda self: {"access_token": "token"},
+                })()
+
+            def get(self, *_args, **kwargs):
+                self.get_kwargs = kwargs
+                return FakeResponse()
+
+        session = FakeSession()
+        environment = {
+            "KIS_APP_KEY": "key",
+            "KIS_APP_SECRET": "secret",
+            "KIS_API_BASE_URL": "https://example.test",
+        }
+        with patch.dict(kis_client.os.environ, environment, clear=True):
+            status = market_calendar.fetch_kis_krx_market_status(
+                market_calendar.date(2026, 7, 20),
+                session_factory=lambda retries: session,
+            )
+
+        self.assertTrue(status["open"])
+        self.assertEqual(session.get_kwargs["headers"]["tr_id"], "CTCA0903R")
+        self.assertEqual(session.get_kwargs["params"]["BASS_DT"], "20260720")
+
+    def test_kis_order_status_fails_closed_when_market_check_fails(self):
+        now = market_calendar.KST.localize(market_calendar.datetime(2026, 7, 20, 10))
+
+        status = market_calendar.kis_krx_order_status(
+            now,
+            market_status_fetcher=lambda _day: (_ for _ in ()).throw(RuntimeError("timeout")),
+        )
+
+        self.assertFalse(status["open"])
+        self.assertFalse(status["orderable"])
+        self.assertIn("KIS 거래일 확인 실패", status["reason"])
 
     def test_paper_balance_uses_virtual_tr_id_and_unpr_dvsn(self):
         class FakeResponse:
@@ -594,6 +693,19 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(sum(order["value"] for order in plan["buys"]), 20000)
         self.assertEqual(plan["orderable_cash"], 25000)
 
+    def test_buy_plan_does_not_spend_past_an_asset_deficit(self):
+        config = {
+            **self.config,
+            "target_weights": {"A": 50, "B": 50},
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+        }
+        positions = {"A": {"quantity": 0}, "B": {"quantity": 0}}
+
+        plan = trading.plan_orders(config, positions, {"A": 30, "B": 80}, 100)
+
+        self.assertEqual(plan["buys"], [{"code": "A", "quantity": 2, "price": 30, "value": 60}])
+
     def test_cash_from_balance_prefers_available_cash_after_orders(self):
         summary = {
             "dnca_tot_amt": "10000000",
@@ -791,6 +903,22 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertTrue(trading.has_open_target_order(orders, {"A"}))
 
+    def test_live_rebalance_stops_when_trend_calculation_fails(self):
+        failed_trend = {
+            "state": "neutral",
+            "weights": {"A": 100},
+            "error": "KIS 일봉조회 실패",
+        }
+        with patch.object(trading, "resolve_trend_strategy", return_value=failed_trend):
+            with patch.object(trading, "fetch_today_orders") as fetch_orders:
+                result = trading.execute_live_rebalance(
+                    {"target_weights": {"A": 100}}, [], {}, {}
+                )
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertIn("추세 계산 실패", result["reason"])
+        fetch_orders.assert_not_called()
+
     def test_filled_trade_values_count_only_managed_etfs(self):
         orders = [
             {"pdno": "A", "sll_buy_dvsn_cd": "02", "tot_ccld_amt": "10000"},
@@ -938,6 +1066,35 @@ class TradingPlanTests(unittest.TestCase):
             119,
         )
 
+    def test_fetch_kis_daily_closes_requests_adjusted_prices(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"rt_cd": "0", "output2": []}
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = []
+
+            def get(self, *_args, **kwargs):
+                self.calls.append(kwargs["params"])
+                return FakeResponse()
+
+        session = FakeSession()
+        context = {
+            "base_url": "https://example.test",
+            "headers": {},
+            "session": session,
+            "next_kis_request_at": 0,
+        }
+        with patch.object(trading, "wait_for_kis_request_slot"):
+            trading.fetch_kis_daily_closes("0015B0", context, lookback_days=10)
+
+        self.assertTrue(session.calls)
+        self.assertTrue(all(call["FID_ORG_ADJ_PRC"] == "0" for call in session.calls))
+
     def test_trend_error_is_exposed_in_telegram(self):
         telegram, markdown = briefing.build_content(
             [],
@@ -1041,6 +1198,16 @@ class TradingPlanTests(unittest.TestCase):
 
 
 class ContentTests(unittest.TestCase):
+    def test_compute_weights_uses_total_account_assets_including_cash(self):
+        quotes = [
+            {"shares": 1, "price": 100.0},
+            {"shares": 1, "price": 100.0},
+        ]
+
+        briefing.compute_weights(quotes, {"tot_evlu_amt": "1000"})
+
+        self.assertEqual([item["weight_pct"] for item in quotes], [10.0, 10.0])
+
     def test_apply_trend_weights_overrides_static_targets(self):
         assets = [
             {"symbol": "0015B0.KS", "target_weight_pct": 25},

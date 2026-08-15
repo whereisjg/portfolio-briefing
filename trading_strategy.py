@@ -337,6 +337,7 @@ def plan_orders(
     if budget > 0 and deficits:
         total_deficit = sum(deficits.values())
         remaining = budget
+        purchased = {code: 0.0 for code in deficits}
         for code, deficit in sorted(deficits.items(), key=lambda item: item[1], reverse=True):
             price = prices[code]
             allocation = budget * deficit / total_deficit
@@ -344,20 +345,31 @@ def plan_orders(
             if quantity >= 1:
                 value = quantity * price
                 buys.append({"code": code, "quantity": int(quantity), "price": price, "value": value})
+                purchased[code] += value
                 remaining -= value
 
-        ordered_deficits = sorted(deficits.items(), key=lambda item: item[1], reverse=True)
         while True:
-            candidate = next(((code, prices[code]) for code, _deficit in ordered_deficits if prices[code] <= remaining), None)
+            remaining_deficits = {
+                code: deficit - purchased[code]
+                for code, deficit in deficits.items()
+            }
+            candidates = []
+            for code, deficit in remaining_deficits.items():
+                price = prices[code]
+                improvement = abs(deficit) - abs(deficit - price)
+                if price <= remaining and improvement > 0:
+                    candidates.append((improvement, deficit, code, price))
+            candidate = max(candidates, default=None)
             if candidate is None:
                 break
-            code, price = candidate
+            _improvement, _deficit, code, price = candidate
             existing = next((order for order in buys if order["code"] == code), None)
             if existing:
                 existing["quantity"] += 1
                 existing["value"] += price
             else:
                 buys.append({"code": code, "quantity": 1, "price": price, "value": price})
+            purchased[code] += price
             remaining -= price
 
     return {

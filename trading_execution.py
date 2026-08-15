@@ -124,7 +124,7 @@ def fetch_kis_daily_closes(code, context, lookback_days=400, chunk_days=120):
                 "FID_INPUT_DATE_1": start,
                 "FID_INPUT_DATE_2": end,
                 "FID_PERIOD_DIV_CODE": "D",
-                "FID_ORG_ADJ_PRC": "1",
+                "FID_ORG_ADJ_PRC": "0",
             },
             timeout=20,
         )
@@ -725,6 +725,14 @@ def execute_live_rebalance(config, holdings, summary, context):
     target_codes = set(config["target_weights"])
     managed_codes = target_codes | set(config.get("liquidation_codes", []))
     trend = resolve_trend_strategy(config, context)
+    if trend.get("error"):
+        return {
+            "status": "skipped",
+            "reason": f"추세 계산 실패로 주문을 중단했습니다: {trend['error']}",
+            "plan": None,
+            "orders": [],
+            "trend": trend,
+        }
     effective_config = deepcopy(config)
     effective_config["target_weights"] = trend["weights"]
     today_orders = fetch_today_orders(context)

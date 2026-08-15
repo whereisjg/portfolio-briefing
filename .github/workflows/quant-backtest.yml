@@ -13,13 +13,17 @@ on:
           - isa
         default: isa
       lookback_days:
-        description: 'Calendar days of KIS history to request'
+        description: 'Calendar days to evaluate after HMA warm-up'
         required: false
         default: '365'
       transaction_cost_bps:
         description: 'One-way transaction-cost assumption in basis points'
         required: false
         default: '10'
+      initial_capital_krw:
+        description: 'Virtual initial account value in KRW'
+        required: false
+        default: '10000000'
 
 permissions:
   contents: write
@@ -79,7 +83,8 @@ jobs:
           set -o pipefail
           python quant_backtest.py \
             --lookback-days "${{ inputs.lookback_days }}" \
-            --transaction-cost-bps "${{ inputs.transaction_cost_bps }}" | tee /tmp/quant-backtest.md
+            --transaction-cost-bps "${{ inputs.transaction_cost_bps }}" \
+            --initial-capital-krw "${{ inputs.initial_capital_krw }}" | tee /tmp/quant-backtest.md
           cat /tmp/quant-backtest.md >> "$GITHUB_STEP_SUMMARY"
       - name: Commit backtest report
         run: |

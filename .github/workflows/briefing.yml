@@ -79,11 +79,13 @@ jobs:
           python -m unittest
       - name: Check KRX trading day
         id: krx-market
+        env:
+          KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import market_calendar
 
-          status = market_calendar.krx_order_status()
+          status = market_calendar.kis_krx_order_status()
           print(f"open={'true' if status['open'] else 'false'}")
           print(f"orderable={'true' if status['orderable'] else 'false'}")
           print(f"date={status['date'].strftime('%Y-%m-%d')}")
@@ -128,7 +130,7 @@ jobs:
 
           reason = os.getenv("KRX_CLOSED_REASON", "휴장일")
           Path("/tmp/trading-plan.txt").write_text(
-              f"🤖 자동매매 휴장\n오늘은 KRX 휴장일이라 주문하지 않습니다.\n사유: {reason}\n",
+              f"🤖 자동매매 중단\nKRX 거래일 확인 결과 주문하지 않습니다.\n사유: {reason}\n",
               encoding="utf-8",
           )
           PY
@@ -163,7 +165,7 @@ jobs:
           KIS_BALANCE_ENABLED: 'true'
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
           KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
-          KRX_MARKET_NOTICE: "📌 오늘은 KRX 휴장일입니다. 사유: ${{ steps.krx-market.outputs.reason }}. 자동매매는 실행하지 않습니다."
+          KRX_MARKET_NOTICE: "📌 KRX 거래일 확인 결과 주문하지 않습니다. 사유: ${{ steps.krx-market.outputs.reason }}."
           TELEGRAM_MESSAGE_FILE: /tmp/telegram-message.txt
         run: |
           if python portfolio_briefing.py; then
@@ -186,8 +188,8 @@ jobs:
           now = datetime.now(pytz.timezone("Asia/Seoul"))
           reason = os.getenv("KRX_CLOSED_REASON", "휴장일")
           message = (
-              f"📈 포트폴리오 {now:%m/%d} · 휴장\n\n"
-              "오늘은 KRX 휴장일입니다.\n"
+              f"📈 포트폴리오 {now:%m/%d} · 주문 중단\n\n"
+              "KRX 거래일 확인 결과 주문하지 않습니다.\n"
               f"사유: {reason}\n\n"
               "자동매매: 실행 안 함\n"
               "잔고조회: 실패하여 생략"
