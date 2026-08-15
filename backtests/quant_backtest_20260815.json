@@ -1,0 +1,30 @@
+{
+  "method": "close-to-close HMA allocation backtest",
+  "target_weights": {
+    "0015B0": 20,
+    "486290": 15,
+    "0005A0": 15,
+    "241180": 20,
+    "153130": 30
+  },
+  "summary": {
+    "start_date": "20260108",
+    "end_date": "20260814",
+    "periods": 140,
+    "transaction_cost_bps": 10.0,
+    "hma_twr_pct": 12.108038811235655,
+    "fixed_twr_pct": 13.067019393784317,
+    "difference_pct_points": -0.958980582548663,
+    "hma_annualized_pct": 22.841796557981397,
+    "fixed_annualized_pct": 24.739700986266676,
+    "hma_mdd_pct": -14.697660739973772,
+    "fixed_mdd_pct": -15.759027443474105,
+    "hma_turnover_pct": 340.00000000000017,
+    "state_counts": {
+      "risk_on": 22,
+      "neutral": 70,
+      "risk_off": 48
+    },
+    "state_changes": 34
+  }
+}
