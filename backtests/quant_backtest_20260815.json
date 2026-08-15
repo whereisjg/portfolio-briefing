@@ -8,23 +8,23 @@
     "153130": 30
   },
   "summary": {
-    "start_date": "20260702",
+    "start_date": "20260709",
     "end_date": "20260814",
-    "periods": 29,
+    "periods": 24,
     "transaction_cost_bps": 10.0,
-    "hma_twr_pct": -6.577798021175885,
-    "fixed_twr_pct": -7.317918390030309,
-    "difference_pct_points": 0.7401203688544244,
-    "hma_annualized_pct": -44.63675288311262,
-    "fixed_annualized_pct": -48.33401622199658,
-    "hma_mdd_pct": -11.986141701534049,
-    "fixed_mdd_pct": -13.355684557172298,
-    "hma_turnover_pct": 40.0,
+    "hma_twr_pct": -3.053176338292618,
+    "fixed_twr_pct": -4.216944950745671,
+    "difference_pct_points": 1.1637686124530533,
+    "hma_annualized_pct": -27.789119972217325,
+    "fixed_annualized_pct": -36.38915097859492,
+    "hma_mdd_pct": -9.13704182683156,
+    "fixed_mdd_pct": -10.918954108356482,
+    "hma_turnover_pct": 20.0,
     "state_counts": {
       "risk_on": 0,
-      "neutral": 17,
-      "risk_off": 12
+      "neutral": 13,
+      "risk_off": 11
     },
-    "state_changes": 4
+    "state_changes": 2
   }
 }
