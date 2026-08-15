@@ -137,6 +137,7 @@ KIS 접근 토큰은 GitHub Actions cache에 암호화해서 저장합니다. �
 - 결과: `backtests/quant_backtest_YYYYMMDD_HHMMSS.md`와 JSON 요약
 
 KIS 수정주가를 사용하므로 분배락 등 가격 조정은 시계열에 반영됩니다. 세금, 실제 호가 스프레드와 체결 실패는 포함하지 않습니다. 결과가 좋더라도 실주문 전략은 별도 검토 후에만 변경합니다.
+대상 ETF의 상장 이력이 HMA warm-up과 365일 평가기간을 모두 채우지 못하면 기간을 임의로 줄이지 않고 workflow를 실패 처리합니다.
 
 ## cron-job.org Setup
 

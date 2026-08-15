@@ -56,7 +56,7 @@ jobs:
           echo "key=kis-token-v1-${scope}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
       - name: Restore encrypted KIS token cache
         if: inputs.refresh_kis_token != true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: /tmp/kis-access-token.enc
           key: ${{ steps.kis-token-key.outputs.key }}
@@ -247,7 +247,7 @@ jobs:
           fi
       - name: Save encrypted KIS token cache
         if: always() && inputs.refresh_kis_token != true && steps.seal-kis-token.outputs.save == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: /tmp/kis-access-token.enc
           key: ${{ steps.kis-token-key.outputs.key }}
