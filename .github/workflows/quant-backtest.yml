@@ -15,7 +15,7 @@ on:
       lookback_days:
         description: 'Calendar days of KIS history to request'
         required: false
-        default: '1260'
+        default: '365'
       transaction_cost_bps:
         description: 'One-way transaction-cost assumption in basis points'
         required: false

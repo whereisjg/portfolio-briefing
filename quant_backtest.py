@@ -224,7 +224,7 @@ def report_markdown(summary):
 
 def main():
     parser = argparse.ArgumentParser(description="Run a research-only HMA allocation backtest.")
-    parser.add_argument("--lookback-days", type=int, default=1260)
+    parser.add_argument("--lookback-days", type=int, default=365)
     parser.add_argument("--transaction-cost-bps", type=float, default=10)
     parser.add_argument("--output-dir", default=str(BACKTEST_DIR))
     args = parser.parse_args()
