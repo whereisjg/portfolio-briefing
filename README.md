@@ -124,6 +124,17 @@ KIS 접근 토큰은 GitHub Actions cache에 암호화해서 저장합니다. �
 
 브리핑 workflow는 KIS 잔고를 조회한 뒤 같은 계좌의 주문가능금액과 호가를 다시 확인해 리밸런싱 주문을 전송합니다. 실행 결과는 Telegram과 날짜별 Markdown 이력에 함께 남깁니다.
 
+## Quant Backtest
+
+`Quant Backtest` workflow는 수동 실행 전용 연구 도구입니다. KIS 일봉만 조회하며 주문·잔고조회·Telegram 전송을 하지 않습니다. 확정 종가로 HMA 복합 신호를 계산하고, 그 신호를 다음 거래일 수익률에 적용해 미래 데이터 사용을 방지합니다.
+
+- 기본 조회 구간: 최근 1,260일
+- 비교: HMA 상태별 목표 비중 vs 중립 고정 비중
+- 기본 비용 가정: 매매 편도 10bp
+- 결과: `backtests/quant_backtest_YYYYMMDD.md`와 JSON 요약
+
+분배금, 세금, 실제 호가 스프레드와 체결 실패는 포함하지 않는 가격 수익률 backtest입니다. 결과가 좋더라도 실주문 전략은 별도 검토 후에만 변경합니다.
+
 ## cron-job.org Setup
 
 Triggers `workflow_dispatch` every business day at 10:00 KST:

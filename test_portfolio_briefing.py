@@ -7,6 +7,7 @@ import portfolio_briefing as briefing
 import kis_client
 import market_calendar
 import performance_tracking as performance
+import quant_backtest
 import trading_execution as trading
 import trading_strategy as strategy
 
@@ -132,6 +133,40 @@ class PerformanceTrackingTests(unittest.TestCase):
         self.assertIn("📐 전략 TWR · HMA +1.25% · 고정 +1.00% · 차이 +0.25%p", telegram)
         self.assertIn("## 📐 전략 TWR 비교", markdown)
         self.assertIn("최대낙폭: HMA -0.50% / 고정 -0.80%", markdown)
+
+
+class QuantBacktestTests(unittest.TestCase):
+    def test_backtest_uses_confirmed_signal_without_future_prices(self):
+        config = {
+            "target_weights": {"A": 50, "B": 25, "C": 25},
+            "trend_strategy": {
+                "enabled": True,
+                "average_type": "sma",
+                "short_window_days": 2,
+                "long_window_days": 3,
+                "confirmation_days": 2,
+                "composite_threshold": 0.5,
+                "signals": [{"kind": "portfolio", "label": "위험자산", "weight_pct": 100, "codes": ["A", "B"]}],
+                "weights": {
+                    "risk_on": {"A": 70, "B": 15, "C": 15},
+                    "neutral": {"A": 50, "B": 25, "C": 25},
+                    "risk_off": {"A": 20, "B": 20, "C": 60},
+                },
+            },
+        }
+        asset_closes = {
+            "A": [(f"202601{day:02d}", price) for day, price in enumerate((100, 101, 103, 106, 105, 103, 100, 98, 97, 99), 1)],
+            "B": [(f"202601{day:02d}", price) for day, price in enumerate((100, 100, 101, 102, 101, 100, 99, 98, 98, 99), 1)],
+            "C": [(f"202601{day:02d}", 100) for day in range(1, 11)],
+        }
+
+        no_cost = quant_backtest.calculate_backtest(config, asset_closes, {}, 0)
+        with_cost = quant_backtest.calculate_backtest(config, asset_closes, {}, 100)
+
+        self.assertEqual(no_cost["periods"], 7)
+        self.assertGreater(no_cost["state_changes"], 0)
+        self.assertLess(with_cost["hma_twr_pct"], no_cost["hma_twr_pct"])
+        self.assertEqual(with_cost["fixed_twr_pct"], no_cost["fixed_twr_pct"])
 
 
 class ConfigurationTests(unittest.TestCase):

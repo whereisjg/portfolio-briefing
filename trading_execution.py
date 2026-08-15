@@ -106,12 +106,12 @@ def historical_date_ranges(now, lookback_days=400, chunk_days=120):
         cursor = chunk_end + timedelta(days=1)
 
 
-def fetch_kis_daily_closes(code, context):
+def fetch_kis_daily_closes(code, context, lookback_days=400):
     """Fetch completed daily closes for a domestic ETF trend signal."""
     now = datetime.now(kis_client.KST)
     closes_by_date = {}
     today = now.strftime("%Y%m%d")
-    for start, end in historical_date_ranges(now):
+    for start, end in historical_date_ranges(now, lookback_days=int(lookback_days)):
         wait_for_kis_request_slot(context)
         response = context["session"].get(
             f"{context['base_url']}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
@@ -138,12 +138,12 @@ def fetch_kis_daily_closes(code, context):
     return sorted(closes_by_date.items())
 
 
-def fetch_kis_index_daily_closes(symbol, context):
+def fetch_kis_index_daily_closes(symbol, context, lookback_days=400):
     """Fetch completed Nasdaq100 or S&P500 closes from KIS's overseas index API."""
     now = datetime.now(kis_client.KST)
     today = now.strftime("%Y%m%d")
     closes_by_date = {}
-    for start, end in historical_date_ranges(now):
+    for start, end in historical_date_ranges(now, lookback_days=int(lookback_days)):
         wait_for_kis_request_slot(context)
         response = context["session"].get(
             f"{context['base_url']}/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",

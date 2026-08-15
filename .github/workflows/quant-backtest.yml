@@ -1,0 +1,107 @@
+name: Quant Backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      account_mode:
+        description: 'KIS API environment for historical quote reads only'
+        required: false
+        type: choice
+        options:
+          - paper
+          - live
+          - isa
+        default: isa
+      lookback_days:
+        description: 'Calendar days of KIS history to request'
+        required: false
+        default: '1260'
+      transaction_cost_bps:
+        description: 'One-way transaction-cost assumption in basis points'
+        required: false
+        default: '10'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quant-backtest
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    env:
+      KIS_ACCOUNT_MODE: ${{ inputs.account_mode }}
+      KIS_APP_KEY: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_KEY || inputs.account_mode == 'isa' && secrets.KIS_ISA_APP_KEY || secrets.KIS_TEST_APP_KEY }}
+      KIS_APP_SECRET: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_APP_SECRET || inputs.account_mode == 'isa' && secrets.KIS_ISA_APP_SECRET || secrets.KIS_TEST_APP_SECRET }}
+      KIS_ACCOUNT_NO: ${{ inputs.account_mode == 'paper' && secrets.KIS_PAPER_ACCOUNT_NO || inputs.account_mode == 'isa' && secrets.KIS_ISA_ACCOUNT_NO || secrets.KIS_TEST_ACCOUNT_NO }}
+      KIS_API_BASE_URL: ${{ inputs.account_mode == 'paper' && 'https://openapivts.koreainvestment.com:29443' || 'https://openapi.koreainvestment.com:9443' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests pytz
+      - name: Configure KIS token cache key
+        id: kis-token-key
+        run: |
+          scope=$(printf %s "$KIS_ACCOUNT_NO" | sha256sum | cut -c1-16)
+          echo "prefix=kis-token-v1-${scope}-" >> "$GITHUB_OUTPUT"
+          echo "key=kis-token-v1-${scope}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+      - name: Restore encrypted KIS token cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/kis-access-token.enc
+          key: ${{ steps.kis-token-key.outputs.key }}
+          restore-keys: |
+            ${{ steps.kis-token-key.outputs.prefix }}
+      - name: Decrypt cached KIS token
+        run: |
+          rm -f /tmp/kis-access-token.json /tmp/kis-access-token.json.updated
+          if [ -f /tmp/kis-access-token.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -salt \
+              -pass env:KIS_APP_SECRET \
+              -in /tmp/kis-access-token.enc \
+              -out /tmp/kis-access-token.json || rm -f /tmp/kis-access-token.json
+          fi
+      - name: Validate backtest code
+        run: |
+          python -m py_compile quant_backtest.py trading_execution.py trading_strategy.py
+          python -m unittest
+      - name: Run research-only backtest
+        env:
+          KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
+        run: |
+          python quant_backtest.py \
+            --lookback-days "${{ inputs.lookback_days }}" \
+            --transaction-cost-bps "${{ inputs.transaction_cost_bps }}" | tee /tmp/quant-backtest.md
+          cat /tmp/quant-backtest.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit backtest report
+        run: |
+          git config user.name "Portfolio Bot"
+          git config user.email "bot@portfolio.local"
+          git add backtests/*.json backtests/*.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Quant backtest - $(TZ=Asia/Seoul date +%Y-%m-%d)"
+          fi
+          git pull --rebase origin main
+          git push
+      - name: Encrypt newly issued KIS token
+        id: encrypt-token
+        run: |
+          if [ -f /tmp/kis-access-token.json.updated ]; then
+            openssl enc -aes-256-cbc -pbkdf2 -salt \
+              -pass env:KIS_APP_SECRET \
+              -in /tmp/kis-access-token.json \
+              -out /tmp/kis-access-token.enc
+            echo "save=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Save encrypted KIS token cache
+        if: steps.encrypt-token.outputs.save == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/kis-access-token.enc
+          key: ${{ steps.kis-token-key.outputs.key }}
