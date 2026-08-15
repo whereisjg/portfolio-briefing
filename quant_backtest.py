@@ -187,12 +187,14 @@ def fetch_kis_history(config, lookback_days, cache_file=""):
     context = trading_execution.get_kis_context(token)
     target_codes = config["target_weights"]
     asset_closes = {
-        code: trading_execution.fetch_kis_daily_closes(code, context, lookback_days)
+        code: trading_execution.fetch_kis_daily_closes(
+            code, context, lookback_days, chunk_days=30
+        )
         for code in target_codes
     }
     index_closes = {
         signal["symbol"]: trading_execution.fetch_kis_index_daily_closes(
-            signal["symbol"], context, lookback_days
+            signal["symbol"], context, lookback_days, chunk_days=30
         )
         for signal in config["trend_strategy"]["signals"]
         if signal["kind"] == "index"
