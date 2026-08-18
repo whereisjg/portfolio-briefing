@@ -108,19 +108,21 @@ def trend_signal_states(
     confirmation_days,
     average_type="sma",
     long_filter_window=None,
+    state_history_days=None,
 ):
-    """Return the latest daily moving-average states from completed closing prices."""
+    """Return recent daily moving-average states from completed closing prices."""
+    state_history_days = max(int(state_history_days or confirmation_days), confirmation_days)
     windows = [short_window, long_window]
     if long_filter_window:
         windows.append(int(long_filter_window))
-    required = max(windows) + confirmation_days - 1
+    required = max(windows) + state_history_days - 1
     if average_type == "hma":
         required += math.isqrt(max(windows)) - 1
     if len(closes) < required:
         raise ValueError(f"추세 판단에 필요한 일봉이 부족합니다: {len(closes)}/{required}")
 
     states = []
-    for index in range(len(closes) - confirmation_days, len(closes)):
+    for index in range(len(closes) - state_history_days, len(closes)):
         price = closes[index][1]
         if average_type == "hma":
             short_average = hull_average(closes, index, short_window)
@@ -159,6 +161,7 @@ def calculate_trend_state(
     confirmation_days,
     average_type="sma",
     long_filter_window=None,
+    state_history_days=None,
 ):
     """Classify a confirmed moving-average regime from completed closing prices."""
     states = trend_signal_states(
@@ -168,8 +171,9 @@ def calculate_trend_state(
         confirmation_days,
         average_type,
         long_filter_window,
+        state_history_days,
     )
-    signals = [item["state"] for item in states]
+    signals = [item["state"] for item in states[-confirmation_days:]]
     latest = states[-1]
     return {
         "state": signals[0] if len(set(signals)) == 1 else "neutral",

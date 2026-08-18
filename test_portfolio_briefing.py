@@ -1128,6 +1128,35 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(domestic.call_count, 3)
         self.assertEqual([call.args[0] for call in index.call_args_list], ["NDX", "SPX"])
 
+    def test_composite_strategy_uses_recent_common_dates_after_a_market_holiday(self):
+        domestic_dates = [f"2026{day:04d}" for day in range(1, 30)]
+        index_dates = [f"2026{day:04d}" for day in range(1, 31)]
+        domestic = [(day, float(100 + index)) for index, day in enumerate(domestic_dates)]
+        indexes = [(day, float(100 + index)) for index, day in enumerate(index_dates)]
+        trend = {
+            "short_window_days": 2,
+            "long_window_days": 3,
+            "confirmation_days": 2,
+            "common_history_days": 20,
+            "composite_threshold": 0.5,
+            "signals": [
+                {"kind": "portfolio", "label": "계좌 위험자산", "weight_pct": 50, "codes": ["A", "B"]},
+                {"kind": "index", "label": "나스닥100", "weight_pct": 25, "symbol": "NDX"},
+                {"kind": "index", "label": "S&P500", "weight_pct": 25, "symbol": "SPX"},
+            ],
+        }
+        with patch.object(trading, "fetch_kis_daily_closes", return_value=domestic):
+            with patch.object(trading, "fetch_kis_index_daily_closes", return_value=indexes):
+                result = trading.resolve_composite_trend_strategy(
+                    trend,
+                    {},
+                    {"A": 50, "B": 50},
+                )
+
+        self.assertEqual(result["state"], "risk_on")
+        self.assertEqual(result["latest_date"], domestic_dates[-1])
+        self.assertEqual(result["signals"], ["risk_on", "risk_on"])
+
     def test_paper_account_uses_per_run_test_limit(self):
         budgets = trading.daily_trade_budgets(
             {**self.config, "paper_test_order_limit_krw": 100000},

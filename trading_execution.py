@@ -219,6 +219,10 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
     confirmation_days = int(trend["confirmation_days"])
     average_type = trend.get("average_type", "sma")
     long_filter_window = trend.get("long_filter_window_days")
+    state_history_days = max(
+        int(trend.get("common_history_days", confirmation_days)),
+        confirmation_days,
+    )
     components = []
     for signal in trend["signals"]:
         if signal["kind"] == "portfolio":
@@ -239,6 +243,7 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
             confirmation_days,
             average_type,
             long_filter_window,
+            state_history_days,
         )
         components.append({
             "label": signal["label"],
