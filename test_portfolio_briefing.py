@@ -903,6 +903,131 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertTrue(trading.has_open_target_order(orders, {"A"}))
 
+    def test_retry_safety_blocks_a_retry_when_first_order_status_is_missing(self):
+        reason = trading.retry_safety_reason(
+            [],
+            [{"order_no": "1"}],
+            [],
+            [],
+        )
+
+        self.assertIn("상태 조회가 지연", reason)
+
+    def test_retry_safety_blocks_a_retry_with_open_first_order(self):
+        reason = trading.retry_safety_reason(
+            [{"odno": "1", "rmn_qty": "2"}],
+            [{"order_no": "1"}],
+            [],
+            [{"odno": "1", "psbl_qty": "2"}],
+        )
+
+        self.assertIn("미체결 잔량", reason)
+
+    def test_submit_live_orders_stops_after_a_submission_error(self):
+        orders = [
+            {"code": "A", "quantity": 1, "price": 10000, "value": 10000},
+            {"code": "B", "quantity": 1, "price": 10000, "value": 10000},
+        ]
+        with patch.object(
+            trading,
+            "submit_cash_order",
+            side_effect=[{"ODNO": "1"}, RuntimeError("KIS timeout")],
+        ) as submit:
+            submitted, errors = trading.submit_live_orders([], orders, {})
+
+        self.assertEqual(len(submitted), 1)
+        self.assertEqual(submitted[0]["order_no"], "1")
+        self.assertEqual(errors, [{"side": "buy", "code": "B", "message": "KIS timeout"}])
+        self.assertEqual(submit.call_count, 2)
+
+    def test_live_rebalance_does_not_retry_when_first_order_status_is_missing(self):
+        config = {
+            "target_weights": {"A": 100},
+            "liquidation_codes": [],
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "rebalance_band_pct": 0,
+            "order_policy": {"first_order_check_minutes": 0},
+        }
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        first_order = {
+            "side": "buy",
+            "code": "A",
+            "quantity": 1,
+            "price": 10000,
+            "value": 10000,
+            "order_no": "1",
+        }
+
+        with patch.object(trading, "resolve_trend_strategy", return_value=trend):
+            with patch.object(trading, "fetch_today_orders", side_effect=[[], []]):
+                with patch.object(trading, "fetch_kis_prices", return_value={"A": 10000}):
+                    with patch.object(trading, "fetch_kis_orderable_cash", return_value=10000):
+                        with patch.object(trading, "load_asset_labels", return_value={"A": "테스트 ETF"}):
+                            with patch.object(trading, "live_orders_for_plan", return_value=([], [first_order])):
+                                with patch.object(
+                                    trading,
+                                    "submit_live_orders",
+                                    return_value=([first_order], []),
+                                ) as submit:
+                                    with patch.object(trading, "fetch_cancelable_orders", side_effect=[[], []]):
+                                        with patch.object(trading.time, "sleep"):
+                                            result = trading.execute_live_rebalance(
+                                                config,
+                                                [],
+                                                {"prvs_rcdl_excc_amt": "10000"},
+                                                {"is_paper": False},
+                                            )
+
+        self.assertEqual(submit.call_count, 1)
+        self.assertIn("2차 주문 보류", "\n".join(result["execution_report"]))
+        self.assertIn("상태 조회가 지연", "\n".join(result["execution_report"]))
+
+    def test_dry_run_stops_when_trend_calculation_fails(self):
+        config = {
+            "mode": "dry-run",
+            "target_weights": {"A": 100},
+            "liquidation_codes": [],
+        }
+        failed_trend = {
+            "state": "neutral",
+            "weights": {"A": 100},
+            "error": "KIS 일봉조회 실패",
+        }
+        with patch.object(trading, "load_config", return_value=config):
+            with patch.object(trading, "load_balance_snapshot", return_value=([], {}, "token")):
+                with patch.object(trading, "get_kis_context", return_value={}):
+                    with patch.object(trading, "resolve_trend_strategy", return_value=failed_trend):
+                        with patch.object(trading, "fetch_kis_prices") as fetch_prices:
+                            with patch("sys.argv", ["trading_execution.py"]):
+                                with patch("builtins.print") as print_mock:
+                                    trading.main()
+
+        fetch_prices.assert_not_called()
+        self.assertIn("추세 계산 실패", print_mock.call_args.args[0])
+
+    def test_main_keeps_the_workflow_alive_after_live_order_error(self):
+        config = {
+            "mode": "live",
+            "live_orders_enabled": True,
+            "target_weights": {"A": 100},
+            "liquidation_codes": [],
+        }
+        with patch.object(trading, "load_config", return_value=config):
+            with patch.object(trading, "load_balance_snapshot", return_value=([], {}, "token")):
+                with patch.object(trading, "get_kis_context", return_value={}):
+                    with patch.object(
+                        trading,
+                        "execute_live_rebalance",
+                        side_effect=RuntimeError("KIS timeout"),
+                    ):
+                        with patch("sys.argv", ["trading_execution.py", "--execute-live"]):
+                            with patch("builtins.print") as print_mock:
+                                trading.main()
+
+        self.assertIn("주문 처리 중 오류", print_mock.call_args.args[0])
+
     def test_live_rebalance_stops_when_trend_calculation_fails(self):
         failed_trend = {
             "state": "neutral",

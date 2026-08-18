@@ -1,4 +1,5 @@
 name: Daily Portfolio Briefing
+run-name: Daily Portfolio Briefing [${{ inputs.account_mode || 'isa' }}:${{ inputs.execute_live_orders && 'orders' || 'plan' }}]
 
 on:
   workflow_dispatch:

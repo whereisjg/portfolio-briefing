@@ -613,6 +613,68 @@ def has_open_target_order(today_orders, target_codes):
     )
 
 
+def retry_safety_reason(today_orders, submitted, cancelled, cancelable=None):
+    """Explain why a first-pass order cannot safely be followed by a retry."""
+    receipt_numbers = [str(order.get("order_no", "")).strip() for order in submitted]
+    if not receipt_numbers or any(not number for number in receipt_numbers):
+        return "1차 주문번호를 확인하지 못해 2차 주문을 보류했습니다."
+
+    rows_by_order_no = {
+        str(row.get("odno", "")).strip(): row
+        for row in today_orders
+    }
+    if any(number not in rows_by_order_no for number in receipt_numbers):
+        return "1차 주문 상태 조회가 지연되어 2차 주문을 보류했습니다."
+
+    if cancelable is not None:
+        open_order_numbers = {
+            str(row.get("odno", "")).strip()
+            for row in cancelable
+            if kis_client.as_float(row.get("psbl_qty"), 0) > 0
+        }
+        if any(number in open_order_numbers for number in receipt_numbers):
+            return "1차 주문의 미체결 잔량이 남아 있어 2차 주문을 보류했습니다."
+        return ""
+
+    cancelled_order_numbers = {
+        str(order.get("order_no", "")).strip()
+        for order in cancelled
+    }
+    if any(
+        kis_client.as_float(rows_by_order_no[number].get("rmn_qty"), 0) > 0
+        and number not in cancelled_order_numbers
+        for number in receipt_numbers
+    ):
+        return "1차 주문의 미체결 잔량이 남아 있어 2차 주문을 보류했습니다."
+    return ""
+
+
+def reconcile_first_pass_orders(submitted, context):
+    """Cancel first-pass residues and confirm whether a second pass is safe."""
+    if context.get("is_paper"):
+        before_cancel = fetch_today_orders(context)
+        cancelled = [
+            cancel_order_by_receipt(order, context)
+            for order in paper_unfilled_orders(before_cancel, submitted)
+        ]
+        today_orders = fetch_today_orders(context)
+        return today_orders, cancelled, retry_safety_reason(today_orders, submitted, cancelled)
+
+    cancelable = fetch_cancelable_orders(context)
+    cancelled = [
+        result for result in (cancel_unfilled_order(order, cancelable, context) for order in submitted)
+        if result is not None
+    ]
+    today_orders = fetch_today_orders(context)
+    cancelable_after = fetch_cancelable_orders(context)
+    return today_orders, cancelled, retry_safety_reason(
+        today_orders,
+        submitted,
+        cancelled,
+        cancelable_after,
+    )
+
+
 def daily_trade_budgets(config, total_assets, today_orders, target_codes, context):
     """Keep real-account buy and sell values independently bounded."""
     if context.get("is_paper"):
@@ -688,6 +750,22 @@ def format_execution_report(today_orders, submitted, cancelled, asset_labels=Non
     return lines
 
 
+def format_submission_errors(errors, asset_labels=None):
+    asset_labels = asset_labels or {}
+    lines = []
+    for error in errors:
+        side = "매수" if error["side"] == "buy" else "매도"
+        label = asset_labels.get(error["code"], error["code"])
+        message = str(error.get("message", "")).replace("\n", " ").strip()
+        if len(message) > 120:
+            message = message[:117] + "..."
+        lines.append(
+            f"⚠️ {side} {label} 주문 응답 오류 · 접수 여부 확인 필요"
+            + (f"\n사유: {message}" if message else "")
+        )
+    return lines
+
+
 def live_orders_for_plan(plan, config, context, first_buy_prices=None):
     bid_prices = {order["code"]: fetch_kis_best_bid(order["code"], context) for order in plan["sells"]}
     sell_limits = {
@@ -713,16 +791,23 @@ def live_orders_for_plan(plan, config, context, first_buy_prices=None):
 
 def submit_live_orders(sell_orders, buy_orders, context):
     submitted = []
+    errors = []
     for side, orders in (("sell", sell_orders), ("buy", buy_orders)):
         for order in orders:
-            result = submit_cash_order(order["code"], order["quantity"], order["price"], side, context)
+            try:
+                result = submit_cash_order(
+                    order["code"], order["quantity"], order["price"], side, context
+                )
+            except Exception as exc:
+                errors.append({"side": side, "code": order["code"], "message": str(exc)})
+                return submitted, errors
             submitted.append({
                 **order,
                 "side": side,
                 "order_no": result.get("ODNO", ""),
                 "order_org_no": result.get("KRX_FWDG_ORD_ORGNO", ""),
             })
-    return submitted
+    return submitted, errors
 
 
 def execute_live_rebalance(config, holdings, summary, context):
@@ -774,23 +859,39 @@ def execute_live_rebalance(config, holdings, summary, context):
     plan["daily_sell_cap"] = daily_budgets["sell_cap"]
     plan["trend"] = trend
 
+    asset_labels = load_asset_labels()
     sell_orders, buy_orders = live_orders_for_plan(plan, effective_config, context)
-    submitted = submit_live_orders(sell_orders, buy_orders, context)
+    submitted, submission_errors = submit_live_orders(sell_orders, buy_orders, context)
     if not submitted:
-        return {"status": "submitted", "plan": plan, "orders": [], "trend": trend, "reason": ""}
+        report = ["🤖 자동매매 결과"] + format_submission_errors(submission_errors, asset_labels)
+        if not submission_errors:
+            report.append("주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
+        return {
+            "status": "submitted",
+            "plan": plan,
+            "orders": [],
+            "execution_report": report,
+            "trend": trend,
+            "reason": "",
+        }
 
     time.sleep(int(effective_config["order_policy"]["first_order_check_minutes"]) * 60)
-    if context.get("is_paper"):
-        cancelled = [
-            cancel_order_by_receipt(order, context)
-            for order in paper_unfilled_orders(fetch_today_orders(context), submitted)
-        ]
-    else:
-        cancelable = fetch_cancelable_orders(context)
-        cancelled = [
-            result for result in (cancel_unfilled_order(order, cancelable, context) for order in submitted)
-            if result is not None
-        ]
+    first_today_orders, cancelled, retry_reason = reconcile_first_pass_orders(submitted, context)
+    if submission_errors:
+        retry_reason = "1차 주문 전송 오류가 있어 2차 주문을 보류했습니다."
+    if retry_reason:
+        report = format_execution_report(first_today_orders, submitted, cancelled, asset_labels)
+        report.extend(format_submission_errors(submission_errors, asset_labels))
+        report.append(f"2차 주문 보류: {retry_reason}")
+        return {
+            "status": "submitted",
+            "plan": plan,
+            "orders": submitted,
+            "cancelled": cancelled,
+            "execution_report": report,
+            "trend": trend,
+            "reason": "",
+        }
 
     wait_for_kis_request_slot(context)
     fresh_holdings, fresh_summary, _token = kis_client.fetch_balance(
@@ -800,7 +901,7 @@ def execute_live_rebalance(config, holdings, summary, context):
     fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
     fresh_prices = fetch_kis_prices(managed_codes, context)
     fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
-    filled = filled_values_for_orders(fetch_today_orders(context), submitted)
+    filled = filled_values_for_orders(first_today_orders, submitted)
     retry_config = deepcopy(effective_config)
     retry_sell_limits = {
         code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
@@ -818,17 +919,19 @@ def execute_live_rebalance(config, holdings, summary, context):
     )
     first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
     retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
-    retried = submit_live_orders(retry_sells, retry_buys, context)
+    retried, retry_errors = submit_live_orders(retry_sells, retry_buys, context)
     all_orders = submitted + retried
     final_today_orders = fetch_today_orders(context)
+    execution_report = format_execution_report(
+        final_today_orders, all_orders, cancelled, asset_labels
+    )
+    execution_report.extend(format_submission_errors(submission_errors + retry_errors, asset_labels))
     return {
         "status": "submitted",
         "plan": plan,
         "orders": all_orders,
         "cancelled": cancelled,
-        "execution_report": format_execution_report(
-            final_today_orders, all_orders, cancelled, load_asset_labels()
-        ),
+        "execution_report": execution_report,
         "trend": trend,
         "reason": "",
     }
@@ -853,18 +956,30 @@ def main():
     if args.execute_live:
         if config.get("mode") != "live" or not config.get("live_orders_enabled"):
             raise ValueError("실주문은 live 설정이 활성화된 경우에만 실행할 수 있습니다.")
-        execution = execute_live_rebalance(config, holdings, summary, kis_context)
+        try:
+            execution = execute_live_rebalance(config, holdings, summary, kis_context)
+        except Exception as exc:
+            print(
+                "🤖 자동매매 중단\n"
+                "주문 처리 중 오류가 발생했습니다. 접수 여부는 이어지는 잔고 브리핑에서 확인합니다.\n"
+                f"사유: {str(exc)[:200]}"
+            )
+            return
         if execution["status"] == "skipped":
             print("자동매매 실주문\n" + execution["reason"])
             return
+        if execution.get("execution_report"):
+            for line in execution["execution_report"]:
+                print(line)
+            return
         if not execution["orders"]:
             print("🤖 자동매매 결과\n주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
-            return
-        for line in execution.get("execution_report", []):
-            print(line)
         return
 
     trend = resolve_trend_strategy(config, kis_context)
+    if trend.get("error"):
+        print("🤖 자동매매 dry-run\n추세 계산 실패로 주문을 만들지 않았습니다: " + trend["error"])
+        return
     effective_config = deepcopy(config)
     effective_config["target_weights"] = trend["weights"]
     positions = positions_from_holdings(holdings, managed_codes)

@@ -19,8 +19,8 @@ jobs:
         run: |
           today=$(TZ=Asia/Seoul date +%Y-%m-%d)
           completed=$(gh run list --repo "$REPOSITORY" --workflow briefing.yml --limit 20 \
-            --json createdAt,status,conclusion --jq \
-            ".[] | select(.createdAt | startswith(\"${today}\")) | select(.status != \"completed\" or .conclusion == \"success\")")
+            --json createdAt,status,conclusion,displayTitle --jq \
+            ".[] | select(.createdAt | startswith(\"${today}\")) | select((.displayTitle // \"\") | contains(\"[isa:orders]\")) | select(.status != \"completed\" or .conclusion == \"success\")")
           if [ -n "$completed" ]; then
             echo "Today's briefing is already running or succeeded."
             exit 0
