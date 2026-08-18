@@ -1007,26 +1007,88 @@ class TradingPlanTests(unittest.TestCase):
         fetch_prices.assert_not_called()
         self.assertIn("추세 계산 실패", print_mock.call_args.args[0])
 
-    def test_main_keeps_the_workflow_alive_after_live_order_error(self):
+    def test_main_records_a_retryable_pre_order_failure(self):
         config = {
             "mode": "live",
             "live_orders_enabled": True,
             "target_weights": {"A": 100},
             "liquidation_codes": [],
         }
-        with patch.object(trading, "load_config", return_value=config):
-            with patch.object(trading, "load_balance_snapshot", return_value=([], {}, "token")):
-                with patch.object(trading, "get_kis_context", return_value={}):
-                    with patch.object(
-                        trading,
-                        "execute_live_rebalance",
-                        side_effect=RuntimeError("KIS timeout"),
-                    ):
-                        with patch("sys.argv", ["trading_execution.py", "--execute-live"]):
-                            with patch("builtins.print") as print_mock:
-                                trading.main()
+        with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as result_file:
+            with patch.object(trading, "load_config", return_value=config):
+                with patch.object(trading, "load_balance_snapshot", return_value=([], {}, "token")):
+                    with patch.object(trading, "get_kis_context", return_value={}):
+                        with patch.object(
+                            trading,
+                            "execute_live_rebalance",
+                            side_effect=RuntimeError("KIS timeout"),
+                        ):
+                            with patch("sys.argv", [
+                                "trading_execution.py",
+                                "--execute-live",
+                                "--result-file",
+                                result_file.name,
+                            ]):
+                                with patch("builtins.print") as print_mock:
+                                    trading.main()
+            result_file.seek(0)
+            result = json.load(result_file)
 
-        self.assertIn("주문 처리 중 오류", print_mock.call_args.args[0])
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(result["retryable"])
+        self.assertFalse(result["orders_submitted"])
+        self.assertIn("5분 뒤", print_mock.call_args.args[0])
+
+    def test_main_does_not_schedule_a_second_recovery_attempt(self):
+        config = {
+            "mode": "live",
+            "live_orders_enabled": True,
+            "target_weights": {"A": 100},
+            "liquidation_codes": [],
+        }
+        execution = trading.execution_failure("KIS timeout", retryable=True)
+        with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as result_file:
+            with patch.object(trading, "load_config", return_value=config):
+                with patch.object(trading, "load_balance_snapshot", return_value=([], {}, "token")):
+                    with patch.object(trading, "get_kis_context", return_value={}):
+                        with patch.object(trading, "execute_live_rebalance", return_value=execution):
+                            with patch("sys.argv", [
+                                "trading_execution.py",
+                                "--execute-live",
+                                "--recovery-attempt",
+                                "--result-file",
+                                result_file.name,
+                            ]):
+                                with patch("builtins.print") as print_mock:
+                                    trading.main()
+            result_file.seek(0)
+            result = json.load(result_file)
+
+        self.assertFalse(result["retryable"])
+        self.assertIn("자동 복구 실패", print_mock.call_args.args[0])
+
+    def test_main_does_not_retry_an_invalid_live_configuration(self):
+        config = {
+            "mode": "dry-run",
+            "live_orders_enabled": False,
+            "target_weights": {"A": 100},
+            "liquidation_codes": [],
+        }
+        with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as result_file:
+            with patch.object(trading, "load_config", return_value=config):
+                with patch("sys.argv", [
+                    "trading_execution.py",
+                    "--execute-live",
+                    "--result-file",
+                    result_file.name,
+                ]):
+                    with patch("builtins.print") as print_mock:
+                        trading.main()
+            result_file.seek(0)
+            result = json.load(result_file)
+
+        self.assertFalse(result["retryable"])
+        self.assertIn("자동매매 중단", print_mock.call_args.args[0])
 
     def test_live_rebalance_stops_when_trend_calculation_fails(self):
         failed_trend = {
@@ -1042,7 +1104,64 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "skipped")
         self.assertIn("추세 계산 실패", result["reason"])
+        self.assertTrue(result["retryable"])
         fetch_orders.assert_not_called()
+
+    def test_live_rebalance_marks_pre_order_failure_retryable(self):
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        with patch.object(trading, "resolve_trend_strategy", return_value=trend):
+            with patch.object(trading, "fetch_today_orders", side_effect=RuntimeError("KIS timeout")):
+                result = trading.execute_live_rebalance(
+                    {"target_weights": {"A": 100}}, [], {}, {}
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(result["retryable"])
+        self.assertIn("주문 전 조회 실패", result["reason"])
+
+    def test_live_rebalance_does_not_retry_after_order_submission(self):
+        config = {
+            "target_weights": {"A": 100},
+            "liquidation_codes": [],
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "rebalance_band_pct": 0,
+            "order_policy": {"first_order_check_minutes": 0},
+        }
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        submitted = [{
+            "side": "buy",
+            "code": "A",
+            "quantity": 1,
+            "price": 10000,
+            "value": 10000,
+            "order_no": "1",
+        }]
+        with patch.object(trading, "resolve_trend_strategy", return_value=trend):
+            with patch.object(trading, "fetch_today_orders", return_value=[]):
+                with patch.object(trading, "fetch_kis_prices", return_value={"A": 10000}):
+                    with patch.object(trading, "fetch_kis_orderable_cash", return_value=10000):
+                        with patch.object(trading, "load_asset_labels", return_value={"A": "테스트 ETF"}):
+                            with patch.object(trading, "live_orders_for_plan", return_value=([], submitted)):
+                                with patch.object(trading, "submit_live_orders", return_value=(submitted, [])):
+                                    with patch.object(
+                                        trading,
+                                        "reconcile_first_pass_orders",
+                                        side_effect=RuntimeError("KIS timeout"),
+                                    ):
+                                        with patch.object(trading.time, "sleep"):
+                                            result = trading.execute_live_rebalance(
+                                                config,
+                                                [],
+                                                {"prvs_rcdl_excc_amt": "10000"},
+                                                {"is_paper": False},
+                                            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertFalse(result["retryable"])
+        self.assertEqual(result["orders"], submitted)
+        self.assertIn("주문 접수 뒤", result["reason"])
 
     def test_filled_trade_values_count_only_managed_etfs(self):
         orders = [

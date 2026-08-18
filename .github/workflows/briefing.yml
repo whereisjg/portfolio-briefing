@@ -93,7 +93,9 @@ jobs:
           print(f"reason={status['reason']}")
           PY
       - name: Fetch pre-trade KIS balance
+        id: pretrade-balance
         if: steps.krx-market.outputs.open == 'true'
+        continue-on-error: true
         env:
           KIS_BALANCE_ENABLED: 'true'
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
@@ -107,14 +109,44 @@ jobs:
           print(f"KIS pre-trade balance snapshot saved: {len(holdings)} holding(s)")
           PY
       - name: Run configured live rebalance
-        if: steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true
+        id: live-rebalance
+        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
           KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
-        run: python trading_execution.py --execute-live > /tmp/trading-plan.txt
+        run: python trading_execution.py --execute-live --result-file /tmp/trading-execution.json > /tmp/trading-plan.txt
+      - name: Retry recoverable live rebalance once
+        id: live-recovery
+        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true
+        env:
+          KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
+          KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
+          KIS_TREND_STATE_FILE: /tmp/kis-trend-state.json
+        run: |
+          retryable=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("/tmp/trading-execution.json")
+          if not path.exists():
+              print("false")
+          else:
+              print(str(bool(json.loads(path.read_text(encoding="utf-8")).get("retryable"))).lower())
+          PY
+          )
+          if [ "$retryable" != "true" ]; then
+            echo "No recoverable trading failure."
+            exit 0
+          fi
+
+          printf '\n\n🤖 자동 복구\n5분 뒤 주문 전 조회를 다시 확인합니다.\n' >> /tmp/trading-plan.txt
+          sleep 300
+          rm -f /tmp/kis-balance.json /tmp/kis-trend-state.json
+          python trading_execution.py --execute-live --recovery-attempt \
+            --result-file /tmp/trading-recovery.json >> /tmp/trading-plan.txt
       - name: Build trading plan only
-        if: steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders != true
+        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders != true
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
@@ -151,7 +183,7 @@ jobs:
           )
           PY
       - name: Run post-trade briefing
-        if: steps.krx-market.outputs.open == 'true'
+        if: always() && steps.krx-market.outputs.open == 'true'
         env:
           KIS_BALANCE_ENABLED: 'true'
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json

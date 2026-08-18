@@ -12,17 +12,17 @@ jobs:
   dispatch-if-needed:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch only when today's briefing did not succeed
+      - name: Dispatch only when today's ISA order workflow did not start
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
           today=$(TZ=Asia/Seoul date +%Y-%m-%d)
-          completed=$(gh run list --repo "$REPOSITORY" --workflow briefing.yml --limit 20 \
-            --json createdAt,status,conclusion,displayTitle --jq \
-            ".[] | select(.createdAt | startswith(\"${today}\")) | select((.displayTitle // \"\") | contains(\"[isa:orders]\")) | select(.status != \"completed\" or .conclusion == \"success\")")
-          if [ -n "$completed" ]; then
-            echo "Today's briefing is already running or succeeded."
+          started=$(gh run list --repo "$REPOSITORY" --workflow briefing.yml --limit 20 \
+            --json createdAt,displayTitle --jq \
+            ".[] | select(.createdAt | startswith(\"${today}\")) | select((.displayTitle // \"\") | contains(\"[isa:orders]\"))")
+          if [ -n "$started" ]; then
+            echo "Today's ISA order workflow already started."
             exit 0
           fi
           gh workflow run briefing.yml --repo "$REPOSITORY" --ref main \

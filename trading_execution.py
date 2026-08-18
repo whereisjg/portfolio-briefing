@@ -36,6 +36,27 @@ def load_balance_snapshot():
     return run_state.load_balance_snapshot(path)
 
 
+def save_execution_result(path, execution, retryable):
+    """Persist a small workflow-only status without account or secret data."""
+    if not path:
+        return
+    run_state.save_json(path, {
+        "status": execution.get("status", "failed"),
+        "retryable": bool(retryable),
+        "reason": execution.get("reason", ""),
+        "orders_submitted": bool(execution.get("orders")),
+    })
+
+
+def execution_failure(reason, retryable, orders=None):
+    return {
+        "status": "failed",
+        "reason": reason,
+        "orders": orders or [],
+        "retryable": retryable,
+    }
+
+
 def load_asset_labels(path=PORTFOLIO_FILE):
     """Map KIS ETF codes to the short labels used in user-facing reports."""
     try:
@@ -822,45 +843,51 @@ def execute_live_rebalance(config, holdings, summary, context):
             "plan": None,
             "orders": [],
             "trend": trend,
+            "retryable": True,
         }
-    effective_config = deepcopy(config)
-    effective_config["target_weights"] = trend["weights"]
-    today_orders = fetch_today_orders(context)
-    if has_open_target_order(today_orders, managed_codes):
-        return {
-            "status": "skipped",
-            "reason": "대상 ETF의 미체결 주문이 남아 있어 추가 주문을 보류했습니다.",
-            "plan": None,
-            "orders": [],
-            "trend": trend,
-        }
+    try:
+        effective_config = deepcopy(config)
+        effective_config["target_weights"] = trend["weights"]
+        today_orders = fetch_today_orders(context)
+        if has_open_target_order(today_orders, managed_codes):
+            return {
+                "status": "skipped",
+                "reason": "대상 ETF의 미체결 주문이 남아 있어 추가 주문을 보류했습니다.",
+                "plan": None,
+                "orders": [],
+                "trend": trend,
+                "retryable": False,
+            }
 
-    positions = positions_from_holdings(holdings, managed_codes)
-    market_prices = fetch_kis_prices(managed_codes, context)
-    cash = cash_from_balance(summary)
-    orderable_cash = fetch_kis_orderable_cash(market_prices, context)
-    total_assets = cash + sum(
-        positions[code]["quantity"] * market_prices[code]
-        for code in managed_codes
-    )
-    daily_budgets = daily_trade_budgets(
-        effective_config, total_assets, today_orders, managed_codes, context
-    )
-    plan = plan_orders(
-        effective_config,
-        positions,
-        market_prices,
-        cash,
-        orderable_cash,
-        buy_limit=daily_budgets["buy_remaining"],
-        sell_turnover_limit=daily_budgets["sell_remaining"],
-    )
-    plan["daily_buy_cap"] = daily_budgets["buy_cap"]
-    plan["daily_sell_cap"] = daily_budgets["sell_cap"]
-    plan["trend"] = trend
+        positions = positions_from_holdings(holdings, managed_codes)
+        market_prices = fetch_kis_prices(managed_codes, context)
+        cash = cash_from_balance(summary)
+        orderable_cash = fetch_kis_orderable_cash(market_prices, context)
+        total_assets = cash + sum(
+            positions[code]["quantity"] * market_prices[code]
+            for code in managed_codes
+        )
+        daily_budgets = daily_trade_budgets(
+            effective_config, total_assets, today_orders, managed_codes, context
+        )
+        plan = plan_orders(
+            effective_config,
+            positions,
+            market_prices,
+            cash,
+            orderable_cash,
+            buy_limit=daily_budgets["buy_remaining"],
+            sell_turnover_limit=daily_budgets["sell_remaining"],
+        )
+        plan["daily_buy_cap"] = daily_budgets["buy_cap"]
+        plan["daily_sell_cap"] = daily_budgets["sell_cap"]
+        plan["trend"] = trend
 
-    asset_labels = load_asset_labels()
-    sell_orders, buy_orders = live_orders_for_plan(plan, effective_config, context)
+        asset_labels = load_asset_labels()
+        sell_orders, buy_orders = live_orders_for_plan(plan, effective_config, context)
+    except Exception as exc:
+        return execution_failure(f"주문 전 조회 실패: {exc}", retryable=True)
+
     submitted, submission_errors = submit_live_orders(sell_orders, buy_orders, context)
     if not submitted:
         report = ["🤖 자동매매 결과"] + format_submission_errors(submission_errors, asset_labels)
@@ -873,96 +900,133 @@ def execute_live_rebalance(config, holdings, summary, context):
             "execution_report": report,
             "trend": trend,
             "reason": "",
+            "retryable": False,
         }
 
-    time.sleep(int(effective_config["order_policy"]["first_order_check_minutes"]) * 60)
-    first_today_orders, cancelled, retry_reason = reconcile_first_pass_orders(submitted, context)
-    if submission_errors:
-        retry_reason = "1차 주문 전송 오류가 있어 2차 주문을 보류했습니다."
-    if retry_reason:
-        report = format_execution_report(first_today_orders, submitted, cancelled, asset_labels)
-        report.extend(format_submission_errors(submission_errors, asset_labels))
-        report.append(f"2차 주문 보류: {retry_reason}")
+    try:
+        time.sleep(int(effective_config["order_policy"]["first_order_check_minutes"]) * 60)
+        first_today_orders, cancelled, retry_reason = reconcile_first_pass_orders(submitted, context)
+        if submission_errors:
+            retry_reason = "1차 주문 전송 오류가 있어 2차 주문을 보류했습니다."
+        if retry_reason:
+            report = format_execution_report(first_today_orders, submitted, cancelled, asset_labels)
+            report.extend(format_submission_errors(submission_errors, asset_labels))
+            report.append(f"2차 주문 보류: {retry_reason}")
+            return {
+                "status": "submitted",
+                "plan": plan,
+                "orders": submitted,
+                "cancelled": cancelled,
+                "execution_report": report,
+                "trend": trend,
+                "reason": "",
+                "retryable": False,
+            }
+
+        wait_for_kis_request_slot(context)
+        fresh_holdings, fresh_summary, _token = kis_client.fetch_balance(
+            cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
+        )
+        context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
+        fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
+        fresh_prices = fetch_kis_prices(managed_codes, context)
+        fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
+        filled = filled_values_for_orders(first_today_orders, submitted)
+        retry_config = deepcopy(effective_config)
+        retry_sell_limits = {
+            code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
+            for code in managed_codes
+        }
+        retry_plan = plan_orders(
+            retry_config,
+            fresh_positions,
+            fresh_prices,
+            cash_from_balance(fresh_summary),
+            fresh_orderable_cash,
+            retry_sell_limits,
+            buy_limit=max(plan["daily_buy_limit"] - filled["buy"], 0),
+            sell_turnover_limit=max(plan["daily_sell_limit"] - sum(filled["sell"].values()), 0),
+        )
+        first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
+        retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
+        retried, retry_errors = submit_live_orders(retry_sells, retry_buys, context)
+        all_orders = submitted + retried
+        final_today_orders = fetch_today_orders(context)
+        execution_report = format_execution_report(
+            final_today_orders, all_orders, cancelled, asset_labels
+        )
+        execution_report.extend(format_submission_errors(submission_errors + retry_errors, asset_labels))
         return {
             "status": "submitted",
             "plan": plan,
-            "orders": submitted,
+            "orders": all_orders,
             "cancelled": cancelled,
-            "execution_report": report,
+            "execution_report": execution_report,
             "trend": trend,
             "reason": "",
+            "retryable": False,
         }
-
-    wait_for_kis_request_slot(context)
-    fresh_holdings, fresh_summary, _token = kis_client.fetch_balance(
-        cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
-    )
-    context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
-    fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
-    fresh_prices = fetch_kis_prices(managed_codes, context)
-    fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
-    filled = filled_values_for_orders(first_today_orders, submitted)
-    retry_config = deepcopy(effective_config)
-    retry_sell_limits = {
-        code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
-        for code in managed_codes
-    }
-    retry_plan = plan_orders(
-        retry_config,
-        fresh_positions,
-        fresh_prices,
-        cash_from_balance(fresh_summary),
-        fresh_orderable_cash,
-        retry_sell_limits,
-        buy_limit=max(plan["daily_buy_limit"] - filled["buy"], 0),
-        sell_turnover_limit=max(plan["daily_sell_limit"] - sum(filled["sell"].values()), 0),
-    )
-    first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
-    retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
-    retried, retry_errors = submit_live_orders(retry_sells, retry_buys, context)
-    all_orders = submitted + retried
-    final_today_orders = fetch_today_orders(context)
-    execution_report = format_execution_report(
-        final_today_orders, all_orders, cancelled, asset_labels
-    )
-    execution_report.extend(format_submission_errors(submission_errors + retry_errors, asset_labels))
-    return {
-        "status": "submitted",
-        "plan": plan,
-        "orders": all_orders,
-        "cancelled": cancelled,
-        "execution_report": execution_report,
-        "trend": trend,
-        "reason": "",
-    }
+    except Exception as exc:
+        return execution_failure(
+            f"주문 접수 뒤 상태 확인 실패: {exc}",
+            retryable=False,
+            orders=submitted,
+        )
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--execute-live", action="store_true")
+    parser.add_argument("--result-file", default=os.getenv("TRADING_EXECUTION_RESULT_FILE", ""))
+    parser.add_argument("--recovery-attempt", action="store_true")
     args = parser.parse_args()
 
-    config = load_config()
-    snapshot = load_balance_snapshot()
-    if snapshot is None:
-        holdings, summary, access_token = kis_client.fetch_balance(
-            cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
-        )
-    else:
-        holdings, summary, access_token = snapshot
-    managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
-    positions = positions_from_holdings(holdings, managed_codes)
-    kis_context = get_kis_context(access_token)
     if args.execute_live:
-        if config.get("mode") != "live" or not config.get("live_orders_enabled"):
-            raise ValueError("실주문은 live 설정이 활성화된 경우에만 실행할 수 있습니다.")
         try:
-            execution = execute_live_rebalance(config, holdings, summary, kis_context)
+            config = load_config()
         except Exception as exc:
+            execution = execution_failure(f"자동매매 설정 확인 실패: {exc}", retryable=False)
+        else:
+            if config.get("mode") != "live" or not config.get("live_orders_enabled"):
+                execution = execution_failure(
+                    "실주문은 live 설정이 활성화된 경우에만 실행할 수 있습니다.",
+                    retryable=False,
+                )
+            else:
+                try:
+                    snapshot = load_balance_snapshot()
+                    if snapshot is None:
+                        holdings, summary, access_token = kis_client.fetch_balance(
+                            cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
+                        )
+                    else:
+                        holdings, summary, access_token = snapshot
+                    kis_context = get_kis_context(access_token)
+                    execution = execute_live_rebalance(config, holdings, summary, kis_context)
+                except Exception as exc:
+                    execution = execution_failure(f"주문 준비 실패: {exc}", retryable=True)
+
+        retryable = bool(execution.get("retryable")) and not args.recovery_attempt
+        save_execution_result(args.result_file, execution, retryable)
+        if retryable:
+            print(
+                "🤖 자동매매 대기\n"
+                f"{execution['reason']}\n"
+                "주문을 보내지 않았습니다. 5분 뒤 한 번 자동 복구를 시도합니다."
+            )
+            return
+        if execution.get("retryable") and args.recovery_attempt:
+            print(
+                "🤖 자동 복구 실패\n"
+                f"{execution['reason']}\n"
+                "오늘 추가 주문은 보내지 않습니다. 이어지는 잔고 브리핑에서 상태를 확인합니다."
+            )
+            return
+        if execution["status"] == "failed":
             print(
                 "🤖 자동매매 중단\n"
-                "주문 처리 중 오류가 발생했습니다. 접수 여부는 이어지는 잔고 브리핑에서 확인합니다.\n"
-                f"사유: {str(exc)[:200]}"
+                f"{execution['reason']}\n"
+                "접수 여부는 이어지는 잔고 브리핑에서 확인합니다."
             )
             return
         if execution["status"] == "skipped":
@@ -975,6 +1039,18 @@ def main():
         if not execution["orders"]:
             print("🤖 자동매매 결과\n주문 없음: 현재 목표 비중과 예수금 조건상 실행할 주문이 없습니다.")
         return
+
+    config = load_config()
+    snapshot = load_balance_snapshot()
+    if snapshot is None:
+        holdings, summary, access_token = kis_client.fetch_balance(
+            cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
+        )
+    else:
+        holdings, summary, access_token = snapshot
+    managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
+    positions = positions_from_holdings(holdings, managed_codes)
+    kis_context = get_kis_context(access_token)
 
     trend = resolve_trend_strategy(config, kis_context)
     if trend.get("error"):
