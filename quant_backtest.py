@@ -14,6 +14,7 @@ from pathlib import Path
 import kis_client
 import trading_execution
 from trading_strategy import (
+    DEFAULT_COMPOSITE_TREND_THRESHOLD,
     calculate_trend_state,
     load_config,
     plan_orders,
@@ -82,7 +83,7 @@ def confirmed_composite_states(config, asset_closes, index_closes):
         except ValueError:
             continue
         score = sum(float(item["weight_pct"]) / 100 * STATE_SCORE[state] for item, state in states)
-        threshold = float(trend.get("composite_threshold", 0.5))
+        threshold = float(trend.get("composite_threshold", DEFAULT_COMPOSITE_TREND_THRESHOLD))
         raw_states.append({
             "date": date,
             "state": "risk_on" if score >= threshold else "risk_off" if score <= -threshold else "neutral",

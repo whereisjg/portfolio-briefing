@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 CONFIG_FILE = Path("trading_config.json")
+DEFAULT_COMPOSITE_TREND_THRESHOLD = 0.5
 
 
 def as_float(value, default=0.0):
@@ -219,7 +220,7 @@ def weighted_close_series(component_closes, weights=None):
     ]
 
 
-def calculate_composite_trend_state(component_states, confirmation_days, threshold=0.5):
+def calculate_composite_trend_state(component_states, confirmation_days, threshold=DEFAULT_COMPOSITE_TREND_THRESHOLD):
     """Combine dated component states into one confirmed portfolio trend state."""
     if not component_states:
         raise ValueError("복합 추세 신호가 없습니다.")

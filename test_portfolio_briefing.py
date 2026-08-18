@@ -34,6 +34,17 @@ class FormattingTests(unittest.TestCase):
 
         self.assertEqual(briefing.build_alert_lines(quotes, []), ["특이사항 없음"])
 
+    def test_action_for_uses_shared_move_thresholds(self):
+        item = {"ticker": "TEST", "chg_pct": 4.0}
+        with patch.multiple(
+            briefing,
+            MILD_MOVE_PCT=1.0,
+            SIGNIFICANT_MOVE_PCT=4.0,
+            CRITICAL_MOVE_PCT=6.0,
+        ):
+            self.assertIn("하루 +4% 이상 상승", briefing.action_for(item))
+            self.assertIn("하루 -6% 이상 급락", briefing.action_for({"ticker": "TEST", "chg_pct": -6.0}))
+
 
 class PerformanceTrackingTests(unittest.TestCase):
     def test_strategy_twr_compares_hma_with_fixed_weights(self):

@@ -31,6 +31,7 @@ KIS_ACCESS_TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 
 PORTFOLIO_FILE = "portfolio.json"
 TRADING_CONFIG_FILE = "trading_config.json"
+MILD_MOVE_PCT = 0.5
 SIGNIFICANT_MOVE_PCT = 3.0
 CRITICAL_MOVE_PCT = 5.0
 
@@ -461,18 +462,18 @@ def action_for(item):
     ticker = item["ticker"]
     chg = item["chg_pct"]
 
-    if chg >= 5:
-        return f"{ticker}: 하루 +5% 이상 급등. 변동성 확대 구간, 일부 차익실현 또는 손절선 점검."
-    if chg >= 3:
-        return f"{ticker}: 하루 +3% 이상 상승. 단기 과열 가능성, 추격 매수보다 관망."
-    if chg >= 0.5:
+    if chg >= CRITICAL_MOVE_PCT:
+        return f"{ticker}: 하루 +{CRITICAL_MOVE_PCT:g}% 이상 급등. 변동성 확대 구간, 일부 차익실현 또는 손절선 점검."
+    if chg >= SIGNIFICANT_MOVE_PCT:
+        return f"{ticker}: 하루 +{SIGNIFICANT_MOVE_PCT:g}% 이상 상승. 단기 과열 가능성, 추격 매수보다 관망."
+    if chg >= MILD_MOVE_PCT:
         return f"{ticker}: 완만한 상승 흐름. 기존 비중 유지, 큰 조정 시 분할 매수 검토."
-    if chg > -0.5:
+    if chg > -MILD_MOVE_PCT:
         return f"{ticker}: 보합권 움직임. 방향성 확인 전까지 기존 전략 유지."
-    if chg <= -5:
-        return f"{ticker}: 하루 -5% 이상 급락. 손절선과 추가 매수 기준을 먼저 점검."
-    if chg <= -3:
-        return f"{ticker}: 하루 -3% 이상 하락. 성급한 물타기보다 지지선 확인."
+    if chg <= -CRITICAL_MOVE_PCT:
+        return f"{ticker}: 하루 -{CRITICAL_MOVE_PCT:g}% 이상 급락. 손절선과 추가 매수 기준을 먼저 점검."
+    if chg <= -SIGNIFICANT_MOVE_PCT:
+        return f"{ticker}: 하루 -{SIGNIFICANT_MOVE_PCT:g}% 이상 하락. 성급한 물타기보다 지지선 확인."
     return f"{ticker}: 약세 흐름. 무리한 신규 매수보다 관망."
 
 

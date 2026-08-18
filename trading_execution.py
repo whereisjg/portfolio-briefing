@@ -13,6 +13,7 @@ from pathlib import Path
 import kis_client
 import run_state
 from trading_strategy import (
+    DEFAULT_COMPOSITE_TREND_THRESHOLD,
     calculate_composite_trend_state,
     calculate_trend_state,
     cash_from_balance,
@@ -282,7 +283,7 @@ def resolve_composite_trend_strategy(trend, context, target_weights=None):
     result = calculate_composite_trend_state(
         components,
         confirmation_days,
-        float(trend.get("composite_threshold", 0.5)),
+        float(trend.get("composite_threshold", DEFAULT_COMPOSITE_TREND_THRESHOLD)),
     )
     result.update({"signal_type": "composite", "average_type": average_type, "components": components})
     return result
