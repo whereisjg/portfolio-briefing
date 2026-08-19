@@ -914,6 +914,32 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertTrue(trading.has_open_target_order(orders, {"A"}))
 
+    def test_live_rebalance_skips_price_lookup_for_unheld_liquidation_code(self):
+        config = {
+            "target_weights": {"A": 100},
+            "liquidation_codes": ["LEGACY"],
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "rebalance_band_pct": 0,
+        }
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        with patch.object(trading, "resolve_trend_strategy", return_value=trend):
+            with patch.object(trading, "fetch_today_orders", return_value=[]):
+                with patch.object(trading, "fetch_kis_prices", return_value={"A": 10000}) as fetch_prices:
+                    with patch.object(trading, "fetch_kis_orderable_cash", return_value=10000):
+                        with patch.object(trading, "load_asset_labels", return_value={"A": "테스트 ETF"}):
+                            with patch.object(trading, "live_orders_for_plan", return_value=([], [])):
+                                result = trading.execute_live_rebalance(
+                                    config,
+                                    [],
+                                    {"prvs_rcdl_excc_amt": "10000"},
+                                    {},
+                                )
+
+        self.assertEqual(result["status"], "submitted")
+        fetch_prices.assert_called_once_with({"A"}, {})
+
     def test_retry_safety_blocks_a_retry_when_first_order_status_is_missing(self):
         reason = trading.retry_safety_reason(
             [],

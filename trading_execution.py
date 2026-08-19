@@ -835,7 +835,8 @@ def submit_live_orders(sell_orders, buy_orders, context):
 def execute_live_rebalance(config, holdings, summary, context):
     """Submit one guarded live rebalance pass using limit orders only."""
     target_codes = set(config["target_weights"])
-    managed_codes = target_codes | set(config.get("liquidation_codes", []))
+    liquidation_codes = set(config.get("liquidation_codes", []))
+    configured_managed_codes = target_codes | liquidation_codes
     trend = resolve_trend_strategy(config, context)
     if trend.get("error"):
         return {
@@ -850,7 +851,7 @@ def execute_live_rebalance(config, holdings, summary, context):
         effective_config = deepcopy(config)
         effective_config["target_weights"] = trend["weights"]
         today_orders = fetch_today_orders(context)
-        if has_open_target_order(today_orders, managed_codes):
+        if has_open_target_order(today_orders, configured_managed_codes):
             return {
                 "status": "skipped",
                 "reason": "대상 ETF의 미체결 주문이 남아 있어 추가 주문을 보류했습니다.",
@@ -860,7 +861,13 @@ def execute_live_rebalance(config, holdings, summary, context):
                 "retryable": False,
             }
 
-        positions = positions_from_holdings(holdings, managed_codes)
+        all_positions = positions_from_holdings(holdings, configured_managed_codes)
+        held_liquidation_codes = {
+            code for code in liquidation_codes
+            if all_positions[code]["quantity"] > 0
+        }
+        managed_codes = target_codes | held_liquidation_codes
+        positions = {code: all_positions[code] for code in managed_codes}
         market_prices = fetch_kis_prices(managed_codes, context)
         cash = cash_from_balance(summary)
         orderable_cash = fetch_kis_orderable_cash(market_prices, context)
