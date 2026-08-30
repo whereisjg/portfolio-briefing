@@ -216,7 +216,7 @@ class QuantBacktestTests(unittest.TestCase):
     def test_hma_warmup_is_added_before_the_requested_evaluation_period(self):
         config = strategy.load_config()
 
-        self.assertEqual(quant_backtest.required_trend_closes(config), 214)
+        self.assertEqual(quant_backtest.required_trend_closes(config), 215)
         self.assertGreater(quant_backtest.warmup_calendar_days(config), 300)
 
 
@@ -224,6 +224,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_repository_config_replaces_topix_with_unhedged_nikkei225(self):
         config = strategy.load_config()
 
+        self.assertEqual(config["trend_strategy"]["confirmation_days"], 3)
         self.assertEqual(config["target_weights"]["241180"], 20)
         self.assertNotIn("101280", config["target_weights"])
         self.assertNotIn("0036D0", config["target_weights"])
