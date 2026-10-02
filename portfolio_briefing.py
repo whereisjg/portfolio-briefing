@@ -177,7 +177,7 @@ def fetch_kis_balance():
 def fetch_kis_dividend_summary(access_token):
     """Summarize settled cash distributions recorded in the account."""
     today = datetime.now(KST).date()
-    start_date = env_value("KIS_DIVIDEND_START_DATE", f"{today.year}0101")
+    start_date = env_value("KIS_DIVIDEND_START_DATE", "20200101")
     rows = kis_client.fetch_dividend_rights(
         access_token,
         start_date,
@@ -704,7 +704,10 @@ def build_content(
         if profit_loss is not None and return_pct is not None:
             account_line += f"\n평가손익 {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)"
         if dividend_summary:
-            account_line += f"\n올해 분배금 {format_signed_amount(dividend_summary['amount'], 'KRW')}"
+            dividend_amount = dividend_summary["amount"]
+            account_line += f"\n누적 분배금 {format_signed_amount(dividend_amount, 'KRW')}"
+            if profit_loss is not None:
+                account_line += f"\n총손익 {format_signed_amount(profit_loss + dividend_amount, 'KRW')}"
         telegram_lines.append(account_line)
 
     if composite_signal_line:
@@ -826,9 +829,12 @@ def build_content(
         if profit_loss is not None and return_pct is not None:
             md_lines.append(f"- 평가손익: {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)")
         if dividend_summary:
-            md_lines.append(
-                f"- 올해 분배금: {format_signed_amount(dividend_summary['amount'], 'KRW')}"
-            )
+            dividend_amount = dividend_summary["amount"]
+            md_lines.append(f"- 누적 분배금: {format_signed_amount(dividend_amount, 'KRW')}")
+            if profit_loss is not None:
+                md_lines.append(
+                    f"- 총손익: {format_signed_amount(profit_loss + dividend_amount, 'KRW')}"
+                )
 
     if performance_summary:
         md_lines.extend([

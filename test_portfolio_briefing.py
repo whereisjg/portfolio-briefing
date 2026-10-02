@@ -1662,8 +1662,10 @@ class ContentTests(unittest.TestCase):
             dividend_summary={"amount": 12345, "count": 2},
         )
 
-        self.assertIn("올해 분배금 +12,345원", telegram)
-        self.assertIn("- 올해 분배금: +12,345원", markdown)
+        self.assertIn("누적 분배금 +12,345원", telegram)
+        self.assertIn("총손익 -17,655원", telegram)
+        self.assertIn("- 누적 분배금: +12,345원", markdown)
+        self.assertIn("- 총손익: -17,655원", markdown)
 
     def test_fetch_kis_dividend_summary_counts_net_cash_rights(self):
         rows = [
