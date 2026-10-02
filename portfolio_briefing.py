@@ -184,6 +184,11 @@ def fetch_kis_dividend_summary(access_token):
         today.strftime("%Y%m%d"),
         get_http_session,
     )
+    print(
+        "KIS account rights: "
+        f"{len(rows)} row(s), types="
+        f"{sorted({str(row.get('rght_type_cd', '')).strip() for row in rows})}"
+    )
     right_types = {
         value.strip()
         for value in env_value("KIS_DIVIDEND_RIGHT_TYPE_CODES", "01,03,배당").split(",")
