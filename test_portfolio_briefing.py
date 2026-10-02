@@ -1669,7 +1669,7 @@ class ContentTests(unittest.TestCase):
         rows = [
             {"rght_type_cd": "01", "last_alct_amt": "10000", "last_ftsk_chgs": "500", "tax_amt": "1500"},
             {"rght_type_cd": "99", "last_alct_amt": "90000", "last_ftsk_chgs": "0", "tax_amt": "0"},
-            {"rght_type_cd": "배당", "last_alct_amt": "3000", "last_ftsk_chgs": "0", "tax_amt": "450"},
+            {"rght_type_cd": "32", "last_alct_amt": "3000", "last_ftsk_chgs": "0", "tax_amt": "450"},
         ]
         with patch.dict(os.environ, {
             "KIS_APP_KEY": "key",

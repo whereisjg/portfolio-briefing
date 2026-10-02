@@ -191,7 +191,7 @@ def fetch_kis_dividend_summary(access_token):
     )
     right_types = {
         value.strip()
-        for value in env_value("KIS_DIVIDEND_RIGHT_TYPE_CODES", "01,03,배당").split(",")
+        for value in env_value("KIS_DIVIDEND_RIGHT_TYPE_CODES", "01,03,32,배당").split(",")
         if value.strip()
     }
     total = 0.0
