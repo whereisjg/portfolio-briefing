@@ -15,6 +15,7 @@ KST = pytz.timezone("Asia/Seoul")
 TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 DEFAULT_BASE_URL = "https://openapi.koreainvestment.com:9443"
 BALANCE_MCI_RETRY_DELAYS_SECONDS = (3, 7, 15, 30)
+DIVIDEND_RIGHT_TYPE_CODES = {"01", "03", "배당"}
 
 
 def env_value(name, default=""):
@@ -160,3 +161,58 @@ def fetch_balance(session_factory=get_http_session, cache_file=""):
     summary_rows = payload.get("output2") or [{}]
     summary = summary_rows[0] if isinstance(summary_rows, list) else summary_rows
     return holdings, summary, access_token
+
+
+def fetch_dividend_rights(
+    access_token,
+    start_date,
+    end_date,
+    session_factory=get_http_session,
+):
+    """Return account rights rows for the requested period.
+
+    The account rights endpoint reports cash allocations and tax amounts for
+    settled rights, which is more suitable for received distributions than a
+    public dividend schedule.
+    """
+    app_key = required("KIS_APP_KEY")
+    app_secret = required("KIS_APP_SECRET")
+    account_no = required("KIS_ACCOUNT_NO")
+    product_code = required("KIS_PRODUCT_CODE")
+    base_url = env_value("KIS_API_BASE_URL", DEFAULT_BASE_URL)
+    tr_id = env_value(
+        "KIS_PERIOD_RIGHTS_TR_ID",
+        transaction_id("CTRGA011R", "VTRGA011R"),
+    )
+    headers = {
+        "authorization": f"Bearer {access_token}",
+        "appkey": app_key,
+        "appsecret": app_secret,
+        "tr_id": tr_id,
+        "custtype": "P",
+    }
+    params = {
+        "INQR_DVSN": "03",
+        "CANO": account_no,
+        "ACNT_PRDT_CD": product_code,
+        "INQR_STRT_DT": start_date,
+        "INQR_END_DT": end_date,
+        "CUST_RNCNO25": "",
+        "HMID": "",
+        "RGHT_TYPE_CD": "",
+        "PDNO": "",
+        "PRDT_TYPE_CD": "",
+        "CTX_AREA_NK100": "",
+        "CTX_AREA_FK100": "",
+    }
+    response = session_factory(retries=1).get(
+        f"{base_url}/uapi/domestic-stock/v1/trading/period-rights",
+        headers=headers,
+        params=params,
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("rt_cd") != "0":
+        raise ValueError(f"KIS 분배금 조회 실패: {payload.get('msg1') or '알 수 없는 오류'}")
+    return payload.get("output") or payload.get("output1") or []

@@ -174,6 +174,41 @@ def fetch_kis_balance():
     return kis_client.fetch_balance(get_http_session, KIS_ACCESS_TOKEN_CACHE_FILE)
 
 
+def fetch_kis_dividend_summary(access_token):
+    """Summarize settled cash distributions recorded in the account."""
+    today = datetime.now(KST).date()
+    start_date = env_value("KIS_DIVIDEND_START_DATE", f"{today.year}0101")
+    rows = kis_client.fetch_dividend_rights(
+        access_token,
+        start_date,
+        today.strftime("%Y%m%d"),
+        get_http_session,
+    )
+    right_types = {
+        value.strip()
+        for value in env_value("KIS_DIVIDEND_RIGHT_TYPE_CODES", "01,03,배당").split(",")
+        if value.strip()
+    }
+    total = 0.0
+    count = 0
+    for row in rows:
+        if str(row.get("rght_type_cd", "")).strip() not in right_types:
+            continue
+        allocated = as_float(row.get("last_alct_amt"), 0.0)
+        odd_lot_cash = as_float(row.get("last_ftsk_chgs"), 0.0)
+        tax = as_float(row.get("tax_amt"), 0.0)
+        amount = allocated + odd_lot_cash - tax
+        if amount:
+            total += amount
+            count += 1
+    return {
+        "amount": total,
+        "count": count,
+        "start_date": start_date,
+        "end_date": today.strftime("%Y%m%d"),
+    }
+
+
 def fetch_kis_index_quote(index, access_token):
     """KIS 해외지수 일별시세에서 최신 지수와 전일 종가를 읽는다."""
     app_key = kis_required("KIS_APP_KEY")
@@ -560,6 +595,7 @@ def build_content(
     trend_state=None,
     market_notice="",
     performance_summary=None,
+    dividend_summary=None,
 ):
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
@@ -662,6 +698,8 @@ def build_content(
         account_line = f"자산 {format_krw_short(total)} · 예수금 {format_krw_short(cash)}"
         if profit_loss is not None and return_pct is not None:
             account_line += f"\n평가손익 {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)"
+        if dividend_summary:
+            account_line += f"\n올해 분배금 {format_signed_amount(dividend_summary['amount'], 'KRW')}"
         telegram_lines.append(account_line)
 
     if composite_signal_line:
@@ -782,6 +820,10 @@ def build_content(
         ])
         if profit_loss is not None and return_pct is not None:
             md_lines.append(f"- 평가손익: {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)")
+        if dividend_summary:
+            md_lines.append(
+                f"- 올해 분배금: {format_signed_amount(dividend_summary['amount'], 'KRW')}"
+            )
 
     if performance_summary:
         md_lines.extend([
@@ -885,6 +927,12 @@ def main():
         print(f"[2/{total_steps}] Fetching KIS balance...")
         holdings, account_summary, access_token = fetch_kis_balance()
         save_kis_balance_snapshot(holdings, account_summary, access_token)
+        dividend_summary = None
+        dividend_error = None
+        try:
+            dividend_summary = fetch_kis_dividend_summary(access_token)
+        except Exception as exc:
+            dividend_error = f"분배금 조회 실패: {exc}"
         print(f"[2/{total_steps}] Fetching KIS indexes...")
         indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
         holding_codes = {
@@ -905,6 +953,8 @@ def main():
         print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
 
         errors = index_errors + market_quote_errors + quote_errors
+        if dividend_error:
+            errors.append(dividend_error)
         performance_summary = None
         try:
             performance_summary = update_strategy_performance(
@@ -923,6 +973,7 @@ def main():
             trend_state,
             KRX_MARKET_NOTICE,
             performance_summary,
+            dividend_summary,
         )
 
         next_step += 1

@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 import tempfile
 import json
+import os
 
 import portfolio_briefing as briefing
 import kis_client
@@ -1639,6 +1640,49 @@ class ContentTests(unittest.TestCase):
         self.assertNotIn("평단 ₩25,000", telegram)
         self.assertIn("- 평가손익: -30,000원 (-12.00%)", markdown)
         self.assertIn("## 💳 계좌 요약", markdown)
+
+    def test_build_content_shows_year_to_date_dividends(self):
+        quotes = [{
+            "ticker": "ETF",
+            "display": "테스트 ETF",
+            "name": "테스트 ETF",
+            "currency": "KRW",
+            "price": 22000,
+            "prev_close": 21500,
+            "chg_amount": 500,
+            "chg_pct": 2.33,
+            "shares": 10,
+            "evaluation_profit_loss_amount": -30000,
+            "provider": "KIS",
+        }]
+
+        telegram, markdown = briefing.build_content(
+            [], quotes, [],
+            account_summary={"tot_evlu_amt": "220000", "prvs_rcdl_excc_amt": "50000"},
+            dividend_summary={"amount": 12345, "count": 2},
+        )
+
+        self.assertIn("올해 분배금 +12,345원", telegram)
+        self.assertIn("- 올해 분배금: +12,345원", markdown)
+
+    def test_fetch_kis_dividend_summary_counts_net_cash_rights(self):
+        rows = [
+            {"rght_type_cd": "01", "last_alct_amt": "10000", "last_ftsk_chgs": "500", "tax_amt": "1500"},
+            {"rght_type_cd": "99", "last_alct_amt": "90000", "last_ftsk_chgs": "0", "tax_amt": "0"},
+            {"rght_type_cd": "배당", "last_alct_amt": "3000", "last_ftsk_chgs": "0", "tax_amt": "450"},
+        ]
+        with patch.dict(os.environ, {
+            "KIS_APP_KEY": "key",
+            "KIS_APP_SECRET": "secret",
+            "KIS_ACCOUNT_NO": "12345678",
+            "KIS_PRODUCT_CODE": "01",
+        }, clear=False), patch.object(
+            briefing.kis_client, "fetch_dividend_rights", return_value=rows
+        ):
+            summary = briefing.fetch_kis_dividend_summary("token")
+
+        self.assertEqual(summary["amount"], 11550)
+        self.assertEqual(summary["count"], 2)
 
     def test_build_content_includes_market_notice(self):
         quotes = [{
