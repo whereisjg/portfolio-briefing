@@ -5,6 +5,7 @@ import json
 import os
 
 import portfolio_briefing as briefing
+import etf_drawdown
 import kis_client
 import market_calendar
 import performance_tracking as performance
@@ -219,6 +220,23 @@ class QuantBacktestTests(unittest.TestCase):
 
         self.assertEqual(quant_backtest.required_trend_closes(config), 215)
         self.assertGreater(quant_backtest.warmup_calendar_days(config), 300)
+
+
+class EtfDrawdownTests(unittest.TestCase):
+    def test_total_return_reinvests_distribution_on_ex_date(self):
+        closes = [("20260101", 100.0), ("20260102", 98.0), ("20260105", 98.0)]
+        series = etf_drawdown.total_return_series(closes, {"20260105": 2.0})
+
+        self.assertEqual(series[1][1], 1.0)
+        self.assertAlmostEqual(series[2][1], 1.0)
+
+    def test_max_drawdown_reports_peak_trough_and_recovery(self):
+        series = [("d1", 1.0), ("d2", 1.2), ("d3", 0.9), ("d4", 1.1), ("d5", 1.3)]
+        result = etf_drawdown.max_drawdown(series)
+
+        self.assertAlmostEqual(result["drawdown"], -0.25)
+        self.assertEqual((result["peak"], result["trough"], result["recovery"]), ("d2", "d3", "d5"))
+        self.assertIsNone(etf_drawdown.max_drawdown(series[:4])["recovery"])
 
 
 class ConfigurationTests(unittest.TestCase):
