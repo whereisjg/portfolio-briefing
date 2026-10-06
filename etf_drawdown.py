@@ -99,26 +99,28 @@ def summarize(series):
     }
 
 
-def format_row(label, price, total):
+def format_row(label, price, total, adjusted):
     recovery = "-" if total["drawdown"] == 0 else total["recovery"] or "미회복"
     return (
         f"| {label} | {price['return'] * 100:+.2f}% | {total['return'] * 100:+.2f}% | "
-        f"{price['drawdown'] * 100:.2f}% | {total['drawdown'] * 100:.2f}% | "
+        f"{adjusted['return'] * 100:+.2f}% | {price['drawdown'] * 100:.2f}% | "
+        f"{total['drawdown'] * 100:.2f}% | {adjusted['drawdown'] * 100:.2f}% | "
         f"{total['peak']}→{total['trough']} | {recovery} | {total['current_drawdown'] * 100:.2f}% |"
     )
 
 
-def report(codes, closes, distributions, labels, start):
+def report(codes, closes, adjusted_closes, distributions, labels, start):
     lines = [
         f"### 기간 {start} ~ {min(closes[code][-1][0] for code in codes)}",
         "",
-        "| 종목 | 가격수익률 | 총수익률 | 가격 MDD | 총수익 MDD | MDD 구간 | 회복일 | 현재 낙폭 |",
-        "| --- | ---: | ---: | ---: | ---: | --- | --- | ---: |",
+        "| 종목 | 원주가 수익률 | 총수익률 | 수정주가 수익률 | 원주가 MDD | 총수익 MDD | 수정주가 MDD | 총수익 MDD 구간 | 회복일 | 현재 낙폭 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |",
     ]
     for code in codes:
-        price = summarize(slice_from([(d, c) for d, c in closes[code]], start))
+        price = summarize(slice_from(closes[code], start))
         total = summarize(slice_from(total_return_series(closes[code], distributions[code]), start))
-        lines.append(format_row(f"{labels.get(code, code)} `{code}`", price, total))
+        adjusted = summarize(slice_from(adjusted_closes[code], start))
+        lines.append(format_row(f"{labels.get(code, code)} `{code}`", price, total, adjusted))
     return lines
 
 
@@ -132,9 +134,12 @@ def main():
     codes = [code.strip() for code in args.codes.split(",") if code.strip()]
     context = trading_execution.get_kis_context()
     labels = trading_execution.load_asset_labels()
-    closes, distributions = {}, {}
+    closes, adjusted_closes, distributions = {}, {}, {}
     for code in codes:
-        closes[code] = trading_execution.fetch_kis_daily_closes(code, context, args.lookback_days)
+        closes[code] = trading_execution.fetch_kis_daily_closes(
+            code, context, args.lookback_days, adjusted=False
+        )
+        adjusted_closes[code] = trading_execution.fetch_kis_daily_closes(code, context, args.lookback_days)
         if not closes[code]:
             raise ValueError(f"일봉 데이터가 없습니다: {code}")
         try:
@@ -149,15 +154,15 @@ def main():
             f"{len(distributions[code])} distributions, total {sum(distributions[code].values()):,.0f}원/주"
         )
 
-    lines = ["# ETF 낙폭 비교 (KIS)", "", "- 총수익은 분배금을 기준일 직전 거래일(배당락)에 재투자한 값입니다. 세금·보수 차이는 시세에 반영된 그대로입니다.", ""]
-    lines += report(codes, closes, distributions, labels, max(closes[code][0][0] for code in codes))
+    lines = ["# ETF 낙폭 비교 (KIS)", "", "- 총수익은 원주가에 분배금을 기준일 직전 거래일(배당락)에 재투자한 값입니다. KIS 수정주가는 분배금이 반영된 교차검증용입니다.", ""]
+    lines += report(codes, closes, adjusted_closes, distributions, labels, max(closes[code][0][0] for code in codes))
     for pair in args.pairs.split(","):
         if ":" not in pair:
             continue
         pair_codes = [code.strip() for code in pair.split(":")]
         if all(code in closes for code in pair_codes):
             lines += [""] + report(
-                pair_codes, closes, distributions, labels,
+                pair_codes, closes, adjusted_closes, distributions, labels,
                 max(closes[code][0][0] for code in pair_codes),
             )
     print("\n".join(lines))

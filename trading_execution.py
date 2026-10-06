@@ -128,8 +128,11 @@ def historical_date_ranges(now, lookback_days=400, chunk_days=120):
         cursor = chunk_end + timedelta(days=1)
 
 
-def fetch_kis_daily_closes(code, context, lookback_days=400, chunk_days=120):
-    """Fetch completed daily closes for a domestic ETF trend signal."""
+def fetch_kis_daily_closes(code, context, lookback_days=400, chunk_days=120, adjusted=True):
+    """Fetch completed daily closes for a domestic ETF trend signal.
+
+    KIS adjusted closes also back-adjust ETF cash distributions.
+    """
     now = datetime.now(kis_client.KST)
     closes_by_date = {}
     today = now.strftime("%Y%m%d")
@@ -146,7 +149,7 @@ def fetch_kis_daily_closes(code, context, lookback_days=400, chunk_days=120):
                 "FID_INPUT_DATE_1": start,
                 "FID_INPUT_DATE_2": end,
                 "FID_PERIOD_DIV_CODE": "D",
-                "FID_ORG_ADJ_PRC": "0",
+                "FID_ORG_ADJ_PRC": "0" if adjusted else "1",
             },
             timeout=20,
         )
