@@ -251,6 +251,17 @@ class EtfDrawdownTests(unittest.TestCase):
         self.assertEqual((result["peak"], result["trough"], result["recovery"]), ("d2", "d3", "d5"))
         self.assertIsNone(etf_drawdown.max_drawdown(series[:4])["recovery"])
 
+    def test_correlation_detects_same_and_opposite_moves(self):
+        closes = {
+            "A": [("d1", 100), ("d2", 110), ("d3", 99), ("d4", 104)],
+            "B": [("d1", 50), ("d2", 55), ("d3", 49.5), ("d4", 52)],
+            "C": [("d1", 100), ("d2", 90), ("d3", 99), ("d4", 94.05)],
+        }
+        lines = etf_drawdown.correlation_lines(["A", "B", "C"], closes, {}, "d1")
+
+        self.assertEqual(lines[-3], "| A | 1.00 | 1.00 | -1.00 |")
+        self.assertEqual(lines[-1], "| C | -1.00 | -1.00 | 1.00 |")
+
 
 class ConfigurationTests(unittest.TestCase):
     def test_repository_config_replaces_topix_with_unhedged_nikkei225(self):
