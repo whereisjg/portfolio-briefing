@@ -182,6 +182,45 @@ class QuantBacktestTests(unittest.TestCase):
 
         self.assertAlmostEqual(result["twr_pct"], 50.0)
 
+    def test_timing_filter_delays_buy_until_a_down_day(self):
+        config = {
+            "target_weights": {"A": 50, "B": 50},
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 10000,
+            "rebalance_band_pct": 0,
+            "trend_strategy": {
+                "weights": {
+                    "risk_on": {"A": 100, "B": 0},
+                    "neutral": {"A": 50, "B": 50},
+                    "risk_off": {"A": 0, "B": 100},
+                },
+            },
+        }
+        asset_maps = {
+            "A": {"20260101": 100, "20260102": 200, "20260103": 150},
+            "B": {"20260101": 100, "20260102": 100, "20260103": 100},
+        }
+        dates = ["20260101", "20260102", "20260103"]
+        states = dict.fromkeys(dates, "risk_on")
+
+        immediate = quant_backtest.simulate_strategy(config, asset_maps, dates, states, 0, 1000, True)
+        timed = quant_backtest.simulate_strategy(
+            config, asset_maps, dates, states, 0, 1000, True, ("contrarian", 0.0, 3)
+        )
+
+        self.assertAlmostEqual(immediate["twr_pct"], 15.0)
+        self.assertAlmostEqual(timed["twr_pct"], 25.0)
+        self.assertEqual(timed["delayed_order_days"], 1)
+
+    def test_timing_filter_forces_orders_after_max_wait(self):
+        allowed = quant_backtest.timing_allowed(
+            ["A", "B"], {"A": 1.0, "B": 1.0}, {"buy": {"B": 3}, "sell": {}}, "contrarian", 0.0, 3
+        )
+
+        self.assertEqual(allowed["buy"], {"B"})
+        self.assertEqual(allowed["sell"], {"A", "B"})
+
     def test_backtest_uses_confirmed_signal_without_future_prices(self):
         config = {
             "target_weights": {"A": 50, "B": 25, "C": 25},

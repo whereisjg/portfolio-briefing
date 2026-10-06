@@ -24,6 +24,11 @@ on:
         description: 'Virtual initial account value in KRW'
         required: false
         default: '10000000'
+      timing_research:
+        description: 'Also compare day-change timing filters for rebalance orders'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -44,8 +49,6 @@ jobs:
       KIS_API_BASE_URL: ${{ inputs.account_mode == 'paper' && 'https://openapivts.koreainvestment.com:29443' || 'https://openapi.koreainvestment.com:9443' }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: main
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -84,9 +87,11 @@ jobs:
           python quant_backtest.py \
             --lookback-days "${{ inputs.lookback_days }}" \
             --transaction-cost-bps "${{ inputs.transaction_cost_bps }}" \
-            --initial-capital-krw "${{ inputs.initial_capital_krw }}" | tee /tmp/quant-backtest.md
+            --initial-capital-krw "${{ inputs.initial_capital_krw }}" \
+            ${{ inputs.timing_research && '--timing-research' || '' }} | tee /tmp/quant-backtest.md
           cat /tmp/quant-backtest.md >> "$GITHUB_STEP_SUMMARY"
       - name: Commit backtest report
+        if: github.ref_name == 'main'
         run: |
           git config user.name "Portfolio Bot"
           git config user.email "bot@portfolio.local"
