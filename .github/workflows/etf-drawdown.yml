@@ -1,0 +1,71 @@
+name: ETF Drawdown Research
+
+on:
+  workflow_dispatch:
+    inputs:
+      codes:
+        description: 'Comma-separated KIS ETF codes'
+        required: false
+        default: '486290,0005A0,379810,379800'
+      lookback_days:
+        description: 'Calendar days of daily closes to request'
+        required: false
+        default: '1500'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: etf-drawdown
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    env:
+      KIS_ACCOUNT_MODE: isa
+      KIS_APP_KEY: ${{ secrets.KIS_ISA_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_ISA_APP_SECRET }}
+      KIS_ACCOUNT_NO: ${{ secrets.KIS_ISA_ACCOUNT_NO }}
+      KIS_PRODUCT_CODE: ${{ secrets.KIS_ISA_PRODUCT_CODE }}
+      KIS_API_BASE_URL: https://openapi.koreainvestment.com:9443
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests pytz
+      - name: Configure KIS token cache key
+        id: kis-token-key
+        run: |
+          scope=$(printf %s "$KIS_ACCOUNT_NO" | sha256sum | cut -c1-16)
+          echo "prefix=kis-token-v1-${scope}-" >> "$GITHUB_OUTPUT"
+      - name: Restore encrypted KIS token cache
+        uses: actions/cache/restore@v6
+        with:
+          path: /tmp/kis-access-token.enc
+          key: ${{ steps.kis-token-key.outputs.prefix }}${{ github.run_id }}
+          restore-keys: |
+            ${{ steps.kis-token-key.outputs.prefix }}
+      - name: Decrypt cached KIS token
+        run: |
+          rm -f /tmp/kis-access-token.json
+          if [ -f /tmp/kis-access-token.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -salt \
+              -pass env:KIS_APP_SECRET \
+              -in /tmp/kis-access-token.enc \
+              -out /tmp/kis-access-token.json || rm -f /tmp/kis-access-token.json
+          fi
+      - name: Validate code
+        run: |
+          python -m py_compile etf_drawdown.py trading_execution.py kis_client.py
+          python -m unittest
+      - name: Compare ETF drawdowns (read-only, no orders)
+        env:
+          KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
+        run: |
+          set -o pipefail
+          python etf_drawdown.py \
+            --codes "${{ inputs.codes || '486290,0005A0,379810,379800' }}" \
+            --lookback-days "${{ inputs.lookback_days || '1500' }}" | tee /tmp/etf-drawdown.md
+          cat /tmp/etf-drawdown.md >> "$GITHUB_STEP_SUMMARY"
