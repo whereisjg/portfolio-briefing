@@ -1686,6 +1686,21 @@ class ContentTests(unittest.TestCase):
         self.assertEqual(summary["amount"], 11550)
         self.assertEqual(summary["count"], 2)
 
+    def test_dividend_start_date_reads_portfolio_and_env_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "portfolio.json")
+            with open(path, "w", encoding="utf-8") as file:
+                json.dump({"dividend_start_date": "20261101", "assets": []}, file)
+            with patch.object(briefing, "PORTFOLIO_FILE", path), \
+                    patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("KIS_DIVIDEND_START_DATE", None)
+                self.assertEqual(briefing.load_dividend_start_date(), "20261101")
+                os.environ["KIS_DIVIDEND_START_DATE"] = "20261215"
+                self.assertEqual(briefing.load_dividend_start_date(), "20261215")
+                os.environ["KIS_DIVIDEND_START_DATE"] = "2026-12-15"
+                with self.assertRaises(ValueError):
+                    briefing.load_dividend_start_date()
+
     def test_build_content_includes_market_notice(self):
         quotes = [{
             "ticker": "ETF",

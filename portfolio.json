@@ -1,4 +1,5 @@
 {
+  "dividend_start_date": "20200101",
   "indexes": [
     {
       "ticker": "NASDAQ100",

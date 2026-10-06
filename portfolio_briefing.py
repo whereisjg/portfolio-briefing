@@ -174,10 +174,25 @@ def fetch_kis_balance():
     return kis_client.fetch_balance(get_http_session, KIS_ACCESS_TOKEN_CACHE_FILE)
 
 
+def load_dividend_start_date():
+    """Return the YYYYMMDD date from which distributions are accumulated."""
+    try:
+        with open(PORTFOLIO_FILE, encoding="utf-8") as file:
+            configured = str(json.load(file).get("dividend_start_date") or "").strip()
+    except (OSError, json.JSONDecodeError):
+        configured = ""
+    start_date = env_value("KIS_DIVIDEND_START_DATE", configured or "20200101")
+    try:
+        datetime.strptime(start_date, "%Y%m%d")
+    except ValueError as exc:
+        raise ValueError(f"분배금 조회 시작일 형식이 올바르지 않습니다(YYYYMMDD): {start_date}") from exc
+    return start_date
+
+
 def fetch_kis_dividend_summary(access_token):
     """Summarize settled cash distributions recorded in the account."""
     today = datetime.now(KST).date()
-    start_date = env_value("KIS_DIVIDEND_START_DATE", "20200101")
+    start_date = load_dividend_start_date()
     rows = kis_client.fetch_dividend_rights(
         access_token,
         start_date,

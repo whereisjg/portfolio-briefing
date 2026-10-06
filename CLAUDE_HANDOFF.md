@@ -85,13 +85,13 @@
 
 현재 기준:
 
-- 조회 시작일 기본값: `20200101`
+- 조회 시작일: `portfolio.json`의 `dividend_start_date` (현재 `20200101`, env `KIS_DIVIDEND_START_DATE`가 우선)
 - 종료일: 실행일
 - KIS 권리코드 `32`를 분배금 코드로 인식
 - `last_alct_amt + last_ftsk_chgs - tax_amt` 계산
 - 출력: `평가손익`, `누적 분배금`, `총손익`
 
-계좌를 전부 매도·출금한 뒤 새로 운용을 시작하면 사용자가 알려줄 예정입니다. 그때 `KIS_DIVIDEND_START_DATE`를 새 운용 시작일로 바꾸고 필요하면 분배금 기준을 재설정합니다.
+계좌를 전부 매도·출금한 뒤 새로 운용을 시작하면 사용자가 알려줄 예정입니다. 그때 `portfolio.json`의 `dividend_start_date`를 새 운용 시작일로 바꾸고 필요하면 분배금 기준을 재설정합니다.
 
 ## Workflow
 
