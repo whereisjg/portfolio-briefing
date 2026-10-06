@@ -11,12 +11,6 @@ on:
         description: 'Calendar days of daily closes to request'
         required: false
         default: '1500'
-  push:
-    branches:
-      - claude/portfolio-briefing-handover-f8x1u8
-    paths:
-      - etf_drawdown.py
-      - .github/workflows/etf-drawdown.yml
 
 permissions:
   contents: read
