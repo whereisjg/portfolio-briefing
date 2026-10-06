@@ -182,44 +182,18 @@ class QuantBacktestTests(unittest.TestCase):
 
         self.assertAlmostEqual(result["twr_pct"], 50.0)
 
-    def test_timing_filter_delays_buy_until_a_down_day(self):
-        config = {
-            "target_weights": {"A": 50, "B": 50},
-            "daily_buy_limit_pct": 100,
-            "daily_sell_limit_pct": 100,
-            "daily_sell_limit_per_asset_krw": 10000,
-            "rebalance_band_pct": 0,
-            "trend_strategy": {
-                "weights": {
-                    "risk_on": {"A": 100, "B": 0},
-                    "neutral": {"A": 50, "B": 50},
-                    "risk_off": {"A": 0, "B": 100},
-                },
-            },
-        }
-        asset_maps = {
-            "A": {"20260101": 100, "20260102": 200, "20260103": 150},
-            "B": {"20260101": 100, "20260102": 100, "20260103": 100},
-        }
-        dates = ["20260101", "20260102", "20260103"]
-        states = dict.fromkeys(dates, "risk_on")
+    def test_execution_timing_study_waits_for_down_day_to_buy(self):
+        closes = [(f"d{i}", price) for i, price in enumerate((100, 110, 100, 105, 105))]
 
-        immediate = quant_backtest.simulate_strategy(config, asset_maps, dates, states, 0, 1000, True)
-        timed = quant_backtest.simulate_strategy(
-            config, asset_maps, dates, states, 0, 1000, True, ("contrarian", 0.0, 3)
-        )
+        result = quant_backtest.execution_timing_study(closes, "contrarian", 0.0, 1)
 
-        self.assertAlmostEqual(immediate["twr_pct"], 15.0)
-        self.assertAlmostEqual(timed["twr_pct"], 25.0)
-        self.assertEqual(timed["delayed_order_days"], 1)
-
-    def test_timing_filter_forces_orders_after_max_wait(self):
-        allowed = quant_backtest.timing_allowed(
-            ["A", "B"], {"A": 1.0, "B": 1.0}, {"buy": {"B": 3}, "sell": {}}, "contrarian", 0.0, 3
-        )
-
-        self.assertEqual(allowed["buy"], {"B"})
-        self.assertEqual(allowed["sell"], {"A", "B"})
+        # Requests on d1 (up) wait one day: buy 100 vs 110, sell stays 110.
+        # Requests on d2 (down) wait one day for the sell: 105 vs 100, buy stays 100.
+        # Requests on d3 (up) wait one day for the buy: 105 vs 105 (flat counts as down).
+        self.assertEqual(result["samples"], 3)
+        self.assertAlmostEqual(result["buy_pct"], (110 / 100 - 1) * 100 / 3)
+        self.assertAlmostEqual(result["sell_pct"], (105 / 100 - 1) * 100 / 3)
+        self.assertAlmostEqual(result["avg_wait_days"], 0.5)
 
     def test_backtest_uses_confirmed_signal_without_future_prices(self):
         config = {

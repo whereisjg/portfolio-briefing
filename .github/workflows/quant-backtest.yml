@@ -25,7 +25,7 @@ on:
         required: false
         default: '10000000'
       timing_research:
-        description: 'Also compare day-change timing filters for rebalance orders'
+        description: 'Run the per-ETF day-change execution timing study instead of the HMA backtest'
         required: false
         type: boolean
         default: false

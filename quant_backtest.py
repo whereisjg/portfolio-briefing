@@ -26,10 +26,10 @@ BACKTEST_DIR = Path("backtests")
 STATE_SCORE = {"risk_on": 1, "neutral": 0, "risk_off": -1}
 # Day-change execution filters: (label, mode, threshold %, max wait days).
 TIMING_VARIANTS = [
-    ("하락일 매수·상승일 매도, 최대 3일 대기", "contrarian", 0.0, 3),
-    ("하락일 매수·상승일 매도, 최대 5일 대기", "contrarian", 0.0, 5),
-    ("0.5% 이상 하락 매수·상승 매도, 최대 5일 대기", "contrarian", 0.5, 5),
-    ("반대 조건(대조군), 최대 3일 대기", "momentum", 0.0, 3),
+    ("하락일 매수·상승일 매도, 최대 3일", "contrarian", 0.0, 3),
+    ("하락일 매수·상승일 매도, 최대 5일", "contrarian", 0.0, 5),
+    ("0.5% 하락 매수·상승 매도, 최대 5일", "contrarian", 0.5, 5),
+    ("반대 조건(대조군), 최대 3일", "momentum", 0.0, 3),
 ]
 
 
@@ -173,39 +173,7 @@ def apply_virtual_orders(portfolio, plan, cost_rate):
     return {"buy": bought, "sell": sold, "cost": costs, "sold_by_code": sold_by_code}
 
 
-def filter_plan(plan, allowed, skipped):
-    """Drop orders the timing filter does not allow today and record their codes."""
-    if allowed is None:
-        return plan
-    filtered = dict(plan)
-    for side, key in (("buy", "buys"), ("sell", "sells")):
-        filtered[key] = []
-        for order in plan[key]:
-            if order["code"] in allowed[side]:
-                filtered[key].append(order)
-            else:
-                skipped[side].add(order["code"])
-    return filtered
-
-
-def timing_allowed(codes, changes, waiting, mode, threshold_pct, max_wait_days):
-    """Codes that may trade today: favorable day change or waited long enough."""
-    favorable = {
-        "buy": lambda change: change <= -threshold_pct,
-        "sell": lambda change: change >= threshold_pct,
-    }
-    if mode == "momentum":
-        favorable = {"buy": favorable["sell"], "sell": favorable["buy"]}
-    return {
-        side: {
-            code for code in codes
-            if waiting[side].get(code, 0) >= max_wait_days or favorable[side](changes[code])
-        }
-        for side in ("buy", "sell")
-    }
-
-
-def virtual_rebalance(config, portfolio, prices, target_weights, transaction_cost_bps, allowed=None):
+def virtual_rebalance(config, portfolio, prices, target_weights, transaction_cost_bps):
     """Apply the live strategy's two-pass limits to a virtual integer-share account."""
     effective = deepcopy(config)
     effective["target_weights"] = target_weights
@@ -232,8 +200,7 @@ def virtual_rebalance(config, portfolio, prices, target_weights, transaction_cos
         buy_limit=buy_cap,
         sell_turnover_limit=sell_cap,
     )
-    skipped = {"buy": set(), "sell": set()}
-    first = apply_virtual_orders(portfolio, filter_plan(first_plan, allowed, skipped), cost_rate)
+    first = apply_virtual_orders(portfolio, first_plan, cost_rate)
     per_asset_remaining = {
         code: max(float(effective["daily_sell_limit_per_asset_krw"]) - first["sold_by_code"].get(code, 0), 0)
         for code in target_weights
@@ -248,18 +215,15 @@ def virtual_rebalance(config, portfolio, prices, target_weights, transaction_cos
         buy_limit=max(buy_cap - first["buy"], 0),
         sell_turnover_limit=max(sell_cap - first["sell"], 0),
     )
-    second = apply_virtual_orders(portfolio, filter_plan(second_plan, allowed, skipped), cost_rate)
+    second = apply_virtual_orders(portfolio, second_plan, cost_rate)
     traded = first["buy"] + first["sell"] + second["buy"] + second["sell"]
     return {
         "turnover": traded / (2 * total) if total > 0 else 0,
         "cost": first["cost"] + second["cost"],
-        "skipped": skipped,
     }
 
 
-def simulate_strategy(
-    config, asset_maps, dates, states, transaction_cost_bps, initial_capital, dynamic, timing=None
-):
+def simulate_strategy(config, asset_maps, dates, states, transaction_cost_bps, initial_capital, dynamic):
     codes = list(config["target_weights"])
     neutral = config["trend_strategy"]["weights"]["neutral"]
     start_prices = {code: asset_maps[code][dates[0]] for code in codes}
@@ -267,8 +231,6 @@ def simulate_strategy(
     peak = 1.0
     mdd = 0.0
     turnover = 0.0
-    waiting = {"buy": {}, "sell": {}}
-    delayed_days = 0
 
     for signal_date, execution_date in zip(dates, dates[1:]):
         prices = {code: asset_maps[code][execution_date] for code in codes}
@@ -278,19 +240,7 @@ def simulate_strategy(
         mdd = min(mdd, before_index / peak - 1)
         state = states[signal_date] if dynamic else "neutral"
         target = config["trend_strategy"]["weights"][state]
-        allowed = None
-        if timing:
-            changes = {
-                code: (prices[code] / asset_maps[code][signal_date] - 1) * 100 for code in codes
-            }
-            allowed = timing_allowed(codes, changes, waiting, *timing)
-        trade = virtual_rebalance(config, portfolio, prices, target, transaction_cost_bps, allowed)
-        if timing:
-            waiting = {
-                side: {code: waiting[side].get(code, 0) + 1 for code in trade["skipped"][side]}
-                for side in waiting
-            }
-            delayed_days += sum(len(codes_) for codes_ in trade["skipped"].values())
+        trade = virtual_rebalance(config, portfolio, prices, target, transaction_cost_bps)
         turnover += trade["turnover"]
         index_value = portfolio_value(portfolio, prices) / initial_capital
         peak = max(peak, index_value)
@@ -304,7 +254,6 @@ def simulate_strategy(
         "twr_pct": (final_index - 1) * 100,
         "mdd_pct": mdd * 100,
         "turnover_pct": turnover * 100,
-        "delayed_order_days": delayed_days,
     }
 
 
@@ -315,7 +264,6 @@ def calculate_backtest(
     transaction_cost_bps=10,
     evaluation_start_date=None,
     initial_capital_krw=10000000,
-    timing_variants=(),
 ):
     """Compare HMA and neutral allocations using the live rebalance constraints."""
     if transaction_cost_bps < 0:
@@ -365,16 +313,6 @@ def calculate_backtest(
     fixed = simulate_strategy(
         config, asset_maps, dates, states, transaction_cost_bps, initial_capital_krw, False
     )
-    timing_results = []
-    for label, *timing in timing_variants:
-        result = simulate_strategy(
-            config, asset_maps, dates, states, transaction_cost_bps, initial_capital_krw, True, timing
-        )
-        timing_results.append({
-            "label": label,
-            **result,
-            "difference_pct_points": result["twr_pct"] - hma["twr_pct"],
-        })
     hma_index = 1 + hma["twr_pct"] / 100
     fixed_index = 1 + fixed["twr_pct"] / 100
     return {
@@ -395,7 +333,6 @@ def calculate_backtest(
         "fixed_turnover_pct": fixed["turnover_pct"],
         "state_counts": state_counts,
         "state_changes": state_changes,
-        "timing_results": timing_results,
     }
 
 
@@ -421,6 +358,64 @@ def fetch_kis_history(config, lookback_days, cache_file=""):
     return asset_closes, index_closes
 
 
+def execution_timing_study(closes, mode, threshold_pct, max_wait_days):
+    """Average close-price gain versus same-day execution for a request on every day.
+
+    A buy (sell) waits until the close-to-close change is down (up) by the threshold,
+    or until max_wait_days pass, then executes at that day's close.
+    """
+    prices = [price for _date, price in closes]
+
+    def favorable(side, day):
+        change = (prices[day] / prices[day - 1] - 1) * 100
+        buy_ok = change <= -threshold_pct
+        sell_ok = change >= threshold_pct
+        if mode == "momentum":
+            buy_ok, sell_ok = sell_ok, buy_ok
+        return buy_ok if side == "buy" else sell_ok
+
+    gains = {"buy": [], "sell": []}
+    waits = []
+    for start in range(1, len(prices) - max_wait_days):
+        for side in gains:
+            day = start
+            while day < start + max_wait_days and not favorable(side, day):
+                day += 1
+            waits.append(day - start)
+            ratio = prices[start] / prices[day] if side == "buy" else prices[day] / prices[start]
+            gains[side].append(ratio - 1)
+    if not waits:
+        raise ValueError("체결 타이밍 분석에 필요한 가격 이력이 부족합니다.")
+    return {
+        "buy_pct": sum(gains["buy"]) / len(gains["buy"]) * 100,
+        "sell_pct": sum(gains["sell"]) / len(gains["sell"]) * 100,
+        "avg_wait_days": sum(waits) / len(waits),
+        "samples": len(gains["buy"]),
+    }
+
+
+def timing_study_markdown(closes_by_code, labels):
+    lines = [
+        "# 매매 타이밍 연구",
+        "",
+        "- 매일 매수·매도 요청이 생긴다고 가정하고, 당일 종가 즉시 체결 대비 평균 체결가 개선율을 계산합니다.",
+        "- 양수가 유리합니다. 매수는 더 싸게, 매도는 더 비싸게 체결된 비율입니다. KIS 수정주가 종가 기준입니다.",
+        "",
+        "| ETF | 기간 | 조건 | 매수 개선 | 매도 개선 | 평균(왕복) | 평균 대기일 |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+    ]
+    for code, closes in closes_by_code.items():
+        period = f"{closes[0][0]}~{closes[-1][0]}"
+        for label, *timing in TIMING_VARIANTS:
+            result = execution_timing_study(closes, *timing)
+            lines.append(
+                f"| {labels.get(code, code)} | {period} | {label} | {result['buy_pct']:+.3f}% | "
+                f"{result['sell_pct']:+.3f}% | {(result['buy_pct'] + result['sell_pct']) / 2:+.3f}% | "
+                f"{result['avg_wait_days']:.2f} |"
+            )
+    return "\n".join(lines + [""])
+
+
 def report_markdown(summary):
     counts = summary["state_counts"]
     return "\n".join([
@@ -442,27 +437,7 @@ def report_markdown(summary):
         f"- 상태 일수: 위험 선호 {counts['risk_on']} / 중립 {counts['neutral']} / 위험 회피 {counts['risk_off']}",
         f"- 상태 전환: {summary['state_changes']}회",
         "",
-        *timing_markdown(summary.get("timing_results", [])),
     ])
-
-
-def timing_markdown(results):
-    if not results:
-        return []
-    lines = [
-        "## 매매 타이밍 필터 (HMA 목표비중 기준)",
-        "",
-        "- 전일 종가 대비 당일 등락으로 매수·매도를 허용하고, 대기 일수를 넘기면 조건 없이 체결합니다.",
-        "",
-        "| 조건 | 누적 TWR | 즉시 체결 대비 | 최대낙폭 | 누적 회전율 | 보류 주문·일 |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
-    ]
-    for item in results:
-        lines.append(
-            f"| {item['label']} | {item['twr_pct']:+.2f}% | {item['difference_pct_points']:+.2f}%p | "
-            f"{item['mdd_pct']:.2f}% | {item['turnover_pct']:.1f}% | {item['delayed_order_days']} |"
-        )
-    return lines + [""]
 
 
 def main():
@@ -473,6 +448,15 @@ def main():
     parser.add_argument("--output-dir", default=str(BACKTEST_DIR))
     parser.add_argument("--timing-research", action="store_true")
     args = parser.parse_args()
+    if args.timing_research:
+        config = load_config()
+        context = trading_execution.get_kis_context()
+        closes_by_code = {
+            code: trading_execution.fetch_kis_daily_closes(code, context, args.lookback_days)
+            for code in config["target_weights"]
+        }
+        print(timing_study_markdown(closes_by_code, trading_execution.load_asset_labels()))
+        return
     if args.lookback_days < 300:
         raise ValueError("lookback_days는 HMA200 검증을 위해 300 이상이어야 합니다.")
 
@@ -489,7 +473,6 @@ def main():
         args.transaction_cost_bps,
         evaluation_start.strftime("%Y%m%d"),
         args.initial_capital_krw,
-        TIMING_VARIANTS if args.timing_research else (),
     )
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
