@@ -83,15 +83,6 @@
       "target_weight_pct": null
     },
     {
-      "ticker": "TIME미국배당다우존스액티브",
-      "symbol": "0036D0.KS",
-      "name": "TIME 미국배당다우존스액티브",
-      "display": "TIME배당다우존스",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
-    },
-    {
       "ticker": "KODEX단기채권",
       "symbol": "153130.KS",
       "name": "KODEX 단기채권",

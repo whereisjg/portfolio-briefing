@@ -182,6 +182,19 @@ class QuantBacktestTests(unittest.TestCase):
 
         self.assertAlmostEqual(result["twr_pct"], 50.0)
 
+    def test_execution_timing_study_waits_for_down_day_to_buy(self):
+        closes = [(f"d{i}", price) for i, price in enumerate((100, 110, 100, 105, 105))]
+
+        result = quant_backtest.execution_timing_study(closes, "contrarian", 0.0, 1)
+
+        # Requests on d1 (up) wait one day: buy 100 vs 110, sell stays 110.
+        # Requests on d2 (down) wait one day for the sell: 105 vs 100, buy stays 100.
+        # Requests on d3 (up) wait one day for the buy: 105 vs 105 (flat counts as down).
+        self.assertEqual(result["samples"], 3)
+        self.assertAlmostEqual(result["buy_pct"], (110 / 100 - 1) * 100 / 3)
+        self.assertAlmostEqual(result["sell_pct"], (105 / 100 - 1) * 100 / 3)
+        self.assertAlmostEqual(result["avg_wait_days"], 0.5)
+
     def test_backtest_uses_confirmed_signal_without_future_prices(self):
         config = {
             "target_weights": {"A": 50, "B": 25, "C": 25},
@@ -238,6 +251,17 @@ class EtfDrawdownTests(unittest.TestCase):
         self.assertEqual((result["peak"], result["trough"], result["recovery"]), ("d2", "d3", "d5"))
         self.assertIsNone(etf_drawdown.max_drawdown(series[:4])["recovery"])
 
+    def test_correlation_detects_same_and_opposite_moves(self):
+        closes = {
+            "A": [("d1", 100), ("d2", 110), ("d3", 99), ("d4", 104)],
+            "B": [("d1", 50), ("d2", 55), ("d3", 49.5), ("d4", 52)],
+            "C": [("d1", 100), ("d2", 90), ("d3", 99), ("d4", 94.05)],
+        }
+        lines = etf_drawdown.correlation_lines(["A", "B", "C"], closes, {}, "d1")
+
+        self.assertEqual(lines[-3], "| A | 1.00 | 1.00 | -1.00 |")
+        self.assertEqual(lines[-1], "| C | -1.00 | -1.00 | 1.00 |")
+
 
 class ConfigurationTests(unittest.TestCase):
     def test_repository_config_replaces_topix_with_unhedged_nikkei225(self):
@@ -247,7 +271,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(config["target_weights"]["241180"], 20)
         self.assertNotIn("101280", config["target_weights"])
         self.assertNotIn("0036D0", config["target_weights"])
-        self.assertIn("0036D0", config["liquidation_codes"])
+        self.assertNotIn("0036D0", config["liquidation_codes"])
         self.assertIn("101280", config["liquidation_codes"])
         portfolio_signal = next(
             signal for signal in config["trend_strategy"]["signals"]
@@ -266,8 +290,7 @@ class ConfigurationTests(unittest.TestCase):
         topix = next(asset for asset in assets if asset["symbol"] == "101280.KS")
         self.assertEqual(topix["name"], "KODEX 일본TOPIX100")
         self.assertIsNone(topix["target_weight_pct"])
-        time_dividend = next(asset for asset in assets if asset["symbol"] == "0036D0.KS")
-        self.assertIsNone(time_dividend["target_weight_pct"])
+        self.assertFalse(any(asset["symbol"] == "0036D0.KS" for asset in assets))
 
     def test_env_value_uses_default_for_empty_environment_value(self):
         with patch.dict(briefing.os.environ, {"EMPTY_SETTING": ""}):
@@ -1063,6 +1086,27 @@ class TradingPlanTests(unittest.TestCase):
 
         fetch_prices.assert_not_called()
         self.assertIn("추세 계산 실패", print_mock.call_args.args[0])
+
+    def test_dry_run_skips_quotes_for_fully_sold_liquidation_codes(self):
+        config = {
+            "mode": "dry-run",
+            "target_weights": {"A": 100},
+            "liquidation_codes": ["SOLD", "HELD"],
+        }
+        holdings = [{"pdno": "HELD", "hldg_qty": "3", "prpr": "100"}]
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        with patch.object(trading, "load_config", return_value=config):
+            with patch.object(trading, "load_balance_snapshot", return_value=(holdings, {}, "token")):
+                with patch.object(trading, "get_kis_context", return_value={}):
+                    with patch.object(trading, "resolve_trend_strategy", return_value=trend):
+                        with patch.object(
+                            trading, "fetch_kis_prices", side_effect=RuntimeError("stop")
+                        ) as fetch_prices:
+                            with patch("sys.argv", ["trading_execution.py"]):
+                                with self.assertRaises(RuntimeError):
+                                    trading.main()
+
+        self.assertEqual(fetch_prices.call_args.args[0], {"A", "HELD"})
 
     def test_main_records_a_retryable_pre_order_failure(self):
         config = {

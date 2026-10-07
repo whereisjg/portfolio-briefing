@@ -124,6 +124,45 @@ def report(codes, closes, adjusted_closes, distributions, labels, start):
     return lines
 
 
+def daily_returns(closes, dates):
+    prices = dict(closes)
+    return [prices[today] / prices[yesterday] - 1 for yesterday, today in zip(dates, dates[1:])]
+
+
+def correlation(left, right):
+    n = len(left)
+    mean_left, mean_right = sum(left) / n, sum(right) / n
+    covariance = sum((x - mean_left) * (y - mean_right) for x, y in zip(left, right))
+    spread = (
+        sum((x - mean_left) ** 2 for x in left) * sum((y - mean_right) ** 2 for y in right)
+    ) ** 0.5
+    return covariance / spread if spread else 0.0
+
+
+def correlation_lines(codes, adjusted_closes, labels, start):
+    """Daily-return correlation matrix on common trading dates from start."""
+    dates = sorted(
+        set.intersection(*({date for date, _ in adjusted_closes[code]} for code in codes))
+    )
+    dates = [date for date in dates if date >= start]
+    returns = {code: daily_returns(adjusted_closes[code], dates) for code in codes}
+    names = [f"{labels.get(code, code)}" for code in codes]
+    lines = [
+        "",
+        f"### 일간 수익률 상관계수 ({dates[0]} ~ {dates[-1]})",
+        "",
+        "| 종목 | " + " | ".join(names) + " |",
+        "| --- |" + " ---: |" * len(codes),
+    ]
+    for code, name in zip(codes, names):
+        lines.append(
+            f"| {name} | "
+            + " | ".join(f"{correlation(returns[code], returns[other]):.2f}" for other in codes)
+            + " |"
+        )
+    return lines
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compare ETF drawdowns with KIS data (no orders).")
     parser.add_argument("--codes", default=DEFAULT_CODES)
@@ -156,6 +195,9 @@ def main():
 
     lines = ["# ETF 낙폭 비교 (KIS)", "", "- 총수익은 원주가에 분배금을 기준일 직전 거래일(배당락)에 재투자한 값입니다. KIS 수정주가는 분배금이 반영된 교차검증용입니다.", ""]
     lines += report(codes, closes, adjusted_closes, distributions, labels, max(closes[code][0][0] for code in codes))
+    lines += correlation_lines(
+        codes, adjusted_closes, labels, max(closes[code][0][0] for code in codes)
+    )
     for pair in args.pairs.split(","):
         if ":" not in pair:
             continue
