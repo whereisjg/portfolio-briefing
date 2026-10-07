@@ -1304,6 +1304,37 @@ class TradingPlanTests(unittest.TestCase):
 
         self.assertEqual(fetch_prices.call_args.args[0], {"A", "HELD"})
 
+    def test_dry_run_counts_todays_fills_against_daily_limits(self):
+        config = {
+            "mode": "dry-run",
+            "target_weights": {"A": 100},
+            "liquidation_codes": ["L"],
+            "daily_buy_limit_pct": 3,
+            "daily_sell_limit_pct": 3,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "rebalance_band_pct": 2,
+        }
+        holdings = [{"pdno": "L", "hldg_qty": "2328", "prpr": "10000"}]
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        today_orders = [{"pdno": "L", "sll_buy_dvsn_cd": "01", "tot_ccld_amt": "720000", "rmn_qty": "0"}]
+
+        def run(orders):
+            with patch.object(trading, "load_config", return_value=config), \
+                    patch.object(trading, "load_balance_snapshot", return_value=(holdings, {"prvs_rcdl_excc_amt": "0"}, "t")), \
+                    patch.object(trading, "get_kis_context", return_value={"is_paper": False}), \
+                    patch.object(trading, "resolve_trend_strategy", return_value=trend), \
+                    patch.object(trading, "fetch_kis_prices", return_value={"A": 10000, "L": 10000}), \
+                    patch.object(trading, "fetch_kis_orderable_cash", return_value=0), \
+                    patch.object(trading, "fetch_today_orders", return_value=orders), \
+                    patch.object(trading, "load_asset_labels", return_value={}), \
+                    patch("sys.argv", ["trading_execution.py"]), \
+                    patch("builtins.print") as print_mock:
+                trading.main()
+            return print_mock.call_args.args[0]
+
+        self.assertIn("매도 예정", run([]))
+        self.assertNotIn("매도 예정", run(today_orders))
+
     def test_main_records_a_retryable_pre_order_failure(self):
         config = {
             "mode": "live",
