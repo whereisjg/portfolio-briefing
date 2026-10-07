@@ -1059,8 +1059,13 @@ def main():
         )
     else:
         holdings, summary, access_token = snapshot
-    managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
-    positions = positions_from_holdings(holdings, managed_codes)
+    configured_managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
+    all_positions = positions_from_holdings(holdings, configured_managed_codes)
+    # Match the live path: fully sold liquidation ETFs may have no quote.
+    managed_codes = set(config["target_weights"]) | {
+        code for code in config.get("liquidation_codes", [])
+        if all_positions[code]["quantity"] > 0
+    }
     kis_context = get_kis_context(access_token)
 
     trend = resolve_trend_strategy(config, kis_context)

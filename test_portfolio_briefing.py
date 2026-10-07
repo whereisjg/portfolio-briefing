@@ -1088,6 +1088,27 @@ class TradingPlanTests(unittest.TestCase):
         fetch_prices.assert_not_called()
         self.assertIn("추세 계산 실패", print_mock.call_args.args[0])
 
+    def test_dry_run_skips_quotes_for_fully_sold_liquidation_codes(self):
+        config = {
+            "mode": "dry-run",
+            "target_weights": {"A": 100},
+            "liquidation_codes": ["SOLD", "HELD"],
+        }
+        holdings = [{"pdno": "HELD", "hldg_qty": "3", "prpr": "100"}]
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        with patch.object(trading, "load_config", return_value=config):
+            with patch.object(trading, "load_balance_snapshot", return_value=(holdings, {}, "token")):
+                with patch.object(trading, "get_kis_context", return_value={}):
+                    with patch.object(trading, "resolve_trend_strategy", return_value=trend):
+                        with patch.object(
+                            trading, "fetch_kis_prices", side_effect=RuntimeError("stop")
+                        ) as fetch_prices:
+                            with patch("sys.argv", ["trading_execution.py"]):
+                                with self.assertRaises(RuntimeError):
+                                    trading.main()
+
+        self.assertEqual(fetch_prices.call_args.args[0], {"A", "HELD"})
+
     def test_main_records_a_retryable_pre_order_failure(self):
         config = {
             "mode": "live",
