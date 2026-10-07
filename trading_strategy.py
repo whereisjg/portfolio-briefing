@@ -293,6 +293,10 @@ def plan_orders(
             "cash": cash,
             "sells": [],
             "buys": [],
+            "orderable_cash": 0,
+            "daily_buy_limit": 0,
+            "daily_sell_limit": 0,
+            "daily_turnover_limit": 0,
             "buy_deficit": 0,
             "unallocated_cash": cash,
         }

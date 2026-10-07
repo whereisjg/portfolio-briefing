@@ -183,11 +183,15 @@ def fetch_kis_balance():
 
 def load_dividend_start_date(config=None):
     """Return the YYYYMMDD date from which distributions are accumulated."""
-    config = read_portfolio_config() if config is None else config
+    if config is None:
+        try:
+            config = read_portfolio_config()
+        except (FileNotFoundError, ValueError):
+            config = {}
     configured = str(config.get("dividend_start_date") or "").strip()
     start_date = env_value("KIS_DIVIDEND_START_DATE", configured or "20200101")
     try:
-        if len(start_date) != 8 or not start_date.isdigit():
+        if len(start_date) != 8 or not (start_date.isascii() and start_date.isdigit()):
             raise ValueError(start_date)
         parsed = datetime.strptime(start_date, "%Y%m%d").date()
     except ValueError as exc:

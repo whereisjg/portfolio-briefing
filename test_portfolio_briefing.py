@@ -1047,6 +1047,44 @@ class TradingPlanTests(unittest.TestCase):
         self.assertTrue(pending)
         sleep.assert_not_called()
 
+    def test_second_pass_keeps_buys_for_codes_not_bought_in_first_pass(self):
+        plan = {
+            "sells": [],
+            "buys": [
+                {"code": "A", "quantity": 2, "price": 10000, "value": 20000},
+                {"code": "B", "quantity": 2, "price": 10000, "value": 20000},
+            ],
+            "orderable_cash": 40000,
+        }
+        config = {"order_policy": {"max_buy_price_increase_pct": 0.3}}
+        asks = {"A": 10100, "B": 10100}
+        with patch.object(trading, "fetch_kis_best_ask", side_effect=lambda code, _ctx: asks[code]):
+            _sells, buys = trading.live_orders_for_plan(plan, config, {}, {"A": 10000})
+            _sells, no_first_buys = trading.live_orders_for_plan(plan, config, {}, {})
+
+        self.assertEqual([order["code"] for order in buys], ["B"])
+        self.assertEqual([order["code"] for order in no_first_buys], ["A", "B"])
+
+    def test_second_pass_keeps_last_plan_when_a_retry_read_fails(self):
+        reads = [self._cash_plan(3000)]
+
+        def read():
+            if reads:
+                return reads.pop(0)
+            raise RuntimeError("KIS timeout")
+
+        with patch.object(trading, "before_order_cutoff", return_value=True):
+            with patch.object(trading.time, "sleep"):
+                plan, pending = trading.wait_for_sale_proceeds(read, 720000, 651000)
+
+        self.assertEqual(plan["orderable_cash"], 3000)
+        self.assertTrue(pending)
+
+    def test_empty_account_plan_has_cash_fields(self):
+        plan = trading.plan_orders({**self.config, "target_weights": {"A": 100}}, {}, {"A": 10000}, 0)
+
+        self.assertFalse(trading.sale_proceeds_pending(plan, 720000, 651000))
+
     def test_before_order_cutoff_uses_regular_session_end(self):
         now = trading.kis_client.KST.localize(datetime(2026, 10, 7, 15, 18))
 
@@ -1070,7 +1108,7 @@ class TradingPlanTests(unittest.TestCase):
             "daily_sell_limit_pct": 100,
             "daily_sell_limit_per_asset_krw": 1000000,
             "rebalance_band_pct": 0,
-            "order_policy": {"first_order_check_minutes": 0},
+            "order_policy": {"first_order_check_minutes": 0, "max_buy_price_increase_pct": 0.3},
         }
         trend = {"state": "neutral", "weights": {"A": 100}}
         holdings = [{"pdno": "L", "hldg_qty": "72", "prpr": "10000"}]
@@ -1087,7 +1125,8 @@ class TradingPlanTests(unittest.TestCase):
                 patch.object(trading, "fetch_kis_prices", return_value={"A": 10000, "L": 10000}), \
                 patch.object(trading, "fetch_kis_orderable_cash", side_effect=[3000, 3000, 723000]), \
                 patch.object(trading, "load_asset_labels", return_value={}), \
-                patch.object(trading, "live_orders_for_plan", side_effect=lambda plan, *_a: (plan["sells"], plan["buys"])), \
+                patch.object(trading, "fetch_kis_best_bid", return_value=10000), \
+                patch.object(trading, "fetch_kis_best_ask", return_value=10000), \
                 patch.object(trading, "submit_live_orders", side_effect=submit) as submit_mock, \
                 patch.object(trading, "reconcile_first_pass_orders", return_value=(filled_rows, [], None)), \
                 patch.object(trading.kis_client, "fetch_balance", return_value=(sold_holdings, {"prvs_rcdl_excc_amt": "723000"}, "t")), \
@@ -1129,7 +1168,7 @@ class TradingPlanTests(unittest.TestCase):
                 patch.object(trading, "live_orders_for_plan", return_value=([sell], [])), \
                 patch.object(trading, "submit_live_orders", return_value=([sell], [])) as submit_mock, \
                 patch.object(trading, "reconcile_first_pass_orders", return_value=([], [], None)), \
-                patch.object(trading.kis_client, "fetch_balance", return_value=([], {"prvs_rcdl_excc_amt": "723000"}, "t")), \
+                patch.object(trading.kis_client, "fetch_balance", return_value=([], {"prvs_rcdl_excc_amt": "723000"}, "t")) as fetch_balance, \
                 patch.object(trading, "before_order_cutoff", return_value=False), \
                 patch.object(trading.time, "sleep"):
             result = trading.execute_live_rebalance(
@@ -1137,6 +1176,7 @@ class TradingPlanTests(unittest.TestCase):
             )
 
         self.assertEqual(submit_mock.call_count, 1)
+        fetch_balance.assert_not_called()
         self.assertIn("마감(15:20)이 임박", "\n".join(result["execution_report"]))
 
     def test_retry_safety_blocks_a_retry_when_first_order_status_is_missing(self):
@@ -1918,10 +1958,16 @@ class ContentTests(unittest.TestCase):
                 self.assertEqual(
                     briefing.load_dividend_start_date({"dividend_start_date": "20240101"}), "20250315"
                 )
-                for invalid in ("2025-03-15", "2025031", "29991231"):
+                for invalid in ("2025-03-15", "2025031", "29991231", "２０２５０３１５"):
                     os.environ["KIS_DIVIDEND_START_DATE"] = invalid
                     with self.assertRaises(ValueError):
                         briefing.load_dividend_start_date()
+
+    def test_dividend_start_date_uses_env_without_portfolio_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(briefing, "PORTFOLIO_FILE", os.path.join(tmp, "missing.json")), \
+                    patch.dict(os.environ, {"KIS_DIVIDEND_START_DATE": "20250101"}):
+                self.assertEqual(briefing.load_dividend_start_date(), "20250101")
 
     def test_build_content_includes_market_notice(self):
         quotes = [{
