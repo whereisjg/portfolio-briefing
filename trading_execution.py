@@ -32,6 +32,7 @@ SALE_PROCEEDS_RETRY_SECONDS = 60
 SALE_PROCEEDS_MAX_RETRIES = 5
 SALE_PROCEEDS_REFLECTED_RATIO = 0.9
 ORDER_CUTOFF_MARGIN_SECONDS = 60
+SALE_PROCEEDS_READ_ALLOWANCE_SECONDS = 60
 TREND_STATE_FILE = os.getenv("KIS_TREND_STATE_FILE", "").strip()
 PORTFOLIO_FILE = Path("portfolio.json")
 
@@ -436,21 +437,23 @@ def fetch_kis_orderable_cash(prices, context):
     return max(amount, 0)
 
 
+def configured_codes(config):
+    return set(config["target_weights"]) | set(config.get("liquidation_codes", []))
+
+
 def managed_positions(config, holdings):
     """Return target codes plus still-held liquidation codes; sold-out ETFs may have no quote."""
-    target_codes = set(config["target_weights"])
-    liquidation_codes = set(config.get("liquidation_codes", []))
-    all_positions = positions_from_holdings(holdings, target_codes | liquidation_codes)
-    managed_codes = target_codes | {
-        code for code in liquidation_codes if all_positions[code]["quantity"] > 0
+    all_positions = positions_from_holdings(holdings, configured_codes(config))
+    managed_codes = set(config["target_weights"]) | {
+        code for code in config.get("liquidation_codes", []) if all_positions[code]["quantity"] > 0
     }
     return managed_codes, {code: all_positions[code] for code in managed_codes}
 
 
 def before_order_cutoff(seconds_ahead=0, now=None):
-    """True while the regular-session order cutoff has not been reached."""
+    """True while the regular order session is still open seconds_ahead from now."""
     now = (now or datetime.now(kis_client.KST)) + timedelta(seconds=seconds_ahead)
-    return now.time() < market_calendar.KRX_ORDER_CUTOFF
+    return market_calendar.in_order_session(now)
 
 
 def sale_proceeds_pending(plan, sold_value, proceeds_target):
@@ -466,10 +469,17 @@ def wait_for_sale_proceeds(read_plan, sold_value, proceeds_target):
     for _attempt in range(SALE_PROCEEDS_MAX_RETRIES):
         if not sale_proceeds_pending(plan, sold_value, proceeds_target):
             break
-        if not before_order_cutoff(SALE_PROCEEDS_RETRY_SECONDS + ORDER_CUTOFF_MARGIN_SECONDS):
+        if not before_order_cutoff(
+            SALE_PROCEEDS_RETRY_SECONDS + SALE_PROCEEDS_READ_ALLOWANCE_SECONDS + ORDER_CUTOFF_MARGIN_SECONDS
+        ):
             break
         time.sleep(SALE_PROCEEDS_RETRY_SECONDS)
-        plan = read_plan()
+        try:
+            plan = read_plan()
+        except Exception as exc:
+            # The first pass is done; keep the last good plan rather than abandon the retry.
+            print(f"매도대금 반영 재조회 실패, 직전 계획으로 진행합니다: {exc}")
+            break
     return plan, sale_proceeds_pending(plan, sold_value, proceeds_target)
 
 
@@ -844,10 +854,11 @@ def live_orders_for_plan(plan, config, context, first_buy_prices=None):
 
     ask_prices = {order["code"]: fetch_kis_best_ask(order["code"], context) for order in plan["buys"]}
     if first_buy_prices is not None:
+        # Only codes already bought in the first pass have a reference price to guard.
         max_increase = float(config["order_policy"]["max_buy_price_increase_pct"]) / 100
         ask_prices = {
             code: price for code, price in ask_prices.items()
-            if code in first_buy_prices and price <= first_buy_prices[code] * (1 + max_increase)
+            if code not in first_buy_prices or price <= first_buy_prices[code] * (1 + max_increase)
         }
     buy_orders = reprice_orders(
         [order for order in plan["buys"] if order["code"] in ask_prices],
@@ -880,7 +891,7 @@ def submit_live_orders(sell_orders, buy_orders, context):
 
 def execute_live_rebalance(config, holdings, summary, context):
     """Submit one guarded live rebalance pass using limit orders only."""
-    configured_managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
+    configured_managed_codes = configured_codes(config)
     trend = resolve_trend_strategy(config, context)
     if trend.get("error"):
         return {
@@ -1002,9 +1013,11 @@ def execute_live_rebalance(config, holdings, summary, context):
                 sell_turnover_limit=max(plan["daily_sell_limit"] - sold_value, 0),
             )
 
-        retry_plan, proceeds_pending = wait_for_sale_proceeds(read_retry_plan, sold_value, proceeds_target)
-        if not before_order_cutoff(ORDER_CUTOFF_MARGIN_SECONDS):
-            report = format_execution_report(fetch_today_orders(context), submitted, cancelled, asset_labels)
+        retry_plan, proceeds_pending = None, False
+        if before_order_cutoff(SALE_PROCEEDS_READ_ALLOWANCE_SECONDS + ORDER_CUTOFF_MARGIN_SECONDS):
+            retry_plan, proceeds_pending = wait_for_sale_proceeds(read_retry_plan, sold_value, proceeds_target)
+        if retry_plan is None or not before_order_cutoff(ORDER_CUTOFF_MARGIN_SECONDS):
+            report = format_execution_report(first_today_orders, submitted, cancelled, asset_labels)
             report.append("2차 주문 보류: 정규장 주문 마감(15:20)이 임박했습니다.")
             return {
                 "status": "submitted",

@@ -33,6 +33,11 @@ KRX_ORDER_CUTOFF = time(15, 20)
 STATIC_CALENDAR_YEARS = {day.year for day in KRX_HOLIDAYS}
 
 
+def in_order_session(now):
+    """True during the regular KRX order window (09:00~15:20 KST)."""
+    return KRX_ORDER_START <= now.time() < KRX_ORDER_CUTOFF
+
+
 def today_kst():
     return datetime.now(KST).date()
 
@@ -58,7 +63,7 @@ def krx_order_status(now=None):
     day_status = krx_market_status(now.date())
     if not day_status["open"]:
         return {**day_status, "orderable": False}
-    if not KRX_ORDER_START <= now.time() < KRX_ORDER_CUTOFF:
+    if not in_order_session(now):
         return {
             **day_status,
             "orderable": False,
@@ -135,7 +140,7 @@ def kis_krx_order_status(now=None, market_status_fetcher=fetch_kis_krx_market_st
         }
     if not day_status["open"]:
         return {**day_status, "orderable": False}
-    if not KRX_ORDER_START <= now.time() < KRX_ORDER_CUTOFF:
+    if not in_order_session(now):
         return {
             **day_status,
             "orderable": False,
