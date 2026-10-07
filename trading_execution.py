@@ -1151,14 +1151,20 @@ def main():
     except Exception as exc:
         orderable_cash = 0
         warnings.append(f"KIS 주문가능금액 조회 실패로 매수 계획을 만들지 않았습니다: {exc}")
+    try:
+        today_orders = fetch_today_orders(kis_context)
+    except Exception as exc:
+        today_orders = []
+        warnings.append(f"당일 주문내역 조회 실패로 오늘 체결분을 한도에서 빼지 못했습니다: {exc}")
     total_assets = cash + sum(
         positions[code]["quantity"] * prices[code]
         for code in managed_codes
     )
+    # Match the live path: today's fills count against the daily limits.
     daily_budgets = daily_trade_budgets(
         effective_config,
         total_assets,
-        [],
+        today_orders,
         managed_codes,
         kis_context,
     )
