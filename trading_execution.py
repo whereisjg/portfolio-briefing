@@ -26,6 +26,10 @@ from trading_strategy import (
 
 
 KIS_REQUEST_MIN_INTERVAL_SECONDS = 2.0
+# KIS can take several minutes to add same-day sale proceeds to the orderable amount.
+SALE_PROCEEDS_RETRY_SECONDS = 60
+SALE_PROCEEDS_MAX_RETRIES = 5
+SALE_PROCEEDS_REFLECTED_RATIO = 0.9
 TREND_STATE_FILE = os.getenv("KIS_TREND_STATE_FILE", "").strip()
 PORTFOLIO_FILE = Path("portfolio.json")
 
@@ -428,6 +432,17 @@ def fetch_kis_orderable_cash(prices, context):
     if amount is None:
         raise ValueError("KIS 주문가능금액이 없습니다.")
     return max(amount, 0)
+
+
+def wait_for_sale_proceeds(prices, context, sold_value):
+    """Re-read the orderable amount until today's filled sales are reflected."""
+    orderable = fetch_kis_orderable_cash(prices, context)
+    for _attempt in range(SALE_PROCEEDS_MAX_RETRIES):
+        if orderable >= sold_value * SALE_PROCEEDS_REFLECTED_RATIO:
+            break
+        time.sleep(SALE_PROCEEDS_RETRY_SECONDS)
+        orderable = fetch_kis_orderable_cash(prices, context)
+    return orderable
 
 
 def fetch_today_orders(context):
@@ -941,8 +956,9 @@ def execute_live_rebalance(config, holdings, summary, context):
         context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
         fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
         fresh_prices = fetch_kis_prices(managed_codes, context)
-        fresh_orderable_cash = fetch_kis_orderable_cash(fresh_prices, context)
         filled = filled_values_for_orders(first_today_orders, submitted)
+        sold_value = sum(filled["sell"].values())
+        fresh_orderable_cash = wait_for_sale_proceeds(fresh_prices, context, sold_value)
         retry_config = deepcopy(effective_config)
         retry_sell_limits = {
             code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
@@ -967,6 +983,8 @@ def execute_live_rebalance(config, holdings, summary, context):
             final_today_orders, all_orders, cancelled, asset_labels
         )
         execution_report.extend(format_submission_errors(submission_errors + retry_errors, asset_labels))
+        if not retry_buys and fresh_orderable_cash < sold_value * SALE_PROCEEDS_REFLECTED_RATIO:
+            execution_report.append("매수 보류: 매도대금이 아직 주문가능금액에 반영되지 않았습니다.")
         return {
             "status": "submitted",
             "plan": plan,

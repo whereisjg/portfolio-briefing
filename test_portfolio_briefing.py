@@ -983,6 +983,31 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(result["status"], "submitted")
         fetch_prices.assert_called_once_with({"A"}, {})
 
+    def test_second_pass_waits_until_sale_proceeds_are_orderable(self):
+        with patch.object(trading, "fetch_kis_orderable_cash", side_effect=[3000, 3000, 720000]) as fetch:
+            with patch.object(trading.time, "sleep") as sleep:
+                orderable = trading.wait_for_sale_proceeds({"A": 100}, {}, 720000)
+
+        self.assertEqual(orderable, 720000)
+        self.assertEqual(fetch.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_second_pass_stops_waiting_after_max_retries(self):
+        with patch.object(trading, "fetch_kis_orderable_cash", return_value=3000) as fetch:
+            with patch.object(trading.time, "sleep"):
+                orderable = trading.wait_for_sale_proceeds({"A": 100}, {}, 720000)
+
+        self.assertEqual(orderable, 3000)
+        self.assertEqual(fetch.call_count, trading.SALE_PROCEEDS_MAX_RETRIES + 1)
+
+    def test_second_pass_does_not_wait_without_sales(self):
+        with patch.object(trading, "fetch_kis_orderable_cash", return_value=0) as fetch:
+            with patch.object(trading.time, "sleep") as sleep:
+                trading.wait_for_sale_proceeds({"A": 100}, {}, 0)
+
+        self.assertEqual(fetch.call_count, 1)
+        sleep.assert_not_called()
+
     def test_retry_safety_blocks_a_retry_when_first_order_status_is_missing(self):
         reason = trading.retry_safety_reason(
             [],
