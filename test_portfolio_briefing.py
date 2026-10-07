@@ -271,7 +271,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(config["target_weights"]["241180"], 20)
         self.assertNotIn("101280", config["target_weights"])
         self.assertNotIn("0036D0", config["target_weights"])
-        self.assertIn("0036D0", config["liquidation_codes"])
+        self.assertNotIn("0036D0", config["liquidation_codes"])
         self.assertIn("101280", config["liquidation_codes"])
         portfolio_signal = next(
             signal for signal in config["trend_strategy"]["signals"]
@@ -290,8 +290,7 @@ class ConfigurationTests(unittest.TestCase):
         topix = next(asset for asset in assets if asset["symbol"] == "101280.KS")
         self.assertEqual(topix["name"], "KODEX 일본TOPIX100")
         self.assertIsNone(topix["target_weight_pct"])
-        time_dividend = next(asset for asset in assets if asset["symbol"] == "0036D0.KS")
-        self.assertIsNone(time_dividend["target_weight_pct"])
+        self.assertFalse(any(asset["symbol"] == "0036D0.KS" for asset in assets))
 
     def test_env_value_uses_default_for_empty_environment_value(self):
         with patch.dict(briefing.os.environ, {"EMPTY_SETTING": ""}):
