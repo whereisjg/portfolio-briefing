@@ -15,7 +15,6 @@ KST = pytz.timezone("Asia/Seoul")
 TOKEN_MAX_AGE_SECONDS = 6 * 60 * 60
 DEFAULT_BASE_URL = "https://openapi.koreainvestment.com:9443"
 BALANCE_MCI_RETRY_DELAYS_SECONDS = (3, 7, 15, 30)
-DIVIDEND_RIGHT_TYPE_CODES = {"01", "03", "배당"}
 
 
 def env_value(name, default=""):

@@ -288,7 +288,14 @@ def plan_orders(
     }
     total = cash + sum(values.values())
     if total <= 0:
-        return {"total_value": 0, "cash": cash, "sells": [], "buys": [], "unallocated_cash": cash}
+        return {
+            "total_value": 0,
+            "cash": cash,
+            "sells": [],
+            "buys": [],
+            "buy_deficit": 0,
+            "unallocated_cash": cash,
+        }
 
     default_buy_limit = total * float(
         config.get("daily_buy_limit_pct", config.get("daily_turnover_limit_pct", 100))
@@ -386,6 +393,7 @@ def plan_orders(
         "daily_turnover_limit": daily_buy_limit,
         "sells": sells,
         "buys": buys,
+        "buy_deficit": sum(deficits.values()),
         "unallocated_cash": buyable_cash - sum(order["value"] for order in buys),
     }
 
