@@ -50,7 +50,7 @@ def configure_console_output():
             pass
 
 
-def load_portfolio():
+def read_portfolio_config():
     if not os.path.exists(PORTFOLIO_FILE):
         raise FileNotFoundError(f"설정 파일({PORTFOLIO_FILE})을 찾을 수 없습니다.")
 
@@ -59,6 +59,13 @@ def load_portfolio():
             config = json.load(file)
     except json.JSONDecodeError as exc:
         raise ValueError(f"{PORTFOLIO_FILE}의 JSON 형식이 올바르지 않습니다: {exc}")
+    if not isinstance(config, dict):
+        raise ValueError(f"{PORTFOLIO_FILE}의 최상위 값은 객체여야 합니다.")
+    return config
+
+
+def load_portfolio(config=None):
+    config = read_portfolio_config() if config is None else config
 
     indexes = config.get("indexes", [])
     assets = config.get("assets", [])
@@ -174,25 +181,26 @@ def fetch_kis_balance():
     return kis_client.fetch_balance(get_http_session, KIS_ACCESS_TOKEN_CACHE_FILE)
 
 
-def load_dividend_start_date():
+def load_dividend_start_date(config=None):
     """Return the YYYYMMDD date from which distributions are accumulated."""
-    try:
-        with open(PORTFOLIO_FILE, encoding="utf-8") as file:
-            configured = str(json.load(file).get("dividend_start_date") or "").strip()
-    except (OSError, json.JSONDecodeError):
-        configured = ""
+    config = read_portfolio_config() if config is None else config
+    configured = str(config.get("dividend_start_date") or "").strip()
     start_date = env_value("KIS_DIVIDEND_START_DATE", configured or "20200101")
     try:
-        datetime.strptime(start_date, "%Y%m%d")
+        if len(start_date) != 8 or not start_date.isdigit():
+            raise ValueError(start_date)
+        parsed = datetime.strptime(start_date, "%Y%m%d").date()
     except ValueError as exc:
         raise ValueError(f"분배금 조회 시작일 형식이 올바르지 않습니다(YYYYMMDD): {start_date}") from exc
+    if parsed > datetime.now(KST).date():
+        raise ValueError(f"분배금 조회 시작일이 오늘 이후입니다: {start_date}")
     return start_date
 
 
-def fetch_kis_dividend_summary(access_token):
+def fetch_kis_dividend_summary(access_token, start_date=None):
     """Summarize settled cash distributions recorded in the account."""
     today = datetime.now(KST).date()
-    start_date = load_dividend_start_date()
+    start_date = start_date or load_dividend_start_date()
     rows = kis_client.fetch_dividend_rights(
         access_token,
         start_date,
@@ -943,7 +951,8 @@ def main():
         total_steps = 5
 
         print(f"[1/{total_steps}] Loading portfolio...")
-        indexes_config, assets_config = load_portfolio()
+        portfolio_config = read_portfolio_config()
+        indexes_config, assets_config = load_portfolio(portfolio_config)
         trading_config = load_trading_config()
         comparison_codes = set(trading_config.get("target_weights", {}))
 
@@ -956,7 +965,9 @@ def main():
         dividend_summary = None
         dividend_error = None
         try:
-            dividend_summary = fetch_kis_dividend_summary(access_token)
+            dividend_summary = fetch_kis_dividend_summary(
+                access_token, load_dividend_start_date(portfolio_config)
+            )
         except Exception as exc:
             dividend_error = f"분배금 조회 실패: {exc}"
         print(f"[2/{total_steps}] Fetching KIS indexes...")

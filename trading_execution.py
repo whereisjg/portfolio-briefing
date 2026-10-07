@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import kis_client
+import market_calendar
 import run_state
 from trading_strategy import (
     DEFAULT_COMPOSITE_TREND_THRESHOLD,
@@ -30,6 +31,7 @@ KIS_REQUEST_MIN_INTERVAL_SECONDS = 2.0
 SALE_PROCEEDS_RETRY_SECONDS = 60
 SALE_PROCEEDS_MAX_RETRIES = 5
 SALE_PROCEEDS_REFLECTED_RATIO = 0.9
+ORDER_CUTOFF_MARGIN_SECONDS = 60
 TREND_STATE_FILE = os.getenv("KIS_TREND_STATE_FILE", "").strip()
 PORTFOLIO_FILE = Path("portfolio.json")
 
@@ -434,15 +436,41 @@ def fetch_kis_orderable_cash(prices, context):
     return max(amount, 0)
 
 
-def wait_for_sale_proceeds(prices, context, sold_value):
-    """Re-read the orderable amount until today's filled sales are reflected."""
-    orderable = fetch_kis_orderable_cash(prices, context)
+def managed_positions(config, holdings):
+    """Return target codes plus still-held liquidation codes; sold-out ETFs may have no quote."""
+    target_codes = set(config["target_weights"])
+    liquidation_codes = set(config.get("liquidation_codes", []))
+    all_positions = positions_from_holdings(holdings, target_codes | liquidation_codes)
+    managed_codes = target_codes | {
+        code for code in liquidation_codes if all_positions[code]["quantity"] > 0
+    }
+    return managed_codes, {code: all_positions[code] for code in managed_codes}
+
+
+def before_order_cutoff(seconds_ahead=0, now=None):
+    """True while the regular-session order cutoff has not been reached."""
+    now = (now or datetime.now(kis_client.KST)) + timedelta(seconds=seconds_ahead)
+    return now.time() < market_calendar.KRX_ORDER_CUTOFF
+
+
+def sale_proceeds_pending(plan, sold_value, proceeds_target):
+    """Buys are cash-limited while balance or orderable cash lacks today's sale proceeds."""
+    buyable = plan["orderable_cash"]
+    wanted = min(plan["daily_buy_limit"], plan["buy_deficit"])
+    return sold_value > 0 and wanted > buyable and buyable < proceeds_target
+
+
+def wait_for_sale_proceeds(read_plan, sold_value, proceeds_target):
+    """Re-read balance, prices and orderable cash until sale proceeds can fund buys."""
+    plan = read_plan()
     for _attempt in range(SALE_PROCEEDS_MAX_RETRIES):
-        if orderable >= sold_value * SALE_PROCEEDS_REFLECTED_RATIO:
+        if not sale_proceeds_pending(plan, sold_value, proceeds_target):
+            break
+        if not before_order_cutoff(SALE_PROCEEDS_RETRY_SECONDS + ORDER_CUTOFF_MARGIN_SECONDS):
             break
         time.sleep(SALE_PROCEEDS_RETRY_SECONDS)
-        orderable = fetch_kis_orderable_cash(prices, context)
-    return orderable
+        plan = read_plan()
+    return plan, sale_proceeds_pending(plan, sold_value, proceeds_target)
 
 
 def fetch_today_orders(context):
@@ -852,9 +880,7 @@ def submit_live_orders(sell_orders, buy_orders, context):
 
 def execute_live_rebalance(config, holdings, summary, context):
     """Submit one guarded live rebalance pass using limit orders only."""
-    target_codes = set(config["target_weights"])
-    liquidation_codes = set(config.get("liquidation_codes", []))
-    configured_managed_codes = target_codes | liquidation_codes
+    configured_managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
     trend = resolve_trend_strategy(config, context)
     if trend.get("error"):
         return {
@@ -879,13 +905,7 @@ def execute_live_rebalance(config, holdings, summary, context):
                 "retryable": False,
             }
 
-        all_positions = positions_from_holdings(holdings, configured_managed_codes)
-        held_liquidation_codes = {
-            code for code in liquidation_codes
-            if all_positions[code]["quantity"] > 0
-        }
-        managed_codes = target_codes | held_liquidation_codes
-        positions = {code: all_positions[code] for code in managed_codes}
+        managed_codes, positions = managed_positions(config, holdings)
         market_prices = fetch_kis_prices(managed_codes, context)
         cash = cash_from_balance(summary)
         orderable_cash = fetch_kis_orderable_cash(market_prices, context)
@@ -949,31 +969,53 @@ def execute_live_rebalance(config, holdings, summary, context):
                 "retryable": False,
             }
 
-        wait_for_kis_request_slot(context)
-        fresh_holdings, fresh_summary, _token = kis_client.fetch_balance(
-            cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
-        )
-        context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
-        fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
-        fresh_prices = fetch_kis_prices(managed_codes, context)
         filled = filled_values_for_orders(first_today_orders, submitted)
         sold_value = sum(filled["sell"].values())
-        fresh_orderable_cash = wait_for_sale_proceeds(fresh_prices, context, sold_value)
         retry_config = deepcopy(effective_config)
         retry_sell_limits = {
             code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
             for code in managed_codes
         }
-        retry_plan = plan_orders(
-            retry_config,
-            fresh_positions,
-            fresh_prices,
-            cash_from_balance(fresh_summary),
-            fresh_orderable_cash,
-            retry_sell_limits,
-            buy_limit=max(plan["daily_buy_limit"] - filled["buy"], 0),
-            sell_turnover_limit=max(plan["daily_sell_limit"] - sum(filled["sell"].values()), 0),
+        # Proceeds count as reflected once buyable cash regains the post-buy
+        # baseline plus most of what was sold.
+        proceeds_target = (
+            max(plan["orderable_cash"] - filled["buy"], 0)
+            + sold_value * SALE_PROCEEDS_REFLECTED_RATIO
         )
+
+        def read_retry_plan():
+            wait_for_kis_request_slot(context)
+            fresh_holdings, fresh_summary, _token = kis_client.fetch_balance(
+                cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
+            )
+            context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
+            fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
+            fresh_prices = fetch_kis_prices(managed_codes, context)
+            return plan_orders(
+                retry_config,
+                fresh_positions,
+                fresh_prices,
+                cash_from_balance(fresh_summary),
+                fetch_kis_orderable_cash(fresh_prices, context),
+                retry_sell_limits,
+                buy_limit=max(plan["daily_buy_limit"] - filled["buy"], 0),
+                sell_turnover_limit=max(plan["daily_sell_limit"] - sold_value, 0),
+            )
+
+        retry_plan, proceeds_pending = wait_for_sale_proceeds(read_retry_plan, sold_value, proceeds_target)
+        if not before_order_cutoff(ORDER_CUTOFF_MARGIN_SECONDS):
+            report = format_execution_report(fetch_today_orders(context), submitted, cancelled, asset_labels)
+            report.append("2차 주문 보류: 정규장 주문 마감(15:20)이 임박했습니다.")
+            return {
+                "status": "submitted",
+                "plan": plan,
+                "orders": submitted,
+                "cancelled": cancelled,
+                "execution_report": report,
+                "trend": trend,
+                "reason": "",
+                "retryable": False,
+            }
         first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
         retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
         retried, retry_errors = submit_live_orders(retry_sells, retry_buys, context)
@@ -983,8 +1025,10 @@ def execute_live_rebalance(config, holdings, summary, context):
             final_today_orders, all_orders, cancelled, asset_labels
         )
         execution_report.extend(format_submission_errors(submission_errors + retry_errors, asset_labels))
-        if not retry_buys and fresh_orderable_cash < sold_value * SALE_PROCEEDS_REFLECTED_RATIO:
-            execution_report.append("매수 보류: 매도대금이 아직 주문가능금액에 반영되지 않았습니다.")
+        if proceeds_pending:
+            execution_report.append(
+                "매수 보류: 매도대금이 아직 주문가능금액에 반영되지 않아 남은 금액은 다음 실행에서 매수합니다."
+            )
         return {
             "status": "submitted",
             "plan": plan,
@@ -1077,13 +1121,7 @@ def main():
         )
     else:
         holdings, summary, access_token = snapshot
-    configured_managed_codes = set(config["target_weights"]) | set(config.get("liquidation_codes", []))
-    all_positions = positions_from_holdings(holdings, configured_managed_codes)
-    # Match the live path: fully sold liquidation ETFs may have no quote.
-    managed_codes = set(config["target_weights"]) | {
-        code for code in config.get("liquidation_codes", [])
-        if all_positions[code]["quantity"] > 0
-    }
+    managed_codes, positions = managed_positions(config, holdings)
     kis_context = get_kis_context(access_token)
 
     trend = resolve_trend_strategy(config, kis_context)
@@ -1092,7 +1130,6 @@ def main():
         return
     effective_config = deepcopy(config)
     effective_config["target_weights"] = trend["weights"]
-    positions = positions_from_holdings(holdings, managed_codes)
     prices = fetch_kis_prices(managed_codes, kis_context)
     cash = cash_from_balance(summary)
     warnings = []

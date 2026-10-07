@@ -1,6 +1,7 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import tempfile
+from datetime import datetime
 import json
 import os
 
@@ -983,30 +984,160 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(result["status"], "submitted")
         fetch_prices.assert_called_once_with({"A"}, {})
 
-    def test_second_pass_waits_until_sale_proceeds_are_orderable(self):
-        with patch.object(trading, "fetch_kis_orderable_cash", side_effect=[3000, 3000, 720000]) as fetch:
-            with patch.object(trading.time, "sleep") as sleep:
-                orderable = trading.wait_for_sale_proceeds({"A": 100}, {}, 720000)
+    def _cash_plan(self, orderable, deficit=720000, buy_limit=727000):
+        return {"daily_buy_limit": buy_limit, "buy_deficit": deficit, "orderable_cash": orderable}
 
-        self.assertEqual(orderable, 720000)
-        self.assertEqual(fetch.call_count, 3)
+    def test_second_pass_waits_until_sale_proceeds_are_orderable(self):
+        reads = [self._cash_plan(3000), self._cash_plan(3000), self._cash_plan(720000)]
+        with patch.object(trading, "before_order_cutoff", return_value=True):
+            with patch.object(trading.time, "sleep") as sleep:
+                plan, pending = trading.wait_for_sale_proceeds(lambda: reads.pop(0), 720000, 651000)
+
+        self.assertEqual(plan["orderable_cash"], 720000)
+        self.assertFalse(pending)
         self.assertEqual(sleep.call_count, 2)
 
     def test_second_pass_stops_waiting_after_max_retries(self):
-        with patch.object(trading, "fetch_kis_orderable_cash", return_value=3000) as fetch:
+        read = Mock(return_value=self._cash_plan(3000))
+        with patch.object(trading, "before_order_cutoff", return_value=True):
             with patch.object(trading.time, "sleep"):
-                orderable = trading.wait_for_sale_proceeds({"A": 100}, {}, 720000)
+                _plan, pending = trading.wait_for_sale_proceeds(read, 720000, 651000)
 
-        self.assertEqual(orderable, 3000)
-        self.assertEqual(fetch.call_count, trading.SALE_PROCEEDS_MAX_RETRIES + 1)
+        self.assertTrue(pending)
+        self.assertEqual(read.call_count, trading.SALE_PROCEEDS_MAX_RETRIES + 1)
 
-    def test_second_pass_does_not_wait_without_sales(self):
-        with patch.object(trading, "fetch_kis_orderable_cash", return_value=0) as fetch:
+    def test_second_pass_does_not_wait_without_sales_or_cash_limited_buys(self):
+        cases = [
+            (self._cash_plan(0), 0, 0),
+            (self._cash_plan(3000, deficit=0), 720000, 651000),
+            (self._cash_plan(3000, buy_limit=0), 720000, 651000),
+        ]
+        for plan, sold, target in cases:
             with patch.object(trading.time, "sleep") as sleep:
-                trading.wait_for_sale_proceeds({"A": 100}, {}, 0)
+                _plan, pending = trading.wait_for_sale_proceeds(lambda: plan, sold, target)
+            self.assertFalse(pending)
+            sleep.assert_not_called()
 
-        self.assertEqual(fetch.call_count, 1)
+    def test_second_pass_counts_existing_cash_in_proceeds_target(self):
+        plan = self._cash_plan(1500000, deficit=2500000, buy_limit=2500000)
+
+        self.assertTrue(trading.sale_proceeds_pending(plan, 1000000, 1500000 + 900000))
+
+    def test_second_pass_waits_when_balance_cash_lags_orderable_cash(self):
+        positions = {"A": {"quantity": 0, "price": 0}, "B": {"quantity": 72, "price": 10000}}
+        plan = trading.plan_orders(
+            {**self.config, "target_weights": {"A": 50, "B": 50}},
+            positions,
+            {"A": 10000, "B": 10000},
+            3000,
+            723000,
+            buy_limit=727000,
+        )
+
+        self.assertEqual(plan["orderable_cash"], 3000)
+        self.assertTrue(trading.sale_proceeds_pending(plan, 720000, 651000))
+
+    def test_second_pass_stops_waiting_near_order_cutoff(self):
+        with patch.object(trading, "before_order_cutoff", return_value=False):
+            with patch.object(trading.time, "sleep") as sleep:
+                _plan, pending = trading.wait_for_sale_proceeds(
+                    lambda: self._cash_plan(3000), 720000, 651000
+                )
+
+        self.assertTrue(pending)
         sleep.assert_not_called()
+
+    def test_before_order_cutoff_uses_regular_session_end(self):
+        now = trading.kis_client.KST.localize(datetime(2026, 10, 7, 15, 18))
+
+        self.assertTrue(trading.before_order_cutoff(now=now))
+        self.assertFalse(trading.before_order_cutoff(120, now=now))
+
+    def test_managed_positions_keep_only_held_liquidation_codes(self):
+        config = {"target_weights": {"A": 100}, "liquidation_codes": ["SOLD", "HELD"]}
+        holdings = [{"pdno": "HELD", "hldg_qty": "3", "prpr": "100"}]
+
+        codes, positions = trading.managed_positions(config, holdings)
+
+        self.assertEqual(codes, {"A", "HELD"})
+        self.assertEqual(positions["HELD"]["quantity"], 3)
+
+    def test_live_second_pass_buys_after_sale_proceeds_are_reflected(self):
+        config = {
+            "target_weights": {"A": 100},
+            "liquidation_codes": ["L"],
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "rebalance_band_pct": 0,
+            "order_policy": {"first_order_check_minutes": 0},
+        }
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        holdings = [{"pdno": "L", "hldg_qty": "72", "prpr": "10000"}]
+        sold_holdings = [{"pdno": "L", "hldg_qty": "0", "prpr": "10000"}]
+        filled_rows = [{"odno": "1", "tot_ccld_amt": "720000"}]
+
+        def submit(sells, buys, _context):
+            orders = [{**order, "side": "sell", "order_no": "1"} for order in sells]
+            orders += [{**order, "side": "buy", "order_no": "2"} for order in buys]
+            return orders, []
+
+        with patch.object(trading, "resolve_trend_strategy", return_value=trend), \
+                patch.object(trading, "fetch_today_orders", return_value=[]), \
+                patch.object(trading, "fetch_kis_prices", return_value={"A": 10000, "L": 10000}), \
+                patch.object(trading, "fetch_kis_orderable_cash", side_effect=[3000, 3000, 723000]), \
+                patch.object(trading, "load_asset_labels", return_value={}), \
+                patch.object(trading, "live_orders_for_plan", side_effect=lambda plan, *_a: (plan["sells"], plan["buys"])), \
+                patch.object(trading, "submit_live_orders", side_effect=submit) as submit_mock, \
+                patch.object(trading, "reconcile_first_pass_orders", return_value=(filled_rows, [], None)), \
+                patch.object(trading.kis_client, "fetch_balance", return_value=(sold_holdings, {"prvs_rcdl_excc_amt": "723000"}, "t")), \
+                patch.object(trading, "before_order_cutoff", return_value=True), \
+                patch.object(trading.time, "sleep") as sleep:
+            result = trading.execute_live_rebalance(
+                config, holdings, {"prvs_rcdl_excc_amt": "3000"}, {"is_paper": False}
+            )
+
+        first_sells, first_buys, _ctx = submit_mock.call_args_list[0].args
+        retry_sells, retry_buys, _ctx = submit_mock.call_args_list[1].args
+        self.assertEqual([(o["code"], o["quantity"]) for o in first_sells], [("L", 72)])
+        self.assertEqual(first_buys, [])
+        self.assertEqual(retry_sells, [])
+        self.assertEqual([(o["code"], o["quantity"]) for o in retry_buys], [("A", 72)])
+        proceeds_waits = [c for c in sleep.call_args_list if c.args == (trading.SALE_PROCEEDS_RETRY_SECONDS,)]
+        self.assertEqual(len(proceeds_waits), 1)
+        self.assertNotIn("매수 보류", "\n".join(result["execution_report"]))
+
+    def test_live_second_pass_is_held_near_order_cutoff(self):
+        config = {
+            "target_weights": {"A": 100},
+            "liquidation_codes": ["L"],
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "rebalance_band_pct": 0,
+            "order_policy": {"first_order_check_minutes": 0},
+        }
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        holdings = [{"pdno": "L", "hldg_qty": "72", "prpr": "10000"}]
+        sell = {"code": "L", "quantity": 72, "price": 10000, "value": 720000, "side": "sell", "order_no": "1"}
+
+        with patch.object(trading, "resolve_trend_strategy", return_value=trend), \
+                patch.object(trading, "fetch_today_orders", return_value=[]), \
+                patch.object(trading, "fetch_kis_prices", return_value={"A": 10000, "L": 10000}), \
+                patch.object(trading, "fetch_kis_orderable_cash", return_value=723000), \
+                patch.object(trading, "load_asset_labels", return_value={}), \
+                patch.object(trading, "live_orders_for_plan", return_value=([sell], [])), \
+                patch.object(trading, "submit_live_orders", return_value=([sell], [])) as submit_mock, \
+                patch.object(trading, "reconcile_first_pass_orders", return_value=([], [], None)), \
+                patch.object(trading.kis_client, "fetch_balance", return_value=([], {"prvs_rcdl_excc_amt": "723000"}, "t")), \
+                patch.object(trading, "before_order_cutoff", return_value=False), \
+                patch.object(trading.time, "sleep"):
+            result = trading.execute_live_rebalance(
+                config, holdings, {"prvs_rcdl_excc_amt": "3000"}, {"is_paper": False}
+            )
+
+        self.assertEqual(submit_mock.call_count, 1)
+        self.assertIn("마감(15:20)이 임박", "\n".join(result["execution_report"]))
 
     def test_retry_safety_blocks_a_retry_when_first_order_status_is_missing(self):
         reason = trading.retry_safety_reason(
@@ -1777,16 +1908,20 @@ class ContentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "portfolio.json")
             with open(path, "w", encoding="utf-8") as file:
-                json.dump({"dividend_start_date": "20261101", "assets": []}, file)
+                json.dump({"dividend_start_date": "20250101", "assets": []}, file)
             with patch.object(briefing, "PORTFOLIO_FILE", path), \
                     patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("KIS_DIVIDEND_START_DATE", None)
-                self.assertEqual(briefing.load_dividend_start_date(), "20261101")
-                os.environ["KIS_DIVIDEND_START_DATE"] = "20261215"
-                self.assertEqual(briefing.load_dividend_start_date(), "20261215")
-                os.environ["KIS_DIVIDEND_START_DATE"] = "2026-12-15"
-                with self.assertRaises(ValueError):
-                    briefing.load_dividend_start_date()
+                self.assertEqual(briefing.load_dividend_start_date(), "20250101")
+                os.environ["KIS_DIVIDEND_START_DATE"] = "20250315"
+                self.assertEqual(briefing.load_dividend_start_date(), "20250315")
+                self.assertEqual(
+                    briefing.load_dividend_start_date({"dividend_start_date": "20240101"}), "20250315"
+                )
+                for invalid in ("2025-03-15", "2025031", "29991231"):
+                    os.environ["KIS_DIVIDEND_START_DATE"] = invalid
+                    with self.assertRaises(ValueError):
+                        briefing.load_dividend_start_date()
 
     def test_build_content_includes_market_notice(self):
         quotes = [{
