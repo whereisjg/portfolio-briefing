@@ -1179,6 +1179,19 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(report[-1], "매매 완료 · 주문 3회 진행")
         self.assertNotIn("매수 보류", "\n".join(report))
 
+    def test_per_asset_sell_limit_subtracts_todays_fills(self):
+        config = {"daily_sell_limit_per_asset_krw": 1000000}
+        orders = [
+            {"pdno": "L", "sll_buy_dvsn_cd": "01", "tot_ccld_amt": "718000"},
+            {"pdno": "L", "sll_buy_dvsn_cd": "02", "tot_ccld_amt": "50000"},
+            {"pdno": "M", "sll_buy_dvsn_cd": "01", "tot_ccld_qty": "2", "avg_prvs": "10000"},
+            {"pdno": "OTHER", "sll_buy_dvsn_cd": "01", "tot_ccld_amt": "900000"},
+        ]
+
+        limits = trading.remaining_sell_limits_per_asset(config, orders, {"L", "M", "A"})
+
+        self.assertEqual(limits, {"L": 282000, "M": 980000, "A": 1000000})
+
     def test_live_rebalance_stops_when_price_rises_past_guard(self):
         config = {
             "target_weights": {"A": 100},
