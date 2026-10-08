@@ -714,7 +714,11 @@ def build_content(
                 action_text = action_for(item).split(": ", 1)[-1]
             alert_action_lines.append(f"{icon} {item['display']} {item['chg_pct']:+.2f}%\n{action_text}")
 
-    telegram_lines = [f"📈 포트폴리오 {today_short} · 추세 {trend_labels.get(trend_state.get('state'), '중립') if trend_state else '중립'}"]
+    if trend_state and trend_state.get("enabled") is False:
+        header_mode = "고정 비중"
+    else:
+        header_mode = f"추세 {trend_labels.get(trend_state.get('state'), '중립') if trend_state else '중립'}"
+    telegram_lines = [f"📈 포트폴리오 {today_short} · {header_mode}"]
     if market_notice:
         telegram_lines.extend([market_notice, ""])
     else:

@@ -7,74 +7,25 @@
   "daily_sell_limit_per_asset_krw": 1000000,
   "rebalance_band_pct": 2,
   "strategy_comparison": {
-    "enabled": true,
+    "enabled": false,
     "history_file": "performance/strategy_twr_index_etf.json"
   },
   "liquidation_codes": [
+    "379810",
+    "241180",
+    "153130",
     "486290",
     "0005A0",
     "0048J0",
     "101280"
   ],
   "target_weights": {
-    "0015B0": 20,
-    "379810": 15,
-    "379800": 15,
-    "241180": 20,
-    "153130": 30
+    "0015B0": 40,
+    "379800": 30,
+    "458730": 30
   },
   "trend_strategy": {
-    "enabled": true,
-    "average_type": "hma",
-    "short_window_days": 20,
-    "long_window_days": 40,
-    "long_filter_window_days": 200,
-    "confirmation_days": 3,
-    "common_history_days": 20,
-    "composite_threshold": 0.5,
-    "signals": [
-      {
-        "kind": "portfolio",
-        "label": "계좌 위험자산",
-        "weight_pct": 50,
-        "codes": ["0015B0", "379810", "379800", "241180"]
-      },
-      {
-        "kind": "index",
-        "label": "나스닥100",
-        "weight_pct": 25,
-        "symbol": "NDX"
-      },
-      {
-        "kind": "index",
-        "label": "S&P500",
-        "weight_pct": 25,
-        "symbol": "SPX"
-      }
-    ],
-    "weights": {
-      "risk_on": {
-        "0015B0": 30,
-        "379810": 15,
-        "379800": 15,
-        "241180": 20,
-        "153130": 20
-      },
-      "neutral": {
-        "0015B0": 20,
-        "379810": 15,
-        "379800": 15,
-        "241180": 20,
-        "153130": 30
-      },
-      "risk_off": {
-        "0015B0": 10,
-        "379810": 15,
-        "379800": 15,
-        "241180": 20,
-        "153130": 40
-      }
-    }
+    "enabled": false
   },
   "order_policy": {
     "type": "limit",
