@@ -32,6 +32,8 @@ SALE_PROCEEDS_RETRY_SECONDS = 60
 SALE_PROCEEDS_MAX_RETRIES = 5
 SALE_PROCEEDS_REFLECTED_RATIO = 0.9
 ORDER_CUTOFF_MARGIN_SECONDS = 60
+# Upper bound on order rounds per run (one round per order-check interval).
+MAX_ORDER_CYCLES = 60
 SALE_PROCEEDS_READ_ALLOWANCE_SECONDS = 60
 TREND_STATE_FILE = os.getenv("KIS_TREND_STATE_FILE", "").strip()
 PORTFOLIO_FILE = Path("portfolio.json")
@@ -784,47 +786,47 @@ def daily_trade_budgets(config, total_assets, today_orders, target_codes, contex
 
 
 def format_execution_report(today_orders, submitted, cancelled, asset_labels=None):
-    """Format KIS order status into a compact Telegram-friendly execution report."""
+    """Format KIS order status into one compact line per ETF and side, across retries."""
     if not submitted:
         return []
 
     asset_labels = asset_labels or {}
     rows_by_order_no = {str(row.get("odno", "")).strip(): row for row in today_orders}
     cancelled_order_nos = {str(item.get("order_no", "")).strip() for item in cancelled}
-    lines = ["🤖 자동매매 결과"]
+    groups = {}
     for order in submitted:
+        group = groups.setdefault((order["side"], order["code"]), {"filled": 0, "amount": 0.0, "status": ""})
         order_no = str(order.get("order_no", "")).strip()
         row = rows_by_order_no.get(order_no)
-        side = "매수" if order["side"] == "buy" else "매도"
-        label = asset_labels.get(order["code"], order["code"])
-        requested = int(order["quantity"])
         if row is None:
-            lines.append(f"{side} {label} · 상태 조회 대기")
+            group["status"] = "상태 조회 대기"
             continue
 
+        requested = int(order["quantity"])
         filled = int(kis_client.as_float(row.get("tot_ccld_qty"), 0))
         remaining = int(kis_client.as_float(row.get("rmn_qty"), 0))
         average_price = kis_client.as_float(row.get("avg_prvs"), 0)
+        group["filled"] += filled
+        group["amount"] += filled * (average_price or order["price"])
         if filled >= requested:
-            status = "전량 체결"
-        elif filled > 0:
-            status = f"부분 체결 · 잔량 {remaining}주"
+            group["status"] = ""
         elif order_no in cancelled_order_nos:
-            status = "미체결 취소"
+            group["status"] = "잔량 취소" if filled > 0 else "미체결 취소"
         elif remaining > 0:
-            status = f"미체결 · 잔량 {remaining}주"
+            group["status"] = f"미체결 · 잔량 {remaining}주"
         else:
-            status = "미체결"
+            group["status"] = "미체결"
 
-        if filled > 0:
-            amount = filled * (average_price or order["price"])
-            amount_text = f"{amount / 10000:,.1f}".rstrip("0").rstrip(".") + "만"
-            quantity_text = f"{filled}주" if filled == requested else f"{filled}/{requested}주"
-            lines.append(f"{side} {label} {quantity_text} · {amount_text} 체결")
-            if filled < requested:
-                lines[-1] += f" · {status}"
+    lines = ["🤖 자동매매 결과"]
+    for (side, code), group in groups.items():
+        side_text = "매수" if side == "buy" else "매도"
+        label = asset_labels.get(code, code)
+        if group["filled"] > 0:
+            amount_text = f"{group['amount'] / 10000:,.1f}".rstrip("0").rstrip(".") + "만"
+            line = f"{side_text} {label} {group['filled']}주 · {amount_text} 체결"
+            lines.append(line + (f" · {group['status']}" if group["status"] else ""))
         else:
-            lines.append(f"{side} {label} · {status}")
+            lines.append(f"{side_text} {label} · {group['status'] or '미체결'}")
     return lines
 
 
@@ -960,93 +962,112 @@ def execute_live_rebalance(config, holdings, summary, context):
             "retryable": False,
         }
 
+    order_interval_seconds = int(effective_config["order_policy"]["first_order_check_minutes"]) * 60
+    all_orders = list(submitted)
+    all_cancelled = []
+    all_errors = list(submission_errors)
+    # Price guard reference: the first price each ETF was bought at today.
+    reference_buy_prices = {}
+    for order in submitted:
+        if order["side"] == "buy":
+            reference_buy_prices.setdefault(order["code"], order["price"])
+    cycle_orders = submitted
+    cycle_plan = plan
+    cycles = 1
+    hold_reason = ""
+    proceeds_pending = False
     try:
-        time.sleep(int(effective_config["order_policy"]["first_order_check_minutes"]) * 60)
-        first_today_orders, cancelled, retry_reason = reconcile_first_pass_orders(submitted, context)
-        if submission_errors:
-            retry_reason = "1차 주문 전송 오류가 있어 2차 주문을 보류했습니다."
-        if retry_reason:
-            report = format_execution_report(first_today_orders, submitted, cancelled, asset_labels)
-            report.extend(format_submission_errors(submission_errors, asset_labels))
-            report.append(f"2차 주문 보류: {retry_reason}")
-            return {
-                "status": "submitted",
-                "plan": plan,
-                "orders": submitted,
-                "cancelled": cancelled,
-                "execution_report": report,
-                "trend": trend,
-                "reason": "",
-                "retryable": False,
+        # Repeat check → cancel unfilled → re-plan → re-order until nothing is left to trade.
+        while True:
+            time.sleep(order_interval_seconds)
+            today_orders, cancelled, retry_reason = reconcile_first_pass_orders(cycle_orders, context)
+            all_cancelled.extend(cancelled)
+            if all_errors:
+                hold_reason = "주문 전송 오류가 있어 추가 주문을 보류했습니다."
+                break
+            if retry_reason:
+                hold_reason = retry_reason
+                break
+            if cycles >= MAX_ORDER_CYCLES:
+                hold_reason = f"주문 반복 {MAX_ORDER_CYCLES}회에 도달해 추가 주문을 멈췄습니다."
+                break
+            if not before_order_cutoff(SALE_PROCEEDS_READ_ALLOWANCE_SECONDS + ORDER_CUTOFF_MARGIN_SECONDS):
+                hold_reason = "정규장 주문 마감(15:20)이 임박해 추가 주문을 멈췄습니다."
+                break
+
+            filled_total = filled_values_for_orders(today_orders, all_orders)
+            filled_cycle = filled_values_for_orders(today_orders, cycle_orders)
+            sold_cycle = sum(filled_cycle["sell"].values())
+            retry_config = deepcopy(effective_config)
+            retry_sell_limits = {
+                code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled_total["sell"].get(code, 0), 0)
+                for code in managed_codes
             }
-
-        filled = filled_values_for_orders(first_today_orders, submitted)
-        sold_value = sum(filled["sell"].values())
-        retry_config = deepcopy(effective_config)
-        retry_sell_limits = {
-            code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled["sell"].get(code, 0), 0)
-            for code in managed_codes
-        }
-        # Proceeds count as reflected once buyable cash regains the post-buy
-        # baseline plus most of what was sold.
-        proceeds_target = (
-            max(plan["orderable_cash"] - filled["buy"], 0)
-            + sold_value * SALE_PROCEEDS_REFLECTED_RATIO
-        )
-
-        def read_retry_plan():
-            wait_for_kis_request_slot(context)
-            fresh_holdings, fresh_summary, _token = kis_client.fetch_balance(
-                cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
-            )
-            context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
-            fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
-            fresh_prices = fetch_kis_prices(managed_codes, context)
-            return plan_orders(
-                retry_config,
-                fresh_positions,
-                fresh_prices,
-                cash_from_balance(fresh_summary),
-                fetch_kis_orderable_cash(fresh_prices, context),
-                retry_sell_limits,
-                buy_limit=max(plan["daily_buy_limit"] - filled["buy"], 0),
-                sell_turnover_limit=max(plan["daily_sell_limit"] - sold_value, 0),
+            buy_limit = max(plan["daily_buy_limit"] - filled_total["buy"], 0)
+            sell_limit = max(plan["daily_sell_limit"] - sum(filled_total["sell"].values()), 0)
+            # Proceeds count as reflected once buyable cash regains the post-buy
+            # baseline plus most of what this cycle sold.
+            proceeds_target = (
+                max(cycle_plan["orderable_cash"] - filled_cycle["buy"], 0)
+                + sold_cycle * SALE_PROCEEDS_REFLECTED_RATIO
             )
 
-        retry_plan, proceeds_pending = None, False
-        if before_order_cutoff(SALE_PROCEEDS_READ_ALLOWANCE_SECONDS + ORDER_CUTOFF_MARGIN_SECONDS):
-            retry_plan, proceeds_pending = wait_for_sale_proceeds(read_retry_plan, sold_value, proceeds_target)
-        if retry_plan is None or not before_order_cutoff(ORDER_CUTOFF_MARGIN_SECONDS):
-            report = format_execution_report(first_today_orders, submitted, cancelled, asset_labels)
-            report.append("2차 주문 보류: 정규장 주문 마감(15:20)이 임박했습니다.")
-            return {
-                "status": "submitted",
-                "plan": plan,
-                "orders": submitted,
-                "cancelled": cancelled,
-                "execution_report": report,
-                "trend": trend,
-                "reason": "",
-                "retryable": False,
-            }
-        first_buy_prices = {order["code"]: order["price"] for order in submitted if order["side"] == "buy"}
-        retry_sells, retry_buys = live_orders_for_plan(retry_plan, retry_config, context, first_buy_prices)
-        retried, retry_errors = submit_live_orders(retry_sells, retry_buys, context)
-        all_orders = submitted + retried
-        final_today_orders = fetch_today_orders(context)
+            def read_retry_plan():
+                wait_for_kis_request_slot(context)
+                fresh_holdings, fresh_summary, _token = kis_client.fetch_balance(
+                    cache_file=kis_client.env_value("KIS_ACCESS_TOKEN_CACHE_FILE"),
+                )
+                context["next_kis_request_at"] = time.monotonic() + KIS_REQUEST_MIN_INTERVAL_SECONDS
+                fresh_positions = positions_from_holdings(fresh_holdings, managed_codes)
+                fresh_prices = fetch_kis_prices(managed_codes, context)
+                return plan_orders(
+                    retry_config,
+                    fresh_positions,
+                    fresh_prices,
+                    cash_from_balance(fresh_summary),
+                    fetch_kis_orderable_cash(fresh_prices, context),
+                    retry_sell_limits,
+                    buy_limit=buy_limit,
+                    sell_turnover_limit=sell_limit,
+                )
+
+            cycle_plan, proceeds_pending = wait_for_sale_proceeds(read_retry_plan, sold_cycle, proceeds_target)
+            if not before_order_cutoff(ORDER_CUTOFF_MARGIN_SECONDS):
+                hold_reason = "정규장 주문 마감(15:20)이 임박해 추가 주문을 멈췄습니다."
+                break
+            retry_sells, retry_buys = live_orders_for_plan(
+                cycle_plan, retry_config, context, reference_buy_prices
+            )
+            if not retry_sells and not retry_buys:
+                break
+            cycle_orders, errors = submit_live_orders(retry_sells, retry_buys, context)
+            all_errors.extend(errors)
+            all_orders.extend(cycle_orders)
+            for order in cycle_orders:
+                if order["side"] == "buy":
+                    reference_buy_prices.setdefault(order["code"], order["price"])
+            cycles += 1
+            if not cycle_orders:
+                break
+
+        # Every exit follows a reconcile, so its order status is already final.
         execution_report = format_execution_report(
-            final_today_orders, all_orders, cancelled, asset_labels
+            today_orders, all_orders, all_cancelled, asset_labels
         )
-        execution_report.extend(format_submission_errors(submission_errors + retry_errors, asset_labels))
+        execution_report.extend(format_submission_errors(all_errors, asset_labels))
+        if hold_reason:
+            execution_report.append(f"추가 주문 보류: {hold_reason}")
         if proceeds_pending:
             execution_report.append(
                 "매수 보류: 매도대금이 아직 주문가능금액에 반영되지 않아 남은 금액은 다음 실행에서 매수합니다."
             )
+        if not hold_reason:
+            execution_report.append(f"매매 완료 · 주문 {cycles}회 진행")
         return {
             "status": "submitted",
             "plan": plan,
             "orders": all_orders,
-            "cancelled": cancelled,
+            "cancelled": all_cancelled,
             "execution_report": execution_report,
             "trend": trend,
             "reason": "",
@@ -1056,7 +1077,7 @@ def execute_live_rebalance(config, holdings, summary, context):
         return execution_failure(
             f"주문 접수 뒤 상태 확인 실패: {exc}",
             retryable=False,
-            orders=submitted,
+            orders=all_orders,
         )
 
 
