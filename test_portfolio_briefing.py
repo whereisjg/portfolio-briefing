@@ -926,6 +926,23 @@ class TradingPlanTests(unittest.TestCase):
         self.assertIn("미체결 취소", report[2])
         self.assertNotIn("지정가", "\n".join(report))
 
+    def test_execution_report_merges_retried_orders_per_etf(self):
+        report = trading.format_execution_report(
+            [
+                {"odno": "1", "tot_ccld_qty": "0", "rmn_qty": "0", "avg_prvs": "0"},
+                {"odno": "2", "tot_ccld_qty": "10", "rmn_qty": "0", "avg_prvs": "23500"},
+                {"odno": "3", "tot_ccld_qty": "3", "rmn_qty": "0", "avg_prvs": "23600"},
+            ],
+            [
+                {"order_no": "1", "side": "buy", "code": "S", "quantity": 15, "price": 23400},
+                {"order_no": "2", "side": "buy", "code": "S", "quantity": 15, "price": 23500},
+                {"order_no": "3", "side": "buy", "code": "S", "quantity": 5, "price": 23600},
+            ],
+            [{"order_no": "1", "quantity": 15}, {"order_no": "2", "quantity": 5}, {"order_no": "3", "quantity": 2}],
+        )
+
+        self.assertEqual(report[1:], ["매수 S 13주 · 30.6만 체결 · 잔량 취소"])
+
     def test_execution_report_uses_asset_labels(self):
         report = trading.format_execution_report(
             [],
@@ -1100,7 +1117,7 @@ class TradingPlanTests(unittest.TestCase):
         self.assertEqual(codes, {"A", "HELD"})
         self.assertEqual(positions["HELD"]["quantity"], 3)
 
-    def test_live_second_pass_buys_after_sale_proceeds_are_reflected(self):
+    def test_live_rebalance_repeats_until_unfilled_buys_are_completed(self):
         config = {
             "target_weights": {"A": 100},
             "liquidation_codes": ["L"],
@@ -1112,39 +1129,90 @@ class TradingPlanTests(unittest.TestCase):
         }
         trend = {"state": "neutral", "weights": {"A": 100}}
         holdings = [{"pdno": "L", "hldg_qty": "72", "prpr": "10000"}]
-        sold_holdings = [{"pdno": "L", "hldg_qty": "0", "prpr": "10000"}]
-        filled_rows = [{"odno": "1", "tot_ccld_amt": "720000"}]
+        sell_row = {"odno": "1", "tot_ccld_qty": "72", "tot_ccld_amt": "720000", "rmn_qty": "0", "avg_prvs": "10000"}
+        partial_row = {"odno": "2", "tot_ccld_qty": "40", "tot_ccld_amt": "400000", "rmn_qty": "0", "avg_prvs": "10000"}
+        rest_row = {"odno": "3", "tot_ccld_qty": "32", "tot_ccld_amt": "320000", "rmn_qty": "0", "avg_prvs": "10000"}
+        order_numbers = iter(["1", "2", "3"])
 
         def submit(sells, buys, _context):
-            orders = [{**order, "side": "sell", "order_no": "1"} for order in sells]
-            orders += [{**order, "side": "buy", "order_no": "2"} for order in buys]
+            orders = [{**order, "side": "sell", "order_no": next(order_numbers)} for order in sells]
+            orders += [{**order, "side": "buy", "order_no": next(order_numbers)} for order in buys]
             return orders, []
+
+        def balance(holding_qty, cash):
+            rows = [{"pdno": "L", "hldg_qty": "0", "prpr": "10000"}]
+            rows.append({"pdno": "A", "hldg_qty": str(holding_qty), "prpr": "10000"})
+            return rows, {"prvs_rcdl_excc_amt": str(cash)}, "t"
 
         with patch.object(trading, "resolve_trend_strategy", return_value=trend), \
                 patch.object(trading, "fetch_today_orders", return_value=[]), \
                 patch.object(trading, "fetch_kis_prices", return_value={"A": 10000, "L": 10000}), \
-                patch.object(trading, "fetch_kis_orderable_cash", side_effect=[3000, 3000, 723000]), \
+                patch.object(trading, "fetch_kis_orderable_cash", side_effect=[3000, 3000, 723000, 323000, 3000]), \
                 patch.object(trading, "load_asset_labels", return_value={}), \
                 patch.object(trading, "fetch_kis_best_bid", return_value=10000), \
                 patch.object(trading, "fetch_kis_best_ask", return_value=10000), \
                 patch.object(trading, "submit_live_orders", side_effect=submit) as submit_mock, \
-                patch.object(trading, "reconcile_first_pass_orders", return_value=(filled_rows, [], None)), \
-                patch.object(trading.kis_client, "fetch_balance", return_value=(sold_holdings, {"prvs_rcdl_excc_amt": "723000"}, "t")), \
+                patch.object(trading, "reconcile_first_pass_orders", side_effect=[
+                    ([sell_row], [], None),
+                    ([sell_row, partial_row], [{"order_no": "2", "quantity": 32}], None),
+                    ([sell_row, partial_row, rest_row], [], None),
+                ]), \
+                patch.object(trading.kis_client, "fetch_balance", side_effect=[
+                    balance(0, 723000), balance(0, 723000), balance(40, 323000), balance(72, 3000),
+                ]), \
                 patch.object(trading, "before_order_cutoff", return_value=True), \
                 patch.object(trading.time, "sleep") as sleep:
             result = trading.execute_live_rebalance(
                 config, holdings, {"prvs_rcdl_excc_amt": "3000"}, {"is_paper": False}
             )
 
-        first_sells, first_buys, _ctx = submit_mock.call_args_list[0].args
-        retry_sells, retry_buys, _ctx = submit_mock.call_args_list[1].args
-        self.assertEqual([(o["code"], o["quantity"]) for o in first_sells], [("L", 72)])
-        self.assertEqual(first_buys, [])
-        self.assertEqual(retry_sells, [])
-        self.assertEqual([(o["code"], o["quantity"]) for o in retry_buys], [("A", 72)])
+        rounds = [
+            ([(o["code"], o["quantity"]) for o in call.args[0]], [(o["code"], o["quantity"]) for o in call.args[1]])
+            for call in submit_mock.call_args_list
+        ]
+        self.assertEqual(rounds, [([("L", 72)], []), ([], [("A", 72)]), ([], [("A", 32)])])
         proceeds_waits = [c for c in sleep.call_args_list if c.args == (trading.SALE_PROCEEDS_RETRY_SECONDS,)]
         self.assertEqual(len(proceeds_waits), 1)
-        self.assertNotIn("매수 보류", "\n".join(result["execution_report"]))
+        report = result["execution_report"]
+        self.assertIn("매도 L 72주 · 72만 체결", report)
+        self.assertIn("매수 A 72주 · 72만 체결", report)
+        self.assertEqual(report[-1], "매매 완료 · 주문 3회 진행")
+        self.assertNotIn("매수 보류", "\n".join(report))
+
+    def test_live_rebalance_stops_when_price_rises_past_guard(self):
+        config = {
+            "target_weights": {"A": 100},
+            "liquidation_codes": [],
+            "daily_buy_limit_pct": 100,
+            "daily_sell_limit_pct": 100,
+            "daily_sell_limit_per_asset_krw": 1000000,
+            "rebalance_band_pct": 0,
+            "order_policy": {"first_order_check_minutes": 0, "max_buy_price_increase_pct": 0.3},
+        }
+        trend = {"state": "neutral", "weights": {"A": 100}}
+        asks = iter([10000, 10100])
+        cancelled = [{"order_no": "1", "quantity": 10}]
+        with patch.object(trading, "resolve_trend_strategy", return_value=trend), \
+                patch.object(trading, "fetch_today_orders", return_value=[]), \
+                patch.object(trading, "fetch_kis_prices", return_value={"A": 10000}), \
+                patch.object(trading, "fetch_kis_orderable_cash", return_value=100000), \
+                patch.object(trading, "load_asset_labels", return_value={}), \
+                patch.object(trading, "fetch_kis_best_ask", side_effect=lambda *_a: next(asks)), \
+                patch.object(trading, "submit_live_orders", side_effect=lambda s, b, _c: (
+                    [{**o, "side": "buy", "order_no": "1"} for o in b], []
+                )) as submit_mock, \
+                patch.object(trading, "reconcile_first_pass_orders", return_value=(
+                    [{"odno": "1", "tot_ccld_qty": "0", "rmn_qty": "0"}], cancelled, None
+                )), \
+                patch.object(trading.kis_client, "fetch_balance", return_value=([], {"prvs_rcdl_excc_amt": "100000"}, "t")), \
+                patch.object(trading, "before_order_cutoff", return_value=True), \
+                patch.object(trading.time, "sleep"):
+            result = trading.execute_live_rebalance(
+                config, [], {"prvs_rcdl_excc_amt": "100000"}, {"is_paper": False}
+            )
+
+        self.assertEqual(submit_mock.call_count, 1)
+        self.assertIn("매수 A · 미체결 취소", result["execution_report"])
 
     def test_live_second_pass_is_held_near_order_cutoff(self):
         config = {
@@ -1257,7 +1325,7 @@ class TradingPlanTests(unittest.TestCase):
                                             )
 
         self.assertEqual(submit.call_count, 1)
-        self.assertIn("2차 주문 보류", "\n".join(result["execution_report"]))
+        self.assertIn("추가 주문 보류", "\n".join(result["execution_report"]))
         self.assertIn("상태 조회가 지연", "\n".join(result["execution_report"]))
 
     def test_dry_run_stops_when_trend_calculation_fails(self):
