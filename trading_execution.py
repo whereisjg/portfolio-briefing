@@ -685,6 +685,21 @@ def filled_trade_values_for_codes(today_orders, target_codes):
     return values
 
 
+def remaining_sell_limits_per_asset(config, today_orders, codes):
+    """Per-ETF daily sell limit left after today's filled sells."""
+    limit = float(config["daily_sell_limit_per_asset_krw"])
+    sold = {code: 0.0 for code in codes}
+    for row in today_orders:
+        code = str(row.get("pdno", "")).strip()
+        if code not in sold or str(row.get("sll_buy_dvsn_cd", "")).strip() != "01":
+            continue
+        value = kis_client.as_float(row.get("tot_ccld_amt"), 0)
+        if value <= 0:
+            value = kis_client.as_float(row.get("tot_ccld_qty"), 0) * kis_client.as_float(row.get("avg_prvs"), 0)
+        sold[code] += max(value, 0)
+    return {code: max(limit - value, 0) for code, value in sold.items()}
+
+
 def has_open_target_order(today_orders, target_codes):
     return any(
         str(row.get("pdno", "")).strip() in target_codes
@@ -935,6 +950,7 @@ def execute_live_rebalance(config, holdings, summary, context):
             market_prices,
             cash,
             orderable_cash,
+            remaining_sell_limits_per_asset(config, today_orders, managed_codes),
             buy_limit=daily_budgets["buy_remaining"],
             sell_turnover_limit=daily_budgets["sell_remaining"],
         )
@@ -999,10 +1015,8 @@ def execute_live_rebalance(config, holdings, summary, context):
             filled_cycle = filled_values_for_orders(today_orders, cycle_orders)
             sold_cycle = sum(filled_cycle["sell"].values())
             retry_config = deepcopy(effective_config)
-            retry_sell_limits = {
-                code: max(float(config["daily_sell_limit_per_asset_krw"]) - filled_total["sell"].get(code, 0), 0)
-                for code in managed_codes
-            }
+            # Today's fills (earlier runs included) bound each ETF's remaining sell limit.
+            retry_sell_limits = remaining_sell_limits_per_asset(config, today_orders, managed_codes)
             buy_limit = max(plan["daily_buy_limit"] - filled_total["buy"], 0)
             sell_limit = max(plan["daily_sell_limit"] - sum(filled_total["sell"].values()), 0)
             # Proceeds count as reflected once buyable cash regains the post-buy
@@ -1195,6 +1209,7 @@ def main():
         prices,
         cash,
         orderable_cash,
+        remaining_sell_limits_per_asset(config, today_orders, managed_codes),
         buy_limit=daily_budgets["buy_remaining"],
         sell_turnover_limit=daily_budgets["sell_remaining"],
     )
