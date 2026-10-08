@@ -1,6 +1,6 @@
 {
-  "live_orders_enabled": true,
-  "mode": "live",
+  "live_orders_enabled": false,
+  "mode": "dry-run",
   "daily_buy_limit_pct": 3,
   "daily_sell_limit_pct": 3,
   "paper_test_order_limit_krw": 100000,
