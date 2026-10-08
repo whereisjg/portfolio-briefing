@@ -230,7 +230,13 @@ class QuantBacktestTests(unittest.TestCase):
         self.assertGreater(with_cost["fixed_turnover_pct"], 0)
 
     def test_hma_warmup_is_added_before_the_requested_evaluation_period(self):
-        config = strategy.load_config()
+        config = {"trend_strategy": {
+            "average_type": "hma",
+            "short_window_days": 20,
+            "long_window_days": 40,
+            "long_filter_window_days": 200,
+            "confirmation_days": 3,
+        }}
 
         self.assertEqual(quant_backtest.required_trend_closes(config), 215)
         self.assertGreater(quant_backtest.warmup_calendar_days(config), 300)
@@ -265,32 +271,22 @@ class EtfDrawdownTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
-    def test_repository_config_replaces_topix_with_unhedged_nikkei225(self):
+    def test_repository_config_uses_fixed_us_equity_weights(self):
         config = strategy.load_config()
 
-        self.assertEqual(config["trend_strategy"]["confirmation_days"], 3)
-        self.assertEqual(config["target_weights"]["241180"], 20)
-        self.assertNotIn("101280", config["target_weights"])
-        self.assertNotIn("0036D0", config["target_weights"])
-        self.assertNotIn("0036D0", config["liquidation_codes"])
-        self.assertIn("101280", config["liquidation_codes"])
-        portfolio_signal = next(
-            signal for signal in config["trend_strategy"]["signals"]
-            if signal["kind"] == "portfolio"
-        )
-        self.assertIn("241180", portfolio_signal["codes"])
-        self.assertNotIn("101280", portfolio_signal["codes"])
-        self.assertNotIn("0036D0", portfolio_signal["codes"])
-        for state in ("risk_on", "neutral", "risk_off"):
-            self.assertEqual(config["trend_strategy"]["weights"][state]["241180"], 20)
+        self.assertEqual(config["target_weights"], {"0015B0": 40, "379800": 30, "458730": 30})
+        self.assertFalse(config["trend_strategy"]["enabled"])
+        self.assertFalse(config["strategy_comparison"]["enabled"])
+        for code in ("379810", "241180", "153130", "486290", "0005A0"):
+            self.assertIn(code, config["liquidation_codes"])
 
         _indexes, assets = briefing.load_portfolio()
-        nikkei = next(asset for asset in assets if asset["symbol"] == "241180.KS")
-        self.assertEqual(nikkei["name"], "TIGER 일본니케이225")
-        self.assertEqual(nikkei["target_weight_pct"], 20)
-        topix = next(asset for asset in assets if asset["symbol"] == "101280.KS")
-        self.assertEqual(topix["name"], "KODEX 일본TOPIX100")
-        self.assertIsNone(topix["target_weight_pct"])
+        targets = {asset["symbol"]: asset["target_weight_pct"] for asset in assets}
+        self.assertEqual(targets["0015B0.KS"], 40)
+        self.assertEqual(targets["379800.KS"], 30)
+        self.assertEqual(targets["458730.KS"], 30)
+        self.assertIsNone(targets["241180.KS"])
+        self.assertIsNone(targets["153130.KS"])
         self.assertFalse(any(asset["symbol"] == "0036D0.KS" for asset in assets))
 
     def test_env_value_uses_default_for_empty_environment_value(self):
@@ -2080,6 +2076,22 @@ class ContentTests(unittest.TestCase):
             with patch.object(briefing, "PORTFOLIO_FILE", os.path.join(tmp, "missing.json")), \
                     patch.dict(os.environ, {"KIS_DIVIDEND_START_DATE": "20250101"}):
                 self.assertEqual(briefing.load_dividend_start_date(), "20250101")
+
+    def test_build_content_labels_fixed_weight_mode(self):
+        quotes = [{
+            "ticker": "ETF", "display": "테스트 ETF", "name": "테스트 ETF", "currency": "KRW",
+            "price": 22000, "prev_close": 21500, "chg_amount": 500, "chg_pct": 2.33, "provider": "KIS",
+        }]
+
+        fixed, _markdown = briefing.build_content(
+            [], quotes, [], trend_state={"state": "neutral", "weights": {}, "enabled": False}
+        )
+        trend, _markdown = briefing.build_content(
+            [], quotes, [], trend_state={"state": "risk_on", "weights": {}, "enabled": True}
+        )
+
+        self.assertIn("· 고정 비중", fixed.splitlines()[0])
+        self.assertIn("· 추세 위험 선호", trend.splitlines()[0])
 
     def test_build_content_includes_market_notice(self):
         quotes = [{

@@ -26,7 +26,7 @@
       "display": "KoAct나스닥성장",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 20
+      "target_weight_pct": 40
     },
     {
       "ticker": "KODEX미국나스닥100",
@@ -35,7 +35,7 @@
       "display": "KODEX나스닥100",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 15
+      "target_weight_pct": null
     },
     {
       "ticker": "TIGER미국나스닥100타겟데일리커버드콜",
@@ -53,7 +53,16 @@
       "display": "KODEX S&P500",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 15
+      "target_weight_pct": 30
+    },
+    {
+      "ticker": "TIGER미국배당다우존스",
+      "symbol": "458730.KS",
+      "name": "TIGER 미국배당다우존스",
+      "display": "TIGER미국배당",
+      "currency": "KRW",
+      "shares": null,
+      "target_weight_pct": 30
     },
     {
       "ticker": "KODEX미국S&P500데일리커버드콜OTM",
@@ -71,7 +80,7 @@
       "display": "TIGER일본니케이225",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 20
+      "target_weight_pct": null
     },
     {
       "ticker": "KODEX일본TOPIX100",
@@ -89,7 +98,7 @@
       "display": "KODEX단기채권",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 30
+      "target_weight_pct": null
     },
     {
       "ticker": "KODEX미국머니마켓액티브",
