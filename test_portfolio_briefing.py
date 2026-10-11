@@ -4,6 +4,7 @@ import tempfile
 from datetime import datetime
 import json
 import os
+from types import SimpleNamespace
 
 import portfolio_briefing as briefing
 import etf_drawdown
@@ -2032,6 +2033,59 @@ class ContentTests(unittest.TestCase):
         self.assertIn("총손익 -17,655원", telegram)
         self.assertIn("- 누적 분배금: +12,345원", markdown)
         self.assertIn("- 총손익: -17,655원", markdown)
+
+        telegram, markdown = briefing.build_content(
+            [], quotes, [],
+            account_summary={"tot_evlu_amt": "220000", "prvs_rcdl_excc_amt": "50000"},
+            dividend_summary={"amount": 12345, "count": 2},
+            realized_summary={"amount": 40000},
+        )
+
+        self.assertIn("실현손익 +40,000원", telegram)
+        self.assertIn("총손익 +22,345원", telegram)
+        self.assertIn("- 실현손익: +40,000원", markdown)
+        self.assertIn("- 총손익: +22,345원", markdown)
+
+    def test_fetch_kis_realized_profit_prefers_period_summary(self):
+        rows = [{"rlzt_pfls": "1,000"}, {"rlzt_pfls": "-300"}]
+        with patch.object(
+            briefing.kis_client, "fetch_period_trade_profit", return_value=(rows, {"tot_rlzt_pfls": "650"})
+        ):
+            self.assertEqual(briefing.fetch_kis_realized_profit("token", "20260101")["amount"], 650)
+        with patch.object(
+            briefing.kis_client, "fetch_period_trade_profit", return_value=(rows, {})
+        ):
+            self.assertEqual(briefing.fetch_kis_realized_profit("token", "20260101")["amount"], 700)
+
+    def test_fetch_period_trade_profit_follows_continuation_pages(self):
+        pages = [
+            ({"tr_cont": "M"}, {"rt_cd": "0", "output1": [{"rlzt_pfls": "1"}],
+                                "output2": [{"tot_rlzt_pfls": "3"}], "ctx_area_nk100": "NK"}),
+            ({"tr_cont": "D"}, {"rt_cd": "0", "output1": [{"rlzt_pfls": "2"}], "output2": [{}]}),
+        ]
+        calls = []
+
+        class Session:
+            def get(self, url, headers, params, timeout):
+                calls.append((headers.get("tr_cont"), params["CTX_AREA_NK100"]))
+                response_headers, payload = pages[len(calls) - 1]
+                return SimpleNamespace(
+                    headers=response_headers, json=lambda: payload, raise_for_status=lambda: None
+                )
+
+        with patch.dict(os.environ, {
+            "KIS_APP_KEY": "key",
+            "KIS_APP_SECRET": "secret",
+            "KIS_ACCOUNT_NO": "12345678",
+            "KIS_PRODUCT_CODE": "01",
+        }, clear=False):
+            rows, summary = briefing.kis_client.fetch_period_trade_profit(
+                "token", "20260101", "20261011", lambda retries: Session()
+            )
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(summary["tot_rlzt_pfls"], "3")
+        self.assertEqual(calls, [(None, ""), ("N", "NK")])
 
     def test_fetch_kis_dividend_summary_counts_net_cash_rights(self):
         rows = [
