@@ -241,6 +241,29 @@ def fetch_kis_dividend_summary(access_token, start_date=None):
     }
 
 
+def fetch_kis_realized_profit(access_token, start_date=None):
+    """Sum realized trading profit since start_date (sales leave evaluation P&L)."""
+    today = datetime.now(KST).date()
+    start_date = start_date or load_dividend_start_date()
+    rows, summary = kis_client.fetch_period_trade_profit(
+        access_token,
+        start_date,
+        today.strftime("%Y%m%d"),
+        get_http_session,
+    )
+    row_total = sum(as_float(row.get("rlzt_pfls"), 0.0) for row in rows)
+    print(
+        f"KIS realized profit: {len(rows)} row(s), rows={row_total:,.0f}, "
+        f"summary={summary.get('tot_rlzt_pfls')}"
+    )
+    total = as_float(summary.get("tot_rlzt_pfls"), None)
+    return {
+        "amount": row_total if total is None else total,
+        "start_date": start_date,
+        "end_date": today.strftime("%Y%m%d"),
+    }
+
+
 def fetch_kis_index_quote(index, access_token):
     """KIS 해외지수 일별시세에서 최신 지수와 전일 종가를 읽는다."""
     app_key = kis_required("KIS_APP_KEY")
@@ -628,7 +651,11 @@ def build_content(
     market_notice="",
     performance_summary=None,
     dividend_summary=None,
+    realized_summary=None,
 ):
+    extra_profit = sum(
+        summary["amount"] for summary in (dividend_summary, realized_summary) if summary
+    )
     today_full = datetime.now(KST).strftime("%Y-%m-%d")
     today_short = datetime.now(KST).strftime("%m/%d")
     headline, mood, surges, drops = market_summary(quotes)
@@ -734,11 +761,12 @@ def build_content(
         account_line = f"자산 {format_krw_short(total)} · 예수금 {format_krw_short(cash)}"
         if profit_loss is not None and return_pct is not None:
             account_line += f"\n평가손익 {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)"
+        if realized_summary:
+            account_line += f"\n실현손익 {format_signed_amount(realized_summary['amount'], 'KRW')}"
         if dividend_summary:
-            dividend_amount = dividend_summary["amount"]
-            account_line += f"\n누적 분배금 {format_signed_amount(dividend_amount, 'KRW')}"
-            if profit_loss is not None:
-                account_line += f"\n총손익 {format_signed_amount(profit_loss + dividend_amount, 'KRW')}"
+            account_line += f"\n누적 분배금 {format_signed_amount(dividend_summary['amount'], 'KRW')}"
+        if profit_loss is not None and (dividend_summary or realized_summary):
+            account_line += f"\n총손익 {format_signed_amount(profit_loss + extra_profit, 'KRW')}"
         telegram_lines.append(account_line)
 
     if composite_signal_line:
@@ -859,13 +887,12 @@ def build_content(
         ])
         if profit_loss is not None and return_pct is not None:
             md_lines.append(f"- 평가손익: {format_signed_amount(profit_loss, 'KRW')} ({return_pct:+.2f}%)")
+        if realized_summary:
+            md_lines.append(f"- 실현손익: {format_signed_amount(realized_summary['amount'], 'KRW')}")
         if dividend_summary:
-            dividend_amount = dividend_summary["amount"]
-            md_lines.append(f"- 누적 분배금: {format_signed_amount(dividend_amount, 'KRW')}")
-            if profit_loss is not None:
-                md_lines.append(
-                    f"- 총손익: {format_signed_amount(profit_loss + dividend_amount, 'KRW')}"
-                )
+            md_lines.append(f"- 누적 분배금: {format_signed_amount(dividend_summary['amount'], 'KRW')}")
+        if profit_loss is not None and (dividend_summary or realized_summary):
+            md_lines.append(f"- 총손익: {format_signed_amount(profit_loss + extra_profit, 'KRW')}")
 
     if performance_summary:
         md_lines.extend([
@@ -978,6 +1005,15 @@ def main():
             )
         except Exception as exc:
             dividend_error = f"분배금 조회 실패: {exc}"
+        realized_summary = None
+        realized_error = None
+        if not kis_client.is_paper():
+            try:
+                realized_summary = fetch_kis_realized_profit(
+                    access_token, load_dividend_start_date(portfolio_config)
+                )
+            except Exception as exc:
+                realized_error = f"실현손익 조회 실패: {exc}"
         print(f"[2/{total_steps}] Fetching KIS indexes...")
         indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
         holding_codes = {
@@ -1000,6 +1036,8 @@ def main():
         errors = index_errors + market_quote_errors + quote_errors
         if dividend_error:
             errors.append(dividend_error)
+        if realized_error:
+            errors.append(realized_error)
         performance_summary = None
         try:
             performance_summary = update_strategy_performance(
@@ -1019,6 +1057,7 @@ def main():
             KRX_MARKET_NOTICE,
             performance_summary,
             dividend_summary,
+            realized_summary,
         )
 
         next_step += 1

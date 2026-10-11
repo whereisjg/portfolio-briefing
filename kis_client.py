@@ -215,3 +215,63 @@ def fetch_dividend_rights(
     if payload.get("rt_cd") != "0":
         raise ValueError(f"KIS 분배금 조회 실패: {payload.get('msg1') or '알 수 없는 오류'}")
     return payload.get("output") or payload.get("output1") or []
+
+
+def fetch_period_trade_profit(
+    access_token,
+    start_date,
+    end_date,
+    session_factory=get_http_session,
+    max_pages=50,
+):
+    """Return per-sale rows and the period summary of realized trading profit."""
+    app_key = required("KIS_APP_KEY")
+    app_secret = required("KIS_APP_SECRET")
+    account_no = required("KIS_ACCOUNT_NO")
+    product_code = required("KIS_PRODUCT_CODE")
+    base_url = env_value("KIS_API_BASE_URL", DEFAULT_BASE_URL)
+    headers = {
+        "authorization": f"Bearer {access_token}",
+        "appkey": app_key,
+        "appsecret": app_secret,
+        "tr_id": env_value("KIS_PERIOD_TRADE_PROFIT_TR_ID", "TTTC8715R"),
+        "custtype": "P",
+    }
+    params = {
+        "CANO": account_no,
+        "ACNT_PRDT_CD": product_code,
+        "SORT_DVSN": "00",
+        "PDNO": "",
+        "INQR_STRT_DT": start_date,
+        "INQR_END_DT": end_date,
+        "CBLC_DVSN": "00",
+        "CTX_AREA_NK100": "",
+        "CTX_AREA_FK100": "",
+    }
+    session = session_factory(retries=1)
+    rows = []
+    summary = {}
+    for _ in range(max_pages):
+        response = session.get(
+            f"{base_url}/uapi/domestic-stock/v1/trading/inquire-period-trade-profit",
+            headers=headers,
+            params=params,
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("rt_cd") != "0":
+            raise ValueError(f"KIS 실현손익 조회 실패: {payload.get('msg1') or '알 수 없는 오류'}")
+        rows.extend(payload.get("output1") or [])
+        summary_rows = payload.get("output2") or {}
+        if not summary:
+            summary = summary_rows[0] if isinstance(summary_rows, list) and summary_rows else summary_rows
+        if response.headers.get("tr_cont") not in ("F", "M"):
+            return rows, summary or {}
+        headers = {**headers, "tr_cont": "N"}
+        params = {
+            **params,
+            "CTX_AREA_NK100": str(payload.get("ctx_area_nk100", "")).strip(),
+            "CTX_AREA_FK100": str(payload.get("ctx_area_fk100", "")).strip(),
+        }
+    raise ValueError(f"KIS 실현손익 조회가 {max_pages}페이지를 넘었습니다.")
