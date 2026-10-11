@@ -254,7 +254,8 @@ def fetch_kis_realized_profit(access_token, start_date=None):
     row_total = sum(as_float(row.get("rlzt_pfls"), 0.0) for row in rows)
     print(
         f"KIS realized profit: {len(rows)} row(s), rows={row_total:,.0f}, "
-        f"summary={summary.get('tot_rlzt_pfls')}"
+        f"summary={summary.get('tot_rlzt_pfls')}, fee={summary.get('tot_fee')}, "
+        f"tax={summary.get('tot_tltx')}"
     )
     total = as_float(summary.get("tot_rlzt_pfls"), None)
     return {
