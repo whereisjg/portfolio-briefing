@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.ref_name }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -249,6 +249,7 @@ jobs:
             printf '\n```\n' >> "$briefing_file"
           fi
       - name: Commit and push
+        if: github.ref_name == 'main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

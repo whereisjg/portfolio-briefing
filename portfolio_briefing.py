@@ -480,6 +480,15 @@ def format_krw_short(amount):
     return f"{round(float(amount) / 10000):,.0f}만"
 
 
+def format_total_profit(total_profit, total_assets):
+    """Total profit with its return on invested capital (assets minus profit)."""
+    text = format_signed_amount(total_profit, "KRW")
+    invested = total_assets - total_profit
+    if invested > 0:
+        text += f" ({total_profit / invested * 100:+.2f}%)"
+    return text
+
+
 def account_evaluation_performance(account_summary, quotes):
     """Return the combined unrealized profit/loss and return for current holdings."""
     profit_loss = as_float(account_summary.get("evlu_pfls_smtl_amt"), None)
@@ -767,7 +776,7 @@ def build_content(
         if dividend_summary:
             account_line += f"\n누적 분배금 {format_signed_amount(dividend_summary['amount'], 'KRW')}"
         if profit_loss is not None and (dividend_summary or realized_summary):
-            account_line += f"\n총손익 {format_signed_amount(profit_loss + extra_profit, 'KRW')}"
+            account_line += f"\n총손익 {format_total_profit(profit_loss + extra_profit, total)}"
         telegram_lines.append(account_line)
 
     if composite_signal_line:
@@ -893,7 +902,7 @@ def build_content(
         if dividend_summary:
             md_lines.append(f"- 누적 분배금: {format_signed_amount(dividend_summary['amount'], 'KRW')}")
         if profit_loss is not None and (dividend_summary or realized_summary):
-            md_lines.append(f"- 총손익: {format_signed_amount(profit_loss + extra_profit, 'KRW')}")
+            md_lines.append(f"- 총손익: {format_total_profit(profit_loss + extra_profit, total)}")
 
     if performance_summary:
         md_lines.extend([
@@ -1029,6 +1038,8 @@ def main():
         assets_config = assets_from_kis_balance(assets_config, holdings, market_quotes)
         trend_state = load_trend_state()
         assets_config = apply_trend_weights(assets_config, trend_state)
+        if trend_state is None and trading_config.get("trend_strategy", {}).get("enabled") is False:
+            trend_state = {"enabled": False}
         quotes = assets_config
         quote_errors = []
         compute_weights(quotes, account_summary)

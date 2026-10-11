@@ -2030,7 +2030,7 @@ class ContentTests(unittest.TestCase):
         )
 
         self.assertIn("누적 분배금 +12,345원", telegram)
-        self.assertIn("총손익 -17,655원", telegram)
+        self.assertIn("총손익 -17,655원 (-7.43%)", telegram)
         self.assertIn("- 누적 분배금: +12,345원", markdown)
         self.assertIn("- 총손익: -17,655원", markdown)
 
