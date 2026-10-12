@@ -274,4 +274,7 @@ def fetch_period_trade_profit(
             "CTX_AREA_NK100": str(payload.get("ctx_area_nk100", "")).strip(),
             "CTX_AREA_FK100": str(payload.get("ctx_area_fk100", "")).strip(),
         }
+    if "tot_rlzt_pfls" in summary:
+        print(f"KIS 실현손익 조회가 {max_pages}페이지를 넘어 기간 합계만 사용합니다.", file=sys.stderr)
+        return rows, summary
     raise ValueError(f"KIS 실현손익 조회가 {max_pages}페이지를 넘었습니다.")

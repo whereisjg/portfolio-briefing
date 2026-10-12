@@ -1,5 +1,5 @@
 name: Daily Portfolio Briefing
-run-name: Daily Portfolio Briefing [${{ inputs.account_mode || 'isa' }}:${{ inputs.execute_live_orders && 'orders' || 'plan' }}]
+run-name: Daily Portfolio Briefing [${{ inputs.account_mode || 'isa' }}:${{ inputs.execute_live_orders && github.ref_name == 'main' && 'orders' || 'plan' }}]
 
 on:
   workflow_dispatch:
@@ -43,8 +43,6 @@ jobs:
       KIS_API_BASE_URL: ${{ inputs.account_mode == 'paper' && 'https://openapivts.koreainvestment.com:29443' || 'https://openapi.koreainvestment.com:9443' }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.ref_name }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -110,7 +108,7 @@ jobs:
           PY
       - name: Run configured live rebalance
         id: live-rebalance
-        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true
+        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true && github.ref_name == 'main'
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
@@ -118,7 +116,7 @@ jobs:
         run: python trading_execution.py --execute-live --result-file /tmp/trading-execution.json > /tmp/trading-plan.txt
       - name: Retry recoverable live rebalance once
         id: live-recovery
-        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true
+        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders == true && github.ref_name == 'main'
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
@@ -146,7 +144,7 @@ jobs:
           python trading_execution.py --execute-live --recovery-attempt \
             --result-file /tmp/trading-recovery.json >> /tmp/trading-plan.txt
       - name: Build trading plan only
-        if: always() && steps.krx-market.outputs.orderable == 'true' && inputs.execute_live_orders != true
+        if: always() && steps.krx-market.outputs.orderable == 'true' && (inputs.execute_live_orders != true || github.ref_name != 'main')
         env:
           KIS_BALANCE_SNAPSHOT_FILE: /tmp/kis-balance.json
           KIS_ACCESS_TOKEN_CACHE_FILE: /tmp/kis-access-token.json
@@ -267,6 +265,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            sed -i "1i 🧪 테스트 실행 (${GITHUB_REF_NAME}) · 실주문 없음" /tmp/telegram-message.txt
+          fi
           python -c "import portfolio_briefing as b; raise SystemExit(0 if b.send_telegram(open('/tmp/telegram-message.txt', encoding='utf-8').read()) else 1)"
       - name: Encrypt newly issued KIS token
         id: seal-kis-token

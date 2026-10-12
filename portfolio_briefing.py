@@ -427,6 +427,13 @@ def load_trend_state():
     return state
 
 
+def effective_trend_state(trend_state, trading_config):
+    """Without a saved state (off-hours), mirror the disabled state resolve_trend_strategy writes."""
+    if trend_state is None and not trading_config.get("trend_strategy", {}).get("enabled"):
+        return {"state": "neutral", "weights": trading_config.get("target_weights", {}), "enabled": False}
+    return trend_state
+
+
 def apply_trend_weights(assets, trend_state):
     if not trend_state:
         return assets
@@ -484,7 +491,7 @@ def format_total_profit(total_profit, total_assets):
     """Total profit with its return on invested capital (assets minus profit)."""
     text = format_signed_amount(total_profit, "KRW")
     invested = total_assets - total_profit
-    if invested > 0:
+    if total_assets > 0 and invested > 0:
         text += f" ({total_profit / invested * 100:+.2f}%)"
     return text
 
@@ -495,8 +502,6 @@ def account_evaluation_performance(account_summary, quotes):
     purchase_amount = as_float(account_summary.get("pchs_amt_smtl_amt"), None)
     if profit_loss is not None and purchase_amount and purchase_amount > 0:
         return profit_loss, profit_loss / purchase_amount * 100
-    if profit_loss is not None and purchase_amount == 0:
-        return profit_loss, None
 
     positions = [
         item for item in quotes
@@ -505,7 +510,7 @@ def account_evaluation_performance(account_summary, quotes):
         and float(item["shares"]) > 0
     ]
     if not positions:
-        return None, None
+        return (profit_loss, None) if profit_loss is not None else (None, None)
     profit_loss = sum(float(item["evaluation_profit_loss_amount"]) for item in positions)
     purchase_amount = sum(
         float(item["shares"]) * float(item["price"]) - float(item["evaluation_profit_loss_amount"])
@@ -777,7 +782,7 @@ def build_content(
             account_line += f"\n실현손익 {format_signed_amount(realized_summary['amount'], 'KRW')}"
         if dividend_summary:
             account_line += f"\n누적 분배금 {format_signed_amount(dividend_summary['amount'], 'KRW')}"
-        if profit_loss is not None and (dividend_summary or realized_summary):
+        if profit_loss is not None and dividend_summary and realized_summary:
             account_line += f"\n총손익 {format_total_profit(profit_loss + extra_profit, total)}"
         telegram_lines.append(account_line)
 
@@ -903,7 +908,7 @@ def build_content(
             md_lines.append(f"- 실현손익: {format_signed_amount(realized_summary['amount'], 'KRW')}")
         if dividend_summary:
             md_lines.append(f"- 누적 분배금: {format_signed_amount(dividend_summary['amount'], 'KRW')}")
-        if profit_loss is not None and (dividend_summary or realized_summary):
+        if profit_loss is not None and dividend_summary and realized_summary:
             md_lines.append(f"- 총손익: {format_total_profit(profit_loss + extra_profit, total)}")
 
     if performance_summary:
@@ -1010,22 +1015,23 @@ def main():
         holdings, account_summary, access_token = fetch_kis_balance()
         save_kis_balance_snapshot(holdings, account_summary, access_token)
         dividend_summary = None
-        dividend_error = None
-        try:
-            dividend_summary = fetch_kis_dividend_summary(
-                access_token, load_dividend_start_date(portfolio_config)
-            )
-        except Exception as exc:
-            dividend_error = f"분배금 조회 실패: {exc}"
         realized_summary = None
-        realized_error = None
-        if not kis_client.is_paper():
+        profit_errors = []
+        try:
+            start_date = load_dividend_start_date(portfolio_config)
+        except Exception as exc:
+            start_date = None
+            profit_errors.append(f"분배금·실현손익 조회 실패: {exc}")
+        if start_date:
             try:
-                realized_summary = fetch_kis_realized_profit(
-                    access_token, load_dividend_start_date(portfolio_config)
-                )
+                dividend_summary = fetch_kis_dividend_summary(access_token, start_date)
             except Exception as exc:
-                realized_error = f"실현손익 조회 실패: {exc}"
+                profit_errors.append(f"분배금 조회 실패: {exc}")
+            if not kis_client.is_paper():
+                try:
+                    realized_summary = fetch_kis_realized_profit(access_token, start_date)
+                except Exception as exc:
+                    profit_errors.append(f"실현손익 조회 실패: {exc}")
         print(f"[2/{total_steps}] Fetching KIS indexes...")
         indexes, index_errors = fetch_kis_indexes(indexes_config, access_token)
         holding_codes = {
@@ -1038,20 +1044,14 @@ def main():
             access_token,
         )
         assets_config = assets_from_kis_balance(assets_config, holdings, market_quotes)
-        trend_state = load_trend_state()
+        trend_state = effective_trend_state(load_trend_state(), trading_config)
         assets_config = apply_trend_weights(assets_config, trend_state)
-        if trend_state is None and trading_config.get("trend_strategy", {}).get("enabled") is False:
-            trend_state = {"enabled": False}
         quotes = assets_config
         quote_errors = []
         compute_weights(quotes, account_summary)
         print(f"KIS 잔고조회 완료: 보유 {len(quotes)}종목")
 
-        errors = index_errors + market_quote_errors + quote_errors
-        if dividend_error:
-            errors.append(dividend_error)
-        if realized_error:
-            errors.append(realized_error)
+        errors = index_errors + market_quote_errors + quote_errors + profit_errors
         performance_summary = None
         try:
             performance_summary = update_strategy_performance(
