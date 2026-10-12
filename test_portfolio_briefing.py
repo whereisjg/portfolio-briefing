@@ -2030,9 +2030,10 @@ class ContentTests(unittest.TestCase):
         )
 
         self.assertIn("누적 분배금 +12,345원", telegram)
-        self.assertIn("총손익 -17,655원 (-7.43%)", telegram)
         self.assertIn("- 누적 분배금: +12,345원", markdown)
-        self.assertIn("- 총손익: -17,655원", markdown)
+        # Without realized profit (failed or skipped lookup) a total would be incomplete.
+        self.assertNotIn("총손익", telegram)
+        self.assertNotIn("총손익", markdown)
 
         telegram, markdown = briefing.build_content(
             [], quotes, [],
@@ -2042,7 +2043,7 @@ class ContentTests(unittest.TestCase):
         )
 
         self.assertIn("실현손익 +40,000원", telegram)
-        self.assertIn("총손익 +22,345원", telegram)
+        self.assertIn("총손익 +22,345원 (+11.31%)", telegram)
         self.assertIn("- 실현손익: +40,000원", markdown)
         self.assertIn("- 총손익: +22,345원", markdown)
 
@@ -2062,6 +2063,32 @@ class ContentTests(unittest.TestCase):
         self.assertNotIn("평가손익", telegram)
         self.assertIn("총손익 -71,176원 (-0.30%)", telegram)
         self.assertIn("- 총손익: -71,176원 (-0.30%)", markdown)
+
+    def test_evaluation_falls_back_to_holdings_when_summary_purchase_is_zero(self):
+        quotes = [{"shares": 10, "price": 1000, "evaluation_profit_loss_amount": -500}]
+        summary = {"evlu_pfls_smtl_amt": "0", "pchs_amt_smtl_amt": "0"}
+
+        profit_loss, return_pct = briefing.account_evaluation_performance(summary, quotes)
+
+        self.assertEqual(profit_loss, -500)
+        self.assertAlmostEqual(return_pct, -500 / 10500 * 100)
+        self.assertEqual(briefing.account_evaluation_performance(summary, []), (0.0, None))
+        self.assertEqual(briefing.account_evaluation_performance({}, []), (None, None))
+
+    def test_total_profit_omits_return_without_asset_total(self):
+        self.assertEqual(briefing.format_total_profit(-71176, 0.0), "-71,176원")
+        self.assertEqual(briefing.format_total_profit(-71176, 24009172), "-71,176원 (-0.30%)")
+
+    def test_effective_trend_state_mirrors_disabled_trading_state(self):
+        weights = {"0015B0": 40}
+        for trend in ({"enabled": False}, {}, {"enabled": None}):
+            state = briefing.effective_trend_state(
+                None, {"trend_strategy": trend, "target_weights": weights}
+            )
+            self.assertEqual(state, {"state": "neutral", "weights": weights, "enabled": False})
+        self.assertIsNone(briefing.effective_trend_state(None, {"target_weights": weights, "trend_strategy": {"enabled": True}}))
+        saved = {"state": "risk_on", "weights": {}, "enabled": True}
+        self.assertIs(briefing.effective_trend_state(saved, {"target_weights": weights}), saved)
 
     def test_fetch_kis_realized_profit_prefers_period_summary(self):
         rows = [{"rlzt_pfls": "1,000"}, {"rlzt_pfls": "-300"}]
@@ -2103,6 +2130,33 @@ class ContentTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(summary["tot_rlzt_pfls"], "3")
         self.assertEqual(calls, [(None, ""), ("N", "NK")])
+
+    def test_fetch_period_trade_profit_keeps_summary_at_page_cap(self):
+        payload = {"rt_cd": "0", "output1": [{"rlzt_pfls": "1"}], "output2": [{"tot_rlzt_pfls": "9"}]}
+
+        class Session:
+            def get(self, url, headers, params, timeout):
+                return SimpleNamespace(
+                    headers={"tr_cont": "M"}, json=lambda: payload, raise_for_status=lambda: None
+                )
+
+        with patch.dict(os.environ, {
+            "KIS_APP_KEY": "key",
+            "KIS_APP_SECRET": "secret",
+            "KIS_ACCOUNT_NO": "12345678",
+            "KIS_PRODUCT_CODE": "01",
+        }, clear=False):
+            rows, summary = briefing.kis_client.fetch_period_trade_profit(
+                "token", "20260101", "20261011", lambda retries: Session(), max_pages=3
+            )
+            payload["output2"] = [{}]
+            with self.assertRaises(ValueError):
+                briefing.kis_client.fetch_period_trade_profit(
+                    "token", "20260101", "20261011", lambda retries: Session(), max_pages=3
+                )
+
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(summary["tot_rlzt_pfls"], "9")
 
     def test_fetch_kis_dividend_summary_counts_net_cash_rights(self):
         rows = [
