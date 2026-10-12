@@ -2046,6 +2046,23 @@ class ContentTests(unittest.TestCase):
         self.assertIn("- 실현손익: +40,000원", markdown)
         self.assertIn("- 총손익: +22,345원", markdown)
 
+    def test_build_content_shows_total_profit_after_full_liquidation(self):
+        telegram, markdown = briefing.build_content(
+            [], [], [],
+            account_summary={
+                "tot_evlu_amt": "24009172",
+                "prvs_rcdl_excc_amt": "24009172",
+                "evlu_pfls_smtl_amt": "0",
+                "pchs_amt_smtl_amt": "0",
+            },
+            dividend_summary={"amount": 201326, "count": 8},
+            realized_summary={"amount": -272502},
+        )
+
+        self.assertNotIn("평가손익", telegram)
+        self.assertIn("총손익 -71,176원 (-0.30%)", telegram)
+        self.assertIn("- 총손익: -71,176원 (-0.30%)", markdown)
+
     def test_fetch_kis_realized_profit_prefers_period_summary(self):
         rows = [{"rlzt_pfls": "1,000"}, {"rlzt_pfls": "-300"}]
         with patch.object(

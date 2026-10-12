@@ -495,6 +495,8 @@ def account_evaluation_performance(account_summary, quotes):
     purchase_amount = as_float(account_summary.get("pchs_amt_smtl_amt"), None)
     if profit_loss is not None and purchase_amount and purchase_amount > 0:
         return profit_loss, profit_loss / purchase_amount * 100
+    if profit_loss is not None and purchase_amount == 0:
+        return profit_loss, None
 
     positions = [
         item for item in quotes
