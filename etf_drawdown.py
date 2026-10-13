@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import kis_client
 import trading_execution
 
-DEFAULT_CODES = "379800,379810"
+DEFAULT_CODES = "360750,379810"
 DEFAULT_PAIRS = ""
 
 

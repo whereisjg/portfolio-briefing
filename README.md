@@ -16,7 +16,7 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 
 | ETF | 목표 |
 | --- | ---: |
-| KODEX 미국S&P500 | 70% |
+| TIGER 미국S&P500 | 70% |
 | KODEX 미국나스닥100 | 30% |
 
 목표에서 빠진 ETF를 보유하게 되면 `liquidation_codes`에 등록해 하루 한도 안에서 매도합니다. 이전 종목은 2026-10-12에 모두 매도해 현재 목록은 비어 있습니다.
@@ -62,10 +62,10 @@ portfolio-briefing/
 
 ```json
 {
-  "ticker": "KODEX미국S&P500",
-  "symbol": "379800.KS",
-  "name": "KODEX 미국S&P500",
-  "display": "KODEX S&P500",
+  "ticker": "TIGER미국S&P500",
+  "symbol": "360750.KS",
+  "name": "TIGER 미국S&P500",
+  "display": "TIGER S&P500",
   "currency": "KRW",
   "target_weight_pct": 70
 }
