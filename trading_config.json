@@ -12,9 +12,8 @@
   },
   "liquidation_codes": [],
   "target_weights": {
-    "0015B0": 40,
-    "379800": 30,
-    "458730": 30
+    "379800": 70,
+    "379810": 30
   },
   "trend_strategy": {
     "enabled": false
