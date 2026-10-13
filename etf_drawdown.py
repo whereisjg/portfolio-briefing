@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 import kis_client
 import trading_execution
 
-DEFAULT_CODES = "486290,0005A0,379810,379800"
-DEFAULT_PAIRS = "486290:379810,0005A0:379800"
+DEFAULT_CODES = "0015B0,379800,458730"
+DEFAULT_PAIRS = ""
 
 
 def fetch_kis_distributions(code, context, start, end, chunk_days=365):
