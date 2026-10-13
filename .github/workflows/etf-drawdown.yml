@@ -6,7 +6,7 @@ on:
       codes:
         description: 'Comma-separated KIS ETF codes'
         required: false
-        default: '486290,0005A0,379810,379800'
+        default: '0015B0,379800,458730'
       lookback_days:
         description: 'Calendar days of daily closes to request'
         required: false
@@ -66,6 +66,6 @@ jobs:
         run: |
           set -o pipefail
           python etf_drawdown.py \
-            --codes "${{ inputs.codes || '486290,0005A0,379810,379800' }}" \
+            --codes "${{ inputs.codes || '0015B0,379800,458730' }}" \
             --lookback-days "${{ inputs.lookback_days || '1500' }}" | tee /tmp/etf-drawdown.md
           cat /tmp/etf-drawdown.md >> "$GITHUB_STEP_SUMMARY"

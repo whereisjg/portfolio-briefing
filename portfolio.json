@@ -29,24 +29,6 @@
       "target_weight_pct": 40
     },
     {
-      "ticker": "KODEX미국나스닥100",
-      "symbol": "379810.KS",
-      "name": "KODEX 미국나스닥100",
-      "display": "KODEX나스닥100",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
-    },
-    {
-      "ticker": "TIGER미국나스닥100타겟데일리커버드콜",
-      "symbol": "486290.KS",
-      "name": "TIGER 미국나스닥100타겟데일리커버드콜",
-      "display": "TIGER나스닥커버드콜",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
-    },
-    {
       "ticker": "KODEX미국S&P500",
       "symbol": "379800.KS",
       "name": "KODEX 미국S&P500",
@@ -63,51 +45,6 @@
       "currency": "KRW",
       "shares": null,
       "target_weight_pct": 30
-    },
-    {
-      "ticker": "KODEX미국S&P500데일리커버드콜OTM",
-      "symbol": "0005A0.KS",
-      "name": "KODEX 미국S&P500데일리커버드콜OTM",
-      "display": "KODEX S&P커버드콜",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
-    },
-    {
-      "ticker": "TIGER일본니케이225",
-      "symbol": "241180.KS",
-      "name": "TIGER 일본니케이225",
-      "display": "TIGER일본니케이225",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
-    },
-    {
-      "ticker": "KODEX일본TOPIX100",
-      "symbol": "101280.KS",
-      "name": "KODEX 일본TOPIX100",
-      "display": "KODEX일본TOPIX100",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
-    },
-    {
-      "ticker": "KODEX단기채권",
-      "symbol": "153130.KS",
-      "name": "KODEX 단기채권",
-      "display": "KODEX단기채권",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
-    },
-    {
-      "ticker": "KODEX미국머니마켓액티브",
-      "symbol": "0048J0.KS",
-      "name": "KODEX 미국머니마켓액티브",
-      "display": "KODEX머니마켓",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": null
     }
   ]
 }

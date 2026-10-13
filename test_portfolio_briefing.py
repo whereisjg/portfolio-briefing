@@ -278,17 +278,12 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(config["target_weights"], {"0015B0": 40, "379800": 30, "458730": 30})
         self.assertFalse(config["trend_strategy"]["enabled"])
         self.assertFalse(config["strategy_comparison"]["enabled"])
-        for code in ("379810", "241180", "153130", "486290", "0005A0"):
-            self.assertIn(code, config["liquidation_codes"])
+        # Every previous ETF was sold on 2026-10-12, so nothing is left to liquidate.
+        self.assertEqual(config["liquidation_codes"], [])
 
         _indexes, assets = briefing.load_portfolio()
-        targets = {asset["symbol"]: asset["target_weight_pct"] for asset in assets}
-        self.assertEqual(targets["0015B0.KS"], 40)
-        self.assertEqual(targets["379800.KS"], 30)
-        self.assertEqual(targets["458730.KS"], 30)
-        self.assertIsNone(targets["241180.KS"])
-        self.assertIsNone(targets["153130.KS"])
-        self.assertFalse(any(asset["symbol"] == "0036D0.KS" for asset in assets))
+        targets = {asset["symbol"].split(".")[0]: asset["target_weight_pct"] for asset in assets}
+        self.assertEqual(targets, config["target_weights"])
 
     def test_env_value_uses_default_for_empty_environment_value(self):
         with patch.dict(briefing.os.environ, {"EMPTY_SETTING": ""}):

@@ -10,15 +10,7 @@
     "enabled": false,
     "history_file": "performance/strategy_twr_index_etf.json"
   },
-  "liquidation_codes": [
-    "379810",
-    "241180",
-    "153130",
-    "486290",
-    "0005A0",
-    "0048J0",
-    "101280"
-  ],
+  "liquidation_codes": [],
   "target_weights": {
     "0015B0": 40,
     "379800": 30,
