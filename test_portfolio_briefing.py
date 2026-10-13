@@ -275,7 +275,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_repository_config_uses_fixed_us_equity_weights(self):
         config = strategy.load_config()
 
-        self.assertEqual(config["target_weights"], {"379800": 70, "379810": 30})
+        self.assertEqual(config["target_weights"], {"360750": 70, "379810": 30})
         self.assertFalse(config["trend_strategy"]["enabled"])
         self.assertFalse(config["strategy_comparison"]["enabled"])
         # Every previous ETF was sold on 2026-10-12, so nothing is left to liquidate.

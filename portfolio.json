@@ -20,10 +20,10 @@
   ],
   "assets": [
     {
-      "ticker": "KODEX미국S&P500",
-      "symbol": "379800.KS",
-      "name": "KODEX 미국S&P500",
-      "display": "KODEX S&P500",
+      "ticker": "TIGER미국S&P500",
+      "symbol": "360750.KS",
+      "name": "TIGER 미국S&P500",
+      "display": "TIGER S&P500",
       "currency": "KRW",
       "shares": null,
       "target_weight_pct": 70
