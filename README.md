@@ -16,9 +16,8 @@ GitHub Actions, KIS Open API, Telegram을 사용한 일일 포트폴리오 브�
 
 | ETF | 목표 |
 | --- | ---: |
-| KoAct 미국나스닥성장기업액티브 | 40% |
-| KODEX 미국S&P500 | 30% |
-| TIGER 미국배당다우존스 | 30% |
+| KODEX 미국S&P500 | 70% |
+| KODEX 미국나스닥100 | 30% |
 
 목표에서 빠진 ETF를 보유하게 되면 `liquidation_codes`에 등록해 하루 한도 안에서 매도합니다. 이전 종목은 2026-10-12에 모두 매도해 현재 목록은 비어 있습니다.
 
@@ -63,12 +62,12 @@ portfolio-briefing/
 
 ```json
 {
-  "ticker": "KoAct미국나스닥성장기업액티브",
-  "symbol": "0015B0.KS",
-  "name": "KoAct 미국나스닥성장기업액티브",
-  "display": "KoAct나스닥성장",
+  "ticker": "KODEX미국S&P500",
+  "symbol": "379800.KS",
+  "name": "KODEX 미국S&P500",
+  "display": "KODEX S&P500",
   "currency": "KRW",
-  "target_weight_pct": 25
+  "target_weight_pct": 70
 }
 ```
 

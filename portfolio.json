@@ -20,28 +20,19 @@
   ],
   "assets": [
     {
-      "ticker": "KoAct미국나스닥성장기업액티브",
-      "symbol": "0015B0.KS",
-      "name": "KoAct 미국나스닥성장기업액티브",
-      "display": "KoAct나스닥성장",
-      "currency": "KRW",
-      "shares": null,
-      "target_weight_pct": 40
-    },
-    {
       "ticker": "KODEX미국S&P500",
       "symbol": "379800.KS",
       "name": "KODEX 미국S&P500",
       "display": "KODEX S&P500",
       "currency": "KRW",
       "shares": null,
-      "target_weight_pct": 30
+      "target_weight_pct": 70
     },
     {
-      "ticker": "TIGER미국배당다우존스",
-      "symbol": "458730.KS",
-      "name": "TIGER 미국배당다우존스",
-      "display": "TIGER미국배당",
+      "ticker": "KODEX미국나스닥100",
+      "symbol": "379810.KS",
+      "name": "KODEX 미국나스닥100",
+      "display": "KODEX나스닥100",
       "currency": "KRW",
       "shares": null,
       "target_weight_pct": 30
