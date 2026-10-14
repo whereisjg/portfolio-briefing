@@ -235,6 +235,7 @@ jobs:
       - name: Add trading plan to Telegram message
         run: |
           if [ -f /tmp/trading-plan.txt ]; then
+            cat /tmp/trading-plan.txt
             printf '\n\n' >> /tmp/telegram-message.txt
             cat /tmp/trading-plan.txt >> /tmp/telegram-message.txt
           fi
