@@ -271,6 +271,31 @@ class EtfDrawdownTests(unittest.TestCase):
         self.assertEqual(lines[-1], "| C | -1.00 | -1.00 | 1.00 |")
 
 
+class TelegramTests(unittest.TestCase):
+    def test_send_telegram_retries_a_timed_out_post(self):
+        session = Mock()
+        session.post.side_effect = [TimeoutError("read timed out"), SimpleNamespace(status_code=200, text="ok")]
+        with patch.object(briefing, "TELEGRAM_BOT_TOKEN", "token"), \
+                patch.object(briefing, "TELEGRAM_CHAT_ID", "chat"), \
+                patch.object(briefing, "SEND_TELEGRAM", "1"), \
+                patch.object(briefing, "get_http_session", return_value=session), \
+                patch.object(briefing.time, "sleep") as sleep:
+            self.assertTrue(briefing.send_telegram("hello"))
+        self.assertEqual(session.post.call_count, 2)
+        sleep.assert_called_once_with(10)
+
+    def test_send_telegram_gives_up_after_retries(self):
+        session = Mock()
+        session.post.side_effect = TimeoutError("read timed out")
+        with patch.object(briefing, "TELEGRAM_BOT_TOKEN", "token"), \
+                patch.object(briefing, "TELEGRAM_CHAT_ID", "chat"), \
+                patch.object(briefing, "SEND_TELEGRAM", "1"), \
+                patch.object(briefing, "get_http_session", return_value=session), \
+                patch.object(briefing.time, "sleep"):
+            self.assertFalse(briefing.send_telegram("hello"))
+        self.assertEqual(session.post.call_count, 3)
+
+
 class ConfigurationTests(unittest.TestCase):
     def test_repository_config_uses_fixed_us_equity_weights(self):
         config = strategy.load_config()

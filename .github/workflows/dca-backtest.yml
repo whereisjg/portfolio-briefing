@@ -1,0 +1,37 @@
+name: DCA Backtest (research)
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - research/dca_backtest.py
+      - .github/workflows/dca-backtest.yml
+
+permissions:
+  contents: write
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install yfinance pandas numpy matplotlib tabulate
+      - name: Run backtest
+        run: |
+          set -o pipefail
+          python research/dca_backtest.py --out research/dca_output | tee research/dca_output.log
+          cat research/dca_output/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit results to this branch
+        if: github.ref_name != 'main'
+        run: |
+          git config user.name "Portfolio Bot"
+          git config user.email "bot@portfolio.local"
+          mv research/dca_output.log research/dca_output/console.log
+          git add research/dca_output
+          git diff --cached --quiet || git commit -m "DCA backtest results"
+          git push
