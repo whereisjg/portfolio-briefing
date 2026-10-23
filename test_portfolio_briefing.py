@@ -272,9 +272,12 @@ class EtfDrawdownTests(unittest.TestCase):
 
 
 class TelegramTests(unittest.TestCase):
-    def test_send_telegram_retries_a_timed_out_post(self):
+    def test_send_telegram_retries_when_the_post_never_connected(self):
         session = Mock()
-        session.post.side_effect = [TimeoutError("read timed out"), SimpleNamespace(status_code=200, text="ok")]
+        session.post.side_effect = [
+            briefing.requests.exceptions.ConnectTimeout("connect timed out"),
+            SimpleNamespace(status_code=200, text="ok"),
+        ]
         with patch.object(briefing, "TELEGRAM_BOT_TOKEN", "token"), \
                 patch.object(briefing, "TELEGRAM_CHAT_ID", "chat"), \
                 patch.object(briefing, "SEND_TELEGRAM", "1"), \
@@ -284,9 +287,9 @@ class TelegramTests(unittest.TestCase):
         self.assertEqual(session.post.call_count, 2)
         sleep.assert_called_once_with(10)
 
-    def test_send_telegram_gives_up_after_retries(self):
+    def test_send_telegram_gives_up_after_connection_retries(self):
         session = Mock()
-        session.post.side_effect = TimeoutError("read timed out")
+        session.post.side_effect = briefing.requests.exceptions.ConnectionError("refused")
         with patch.object(briefing, "TELEGRAM_BOT_TOKEN", "token"), \
                 patch.object(briefing, "TELEGRAM_CHAT_ID", "chat"), \
                 patch.object(briefing, "SEND_TELEGRAM", "1"), \
@@ -294,6 +297,19 @@ class TelegramTests(unittest.TestCase):
                 patch.object(briefing.time, "sleep"):
             self.assertFalse(briefing.send_telegram("hello"))
         self.assertEqual(session.post.call_count, 3)
+
+
+    def test_send_telegram_does_not_resend_after_a_read_timeout(self):
+        session = Mock()
+        session.post.side_effect = briefing.requests.exceptions.ReadTimeout("read timed out")
+        with patch.object(briefing, "TELEGRAM_BOT_TOKEN", "token"), \
+                patch.object(briefing, "TELEGRAM_CHAT_ID", "chat"), \
+                patch.object(briefing, "SEND_TELEGRAM", "1"), \
+                patch.object(briefing, "get_http_session", return_value=session), \
+                patch.object(briefing.time, "sleep") as sleep:
+            self.assertFalse(briefing.send_telegram("hello"))
+        self.assertEqual(session.post.call_count, 1)
+        sleep.assert_not_called()
 
 
 class ConfigurationTests(unittest.TestCase):

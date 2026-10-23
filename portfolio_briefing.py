@@ -9,6 +9,8 @@ import sys
 import time
 from datetime import datetime, timedelta
 
+import requests
+
 import kis_client
 import performance_tracking
 import run_state
@@ -984,12 +986,17 @@ def send_telegram(message):
             try:
                 response = session.post(url, json=payload, timeout=TELEGRAM_TIMEOUT_SECONDS)
                 break
-            except Exception as exc:
+            except requests.exceptions.ConnectionError as exc:
+                # The request never reached Telegram, so resending cannot duplicate it.
                 if delay is None:
                     print(f"Telegram failed: {exc}")
                     return False
                 print(f"Telegram attempt {attempt} failed, retrying in {delay}s: {exc}")
                 time.sleep(delay)
+            except Exception as exc:
+                # A read timeout may already have delivered the message; do not resend.
+                print(f"Telegram failed without resending (delivery unknown): {exc}")
+                return False
 
         if response.status_code != 200:
             print(f"Telegram failed: {response.status_code} - {response.text[:200]}")
