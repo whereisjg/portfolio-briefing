@@ -951,6 +951,10 @@ def save_markdown(content):
     return filename
 
 
+TELEGRAM_TIMEOUT_SECONDS = 60
+TELEGRAM_RETRY_DELAYS_SECONDS = (10, 30)
+
+
 def send_telegram(message):
     if SEND_TELEGRAM in {"0", "false", "no", "off"}:
         print("SEND_TELEGRAM is disabled. Skipping send.")
@@ -976,11 +980,16 @@ def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     for i, chunk in enumerate(chunks, 1):
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
-        try:
-            response = session.post(url, json=payload, timeout=20)
-        except Exception as exc:
-            print(f"Telegram failed: {exc}")
-            return False
+        for attempt, delay in enumerate(TELEGRAM_RETRY_DELAYS_SECONDS + (None,), 1):
+            try:
+                response = session.post(url, json=payload, timeout=TELEGRAM_TIMEOUT_SECONDS)
+                break
+            except Exception as exc:
+                if delay is None:
+                    print(f"Telegram failed: {exc}")
+                    return False
+                print(f"Telegram attempt {attempt} failed, retrying in {delay}s: {exc}")
+                time.sleep(delay)
 
         if response.status_code != 200:
             print(f"Telegram failed: {response.status_code} - {response.text[:200]}")
