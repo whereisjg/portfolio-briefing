@@ -311,8 +311,37 @@ class TelegramTests(unittest.TestCase):
         self.assertEqual(session.post.call_count, 1)
         sleep.assert_not_called()
 
+    def test_send_telegram_does_not_resend_after_a_dropped_connection(self):
+        from urllib3.exceptions import ProtocolError
+
+        session = Mock()
+        session.post.side_effect = briefing.requests.exceptions.ConnectionError(
+            ProtocolError("Connection aborted.")
+        )
+        with patch.object(briefing, "TELEGRAM_BOT_TOKEN", "token"), \
+                patch.object(briefing, "TELEGRAM_CHAT_ID", "chat"), \
+                patch.object(briefing, "SEND_TELEGRAM", "1"), \
+                patch.object(briefing, "get_http_session", return_value=session), \
+                patch.object(briefing.time, "sleep") as sleep:
+            self.assertFalse(briefing.send_telegram("hello"))
+        self.assertEqual(session.post.call_count, 1)
+        sleep.assert_not_called()
+
 
 class ConfigurationTests(unittest.TestCase):
+    def test_load_config_requires_a_usable_order_policy(self):
+        with open("trading_config.json", encoding="utf-8") as file:
+            valid = json.load(file)
+        for order_policy in (None, {"first_order_check_minutes": 5}, {**valid["order_policy"], "max_buy_price_increase_pct": -1}):
+            with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as file:
+                json.dump({**valid, "order_policy": order_policy}, file)
+                file.flush()
+                with self.assertRaisesRegex(ValueError, "order_policy"):
+                    strategy.load_config(file.name)
+
+    def test_year_end_closing_day_is_not_a_trading_day(self):
+        self.assertFalse(market_calendar.is_krx_trading_day(datetime(2026, 12, 31).date()))
+
     def test_repository_config_uses_fixed_us_equity_weights(self):
         config = strategy.load_config()
 

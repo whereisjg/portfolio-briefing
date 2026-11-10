@@ -88,7 +88,7 @@ jobs:
           print(f"open={'true' if status['open'] else 'false'}")
           print(f"orderable={'true' if status['orderable'] else 'false'}")
           print(f"date={status['date'].strftime('%Y-%m-%d')}")
-          print(f"reason={status['reason']}")
+          print(f"reason={' '.join(str(status['reason']).split())}")
           PY
       - name: Fetch pre-trade KIS balance
         id: pretrade-balance
@@ -262,6 +262,7 @@ jobs:
           git pull --rebase origin main
           git push
       - name: Send Telegram
+        id: send-telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -293,7 +294,13 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SEND_TELEGRAM_CONCLUSION: ${{ steps.send-telegram.conclusion }}
         run: |
+          text="⚠️ 포트폴리오 브리핑 GitHub Actions 실패: ${GITHUB_RUN_URL}"
+          # The briefing never went out, so carry today's order result in this notice.
+          if [ "$SEND_TELEGRAM_CONCLUSION" != "failure" ] && [ -s /tmp/trading-plan.txt ]; then
+            text="${text}"$'\n\n'"$(head -n 40 /tmp/trading-plan.txt)"
+          fi
           curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=⚠️ 포트폴리오 브리핑 GitHub Actions 실패: ${GITHUB_RUN_URL}"
+            --data-urlencode "text=${text}"

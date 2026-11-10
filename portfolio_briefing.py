@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 import requests
+from urllib3.exceptions import ProtocolError
 
 import kis_client
 import performance_tracking
@@ -593,9 +594,9 @@ def market_summary(quotes):
     drops = [item for item in quotes if item["chg_pct"] <= -SIGNIFICANT_MOVE_PCT]
 
     if len(positives) == len(quotes) and surges:
-        return "레버리지 ETF 전반 강세", "위험자산 선호", surges, drops
+        return "보유 ETF 전반 강세", "위험자산 선호", surges, drops
     if len(negatives) == len(quotes) and drops:
-        return "레버리지 ETF 전반 약세", "위험 회피", surges, drops
+        return "보유 ETF 전반 약세", "위험 회피", surges, drops
     if len(positives) > len(negatives):
         return "상승 우위의 혼조세", "부분적 위험자산 선호", surges, drops
     if len(negatives) > len(positives):
@@ -682,19 +683,6 @@ def build_content(
     providers = sorted({item.get("provider", "Unknown") for item in indexes + quotes})
     provider_text = ", ".join(providers)
 
-    index_lines = [
-        f"{movement_emoji(item['chg_pct'])} {item['display']} {format_price(item)} ({item['chg_pct']:+.2f}%)"
-        for item in indexes
-    ]
-    price_lines = [
-        (
-            f"{movement_emoji(item['chg_pct'])} {item['display']} "
-            f"{format_price(item)} ({format_change_amount(item)}, {item['chg_pct']:+.2f}%"
-            f"{format_weight(item)}{format_position_effect(item)})"
-        )
-        for item in quotes
-    ]
-    alert_lines = [f"  ▸ {line}" for line in build_alert_lines(quotes, errors)]
     surge_text = ", ".join(item["ticker"] for item in surges) if surges else "없음"
     drop_text = ", ".join(item["ticker"] for item in drops) if drops else "없음"
     rebalancing_rows = build_rebalancing_lines(quotes)
@@ -710,7 +698,6 @@ def build_content(
 
     pos_count = sum(1 for q in quotes if q["chg_pct"] > 0)
     neg_count = sum(1 for q in quotes if q["chg_pct"] < 0)
-    count_str = f"🔴{pos_count} 🔵{neg_count}"
     trend_labels = {"risk_on": "위험 선호", "neutral": "중립", "risk_off": "위험 회피"}
     trend_marks = {"risk_on": "↑", "neutral": "↔", "risk_off": "↓"}
     composite_signal_line = ""
@@ -987,6 +974,10 @@ def send_telegram(message):
                 response = session.post(url, json=payload, timeout=TELEGRAM_TIMEOUT_SECONDS)
                 break
             except requests.exceptions.ConnectionError as exc:
+                if exc.args and isinstance(exc.args[0], ProtocolError):
+                    # The connection dropped after the request was sent; it may have been delivered.
+                    print(f"Telegram failed without resending (delivery unknown): {exc}")
+                    return False
                 # The request never reached Telegram, so resending cannot duplicate it.
                 if delay is None:
                     print(f"Telegram failed: {exc}")
@@ -1053,7 +1044,7 @@ def main():
         holding_codes = {
             str(holding.get("pdno", "")).strip()
             for holding in holdings
-            if holding.get("hldg_qty")
+            if as_float(holding.get("hldg_qty")) > 0
         }
         market_quotes, market_quote_errors = fetch_kis_domestic_quotes(
             sorted(holding_codes | comparison_codes),

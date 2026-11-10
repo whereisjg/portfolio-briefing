@@ -47,6 +47,16 @@ def load_config(path=CONFIG_FILE):
     rebalance_band_pct = float(config.get("rebalance_band_pct", 0))
     if not 0 <= rebalance_band_pct < 100:
         raise ValueError("rebalance_band_pct는 0 이상 100 미만이어야 합니다.")
+    order_policy = config.get("order_policy")
+    if not isinstance(order_policy, dict):
+        raise ValueError("order_policy 설정이 필요합니다.")
+    for key in ("first_order_check_minutes", "max_buy_price_increase_pct"):
+        try:
+            valid = float(order_policy[key]) >= 0
+        except (KeyError, TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise ValueError(f"order_policy.{key}는 0 이상의 숫자여야 합니다.")
     trend = config.get("trend_strategy", {})
     if trend.get("enabled"):
         if trend.get("average_type", "sma") not in {"sma", "hma"}:
